@@ -19,9 +19,9 @@ import (
 // ============================================================
 // ELF 解析器 + 修改器 v3
 //
-// 注入策略: PT_NOTE → PT_LOAD 劫持
+// 注入策略: PT_NOTE 劫持或新增 PT_LOAD 段
 //   1. 将 VM 解释器 blob + 加密字节码追加到文件末尾
-//   2. 将 PT_NOTE 段转换为 PT_LOAD (RX)，映射追加的数据
+//   2. 将 PT_NOTE 段转换为 PT_LOAD (RX)，或追加新的 PT_LOAD 段映射 payload
 //   3. 新 LOAD 段使用独立的虚拟地址 (0x800000 起)
 //   4. 原函数改写为跳板 → BL 到新段中的 VM 解释器
 //
@@ -84,9 +84,19 @@ type Packer struct {
 	verbose      bool
 	stripSymbols bool
 	debug        bool
-	tokenEntry   bool // Token 化入口模式
-	data         []byte
-	interpBlob   []byte
+	targetOS     string
+	androidMode  AndroidMode
+	injector     InjectorKind
+	profile      ProfileKind
+	reportPath   string
+
+	selectedInjector InjectorKind
+	injectorReason   string
+	targetMeta       *elfTargetMetadata
+	report           *PackReport
+
+	data       []byte
+	interpBlob []byte
 }
 
 // FuncBytecode 保存单个函数的加密字节码和元信息
@@ -97,8 +107,18 @@ type FuncBytecode struct {
 }
 
 // NewPacker 创建 ELF 打包器
-func NewPacker(input, output string, funcs []string, addrSpecs []AddrSpec, verbose, strip, debug, tokenEntry bool, interpBlob []byte) *Packer {
-	return &Packer{
+func NewPacker(input, output string, funcs []string, addrSpecs []AddrSpec, verbose, strip, debug bool, interpBlob []byte) *Packer {
+	return NewPackerWithTarget(input, output, funcs, addrSpecs, verbose, strip, debug, "linux", interpBlob)
+}
+
+// NewPackerWithTarget 创建指定目标运行环境的 ELF 打包器。
+// targetOS 支持 linux 和 android；android 模式面向 APK 内 arm64-v8a JNI .so，
+// 会额外执行动态库/用户权限运行时兼容性检查。
+func NewPackerWithTarget(input, output string, funcs []string, addrSpecs []AddrSpec, verbose, strip, debug bool, targetOS string, interpBlob []byte) *Packer {
+	if targetOS == "" {
+		targetOS = "linux"
+	}
+	p := &Packer{
 		inputPath:    input,
 		outputPath:   output,
 		funcNames:    funcs,
@@ -106,9 +126,11 @@ func NewPacker(input, output string, funcs []string, addrSpecs []AddrSpec, verbo
 		verbose:      verbose,
 		stripSymbols: strip,
 		debug:        debug,
-		tokenEntry:   tokenEntry,
+		targetOS:     strings.ToLower(targetOS),
 		interpBlob:   interpBlob,
 	}
+	p.initDefaults()
+	return p
 }
 
 // FindFunction 在 ELF 中查找函数
@@ -276,7 +298,23 @@ func (p *Packer) DecodeFunction(code []byte) []vm.Instruction {
 }
 
 // Process 主入口
-func (p *Packer) Process() error {
+func (p *Packer) Process() (retErr error) {
+	p.initDefaults()
+	p.startReport()
+	defer func() {
+		if p.report != nil {
+			if retErr != nil {
+				p.report.Status = "failed"
+				p.report.Error = retErr.Error()
+			} else {
+				p.report.Status = "ok"
+			}
+			if err := p.writeReport(); err != nil && retErr == nil {
+				retErr = fmt.Errorf("writing report failed: %v", err)
+			}
+		}
+	}()
+
 	var err error
 	p.data, err = os.ReadFile(p.inputPath)
 	if err != nil {
@@ -295,8 +333,22 @@ func (p *Packer) Process() error {
 	if f.Class != elf.ELFCLASS64 {
 		return fmt.Errorf("64-bit ELF only")
 	}
+	meta, err := p.validateTargetELF(f)
+	if err != nil {
+		return err
+	}
+	p.targetMeta = meta
+	if err := p.selectInjector(meta); err != nil {
+		return err
+	}
+	if p.report != nil {
+		p.report.TargetKind = meta.Kind
+		p.report.InjectorSelected = p.selectedInjector
+		p.report.InjectorReason = p.injectorReason
+	}
 
-	fmt.Printf("[*] ELF: %s, Type: %s\n", f.Machine, f.Type)
+	fmt.Printf("[*] ELF: %s, Type: %s, Target: %s, Kind: %s\n", f.Machine, f.Type, p.targetOS, meta.Kind)
+	fmt.Printf("[*] Injector: %s (%s), Profile: %s\n", p.selectedInjector, p.injectorReason, p.profile)
 	fmt.Printf("[*] VM interp blob: %d bytes\n", len(p.interpBlob))
 
 	dec := arm64.NewDecoder()
@@ -359,6 +411,17 @@ func (p *Packer) Process() error {
 
 		fmt.Printf("    Translated: %d/%d\n", result.TransInsts, result.TotalInsts)
 		fmt.Printf("    Bytecode: %d bytes\n", len(result.Bytecode))
+		if p.report != nil {
+			p.report.Functions = append(p.report.Functions, FunctionReport{
+				Name:       fi.Name,
+				Address:    fi.Addr,
+				Size:       fi.Size,
+				Section:    fi.Section,
+				Bytecode:   len(result.Bytecode),
+				Translated: result.TransInsts,
+				Total:      result.TotalInsts,
+			})
+		}
 
 		if len(result.Unsupported) > 0 {
 			fmt.Printf("    [!] Unsupported (%d):\n", len(result.Unsupported))
@@ -639,7 +702,7 @@ func (p *Packer) stripSections() {
 	}
 }
 
-// injectVMPBatch — 批量 PT_NOTE hijack 注入
+// injectVMPBatch — 批量注入 VM payload 并写入 Token 跳板
 func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 	ehdr := readEhdr64(p.data)
 
@@ -651,35 +714,21 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 	var entryOff, tokenEntryOff, tokenTableVAOff uint64
 	var interpCode []byte
 
-	if true { /* TOKEN_ONLY: 始终使用 Token 模式 */
-		// Token 模式: 24 字节扩展头
-		if len(p.interpBlob) < 24 {
-			return fmt.Errorf("token mode requires extended blob header (24 bytes), got %d", len(p.interpBlob))
-		}
-		entryOff = binary.LittleEndian.Uint64(p.interpBlob[:8])
-		tokenEntryOff = binary.LittleEndian.Uint64(p.interpBlob[8:16])
-		tokenTableVAOff = binary.LittleEndian.Uint64(p.interpBlob[16:24])
-		interpCode = p.interpBlob[24:]
-		if tokenEntryOff == 0 {
-			return fmt.Errorf("vm_entry_token not found in blob (compile with -DVM_TOKEN_ENTRY)")
-		}
-		if tokenTableVAOff == 0 {
-			return fmt.Errorf("_token_table_va not found in blob (compile with -DVM_TOKEN_ENTRY)")
-		}
+	// Token 模式是唯一入口: blob 头为
+	// [vm_entry_off:u64][vm_entry_token_off:u64][_token_table_va_off:u64].
+	if len(p.interpBlob) < 24 {
+		return fmt.Errorf("token mode requires extended blob header (24 bytes), got %d", len(p.interpBlob))
 	}
-	/* STANDARD_MODE_DISABLED: Standard header 读取已禁用
-	} else {
-		// 标准模式: blob 始终有 24 字节头 (vm_entry + vm_entry_token + _token_table_va)
-		// 即使不使用 token 模式，也需要跳过完整头部
-		if len(p.interpBlob) >= 24 {
-			entryOff = binary.LittleEndian.Uint64(p.interpBlob[:8])
-			interpCode = p.interpBlob[24:]
-		} else {
-			entryOff = binary.LittleEndian.Uint64(p.interpBlob[:8])
-			interpCode = p.interpBlob[8:]
-		}
+	entryOff = binary.LittleEndian.Uint64(p.interpBlob[:8])
+	tokenEntryOff = binary.LittleEndian.Uint64(p.interpBlob[8:16])
+	tokenTableVAOff = binary.LittleEndian.Uint64(p.interpBlob[16:24])
+	interpCode = p.interpBlob[24:]
+	if tokenEntryOff == 0 {
+		return fmt.Errorf("vm_entry_token not found in blob (compile with -DVM_TOKEN_ENTRY)")
 	}
-	STANDARD_MODE_DISABLED */
+	if tokenTableVAOff == 0 {
+		return fmt.Errorf("_token_table_va not found in blob (compile with -DVM_TOKEN_ENTRY)")
+	}
 
 	// 1. 构造 payload: [interpCode][bc0][pad][bc1][pad][...]
 	payload := make([]byte, 0, len(interpCode)+1024)
@@ -739,22 +788,15 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 			fb.FI.Name, bcVA, records[i].bcLen)
 	}
 
-	// 3. 找到 PT_NOTE 段并劫持为 PT_LOAD
-	noteIdx := -1
-	for i := 0; i < int(ehdr.Phnum); i++ {
-		phOff := ehdr.Phoff + uint64(i)*uint64(ehdr.Phentsize)
-		ph := readPhdr64(p.data, phOff)
-		if ph.Type == uint32(elf.PT_NOTE) {
-			noteIdx = i
-			break
-		}
+	// 3. 分配 payload PT_LOAD 的 program-header 槽位。
+	payloadSlot, err := p.allocatePayloadSegmentSlot(ehdr)
+	if err != nil {
+		return err
 	}
-	if noteIdx < 0 {
-		return fmt.Errorf("PT_NOTE segment not found")
-	}
+	ehdr = payloadSlot.ehdr
 
-	// 4. PT_NOTE → PT_LOAD (RX)
-	notePhdrOff := ehdr.Phoff + uint64(noteIdx)*uint64(ehdr.Phentsize)
+	// 4. 写入 payload PT_LOAD (RX)
+	payloadPhdrOff := payloadSlot.off
 	newPhdr := elf64Phdr{
 		Type:   uint32(elf.PT_LOAD),
 		Flags:  uint32(elf.PF_R | elf.PF_X),
@@ -765,10 +807,31 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 		Memsz:  uint64(len(payload)),
 		Align:  0x1000,
 	}
-	writePhdr64(p.data, notePhdrOff, newPhdr)
+	writePhdr64(p.data, payloadPhdrOff, newPhdr)
 
-	fmt.Printf("    PT_NOTE[%d] -> PT_LOAD RX: off=0x%X va=0x%X sz=0x%X\n",
-		noteIdx, payloadFileOff, payloadVA, len(payload))
+	if p.selectedInjector == InjectorNoteHijack {
+		fmt.Printf("    PT_NOTE[%d] -> PT_LOAD RX: off=0x%X va=0x%X sz=0x%X\n",
+			payloadSlot.index, payloadFileOff, payloadVA, len(payload))
+	} else {
+		fmt.Printf("    AddSegment[%d:%s] -> PT_LOAD RX: off=0x%X va=0x%X sz=0x%X\n",
+			payloadSlot.index, payloadSlot.source, payloadFileOff, payloadVA, len(payload))
+	}
+	if p.report != nil {
+		phdrIndex := payloadSlot.index
+		p.report.Injection = &InjectionReport{
+			Strategy:      p.selectedInjector,
+			PhdrIndex:     &phdrIndex,
+			SegmentSource: payloadSlot.source,
+			PayloadOffset: payloadFileOff,
+			PayloadVA:     payloadVA,
+			PayloadSize:   uint64(len(payload)),
+			VMEntryVA:     interpVA,
+		}
+		if p.selectedInjector == InjectorNoteHijack {
+			noteIndex := payloadSlot.index
+			p.report.Injection.NoteIndex = &noteIndex
+		}
+	}
 
 	// 4b. 按 Vaddr 升序重排所有 PT_LOAD 段，防止内核映射 BSS 失败
 	{
@@ -814,124 +877,89 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 				off := ehdr.Phoff + uint64(i)*uint64(ehdr.Phentsize)
 				ph := readPhdr64(p.data, off)
 				if ph.Type == uint32(elf.PT_LOAD) && ph.Vaddr == payloadVA {
-					notePhdrOff = off
+					payloadPhdrOff = off
 					break
 				}
 			}
 		}
 	}
 
-	// 5. 为每个函数写跳板 + 销毁原始代码
-	if true { /* TOKEN_ONLY: 始终使用 Token 跳板 */
-		// ---- Token 模式 ----
-
-		// 5a. 构建 token_desc_t 描述符表
-		// 8-byte 对齐
-		for len(payload)%8 != 0 {
-			payload = append(payload, 0x00)
-		}
-		tokenTableOff := len(payload)
-		tokenTableVA := payloadVA + uint64(tokenTableOff)
-
-		// 每个函数一个 token_desc_t (16 bytes): bc_off(u64) + bc_len(u32) + reserved(u32)
-		// bc_off = 相对于 _token_table_va 自身地址的偏移 (PIE 兼容)
-		selfVA := payloadVA + tokenTableVAOff // _token_table_va 的 VA
-		for i := range funcs {
-			bcVA := payloadVA + uint64(records[i].payloadOff)
-			bcLen := uint32(records[i].bcLen)
-
-			var desc [16]byte
-			binary.LittleEndian.PutUint64(desc[0:], bcVA-selfVA) // 相对偏移
-			binary.LittleEndian.PutUint32(desc[8:], bcLen)
-			binary.LittleEndian.PutUint32(desc[12:], 0) // reserved
-			payload = append(payload, desc[:]...)
-		}
-
-		// 更新 PT_LOAD 段大小 (payload 增长了)
-		newPhdr.Filesz = uint64(len(payload))
-		newPhdr.Memsz = uint64(len(payload))
-		writePhdr64(p.data, notePhdrOff, newPhdr)
-
-		// 重新追加 payload 到文件 (覆盖之前的)
-		p.data = p.data[:payloadFileOff]
-		p.data = append(p.data, payload...)
-
-		// 5b. Patch _token_table_va: 存储相对于自身地址的偏移 (PIE 兼容)
-		// selfVA = payloadVA + tokenTableVAOff (已在上面计算)
-		tblRelOff := tokenTableVA - selfVA
-		binary.LittleEndian.PutUint64(p.data[payloadFileOff+tokenTableVAOff:], tblRelOff)
-
-		fmt.Printf("    [TOKEN] descriptor table VA: 0x%X, entries: %d\n", tokenTableVA, len(funcs))
-		fmt.Printf("    [TOKEN] _token_table_va patched at blob offset 0x%X → relative offset 0x%X (PIE)\n", tokenTableVAOff, tblRelOff)
-
-		// 5c. 为每个函数生成 Token trampoline
-		vmEntryTokenVA := payloadVA + tokenEntryOff
-		fmt.Printf("    [TOKEN] vm_entry_token VA: 0x%X\n", vmEntryTokenVA)
-
-		for i, fb := range funcs {
-			funcID := uint32(i) // func_id = 序号 (0-based)
-			token := (uint32(fb.XorKey) << 24) | (0 << 12) | (funcID & 0xFFF)
-
-			trampoline := BuildTokenTrampoline(fb.FI.Addr, vmEntryTokenVA, token)
-			if uint64(len(trampoline)) > fb.FI.Size {
-				return fmt.Errorf("token trampoline for %s (%d bytes) exceeds function size (%d bytes)",
-					fb.FI.Name, len(trampoline), fb.FI.Size)
-			}
-
-			// 写入跳板
-			for j := 0; j < len(trampoline); j++ {
-				p.data[fb.FI.Offset+uint64(j)] = trampoline[j]
-			}
-
-			// 销毁剩余原始代码
-			garbageLen := int(fb.FI.Size) - len(trampoline)
-			if garbageLen > 0 {
-				garbage := make([]byte, garbageLen)
-				rand.Read(garbage)
-				copy(p.data[fb.FI.Offset+uint64(len(trampoline)):], garbage)
-			}
-
-			fmt.Printf("    [TOKEN] %s: func_id=%d, token=0x%08X, trampoline=%d bytes\n",
-				fb.FI.Name, funcID, token, len(trampoline))
-		}
+	// 5a. 构建 token_desc_t 描述符表
+	// 8-byte 对齐
+	for len(payload)%8 != 0 {
+		payload = append(payload, 0x00)
 	}
-	/* STANDARD_MODE_DISABLED: Token 模式为唯一入口，Standard 模式已禁用
-	} else {
-		// ---- 标准模式 ----
-		for i, fb := range funcs {
-			bcVA := payloadVA + uint64(records[i].payloadOff)
-			bcLen := uint32(records[i].bcLen)
+	tokenTableOff := len(payload)
+	tokenTableVA := payloadVA + uint64(tokenTableOff)
 
-			trampoline := BuildTrampoline(fb.FI.Addr, interpVA, bcVA, bcLen, fb.XorKey)
-			if uint64(len(trampoline)) > fb.FI.Size {
-				return fmt.Errorf("trampoline for %s (%d bytes) exceeds function size (%d bytes)",
-					fb.FI.Name, len(trampoline), fb.FI.Size)
-			}
+	// 每个函数一个 token_desc_t (16 bytes): bc_off(u64) + bc_len(u32) + reserved(u32)
+	// bc_off = 相对于 _token_table_va 自身地址的偏移 (PIE 兼容)
+	selfVA := payloadVA + tokenTableVAOff // _token_table_va 的 VA
+	for i := range funcs {
+		bcVA := payloadVA + uint64(records[i].payloadOff)
+		bcLen := uint32(records[i].bcLen)
 
-			// 写入跳板
-			for j := 0; j < len(trampoline); j++ {
-				p.data[fb.FI.Offset+uint64(j)] = trampoline[j]
-			}
-
-			// 用随机垃圾字节彻底销毁跳板后的原始代码
-			garbageLen := int(fb.FI.Size) - len(trampoline)
-			if garbageLen > 0 {
-				garbage := make([]byte, garbageLen)
-				rand.Read(garbage)
-				copy(p.data[fb.FI.Offset+uint64(len(trampoline)):], garbage)
-			}
-
-			if p.verbose {
-				fmt.Printf("    [%s] Trampoline (%d bytes) + Garbage (%d bytes):\n",
-					fb.FI.Name, len(trampoline), garbageLen)
-				for j := 0; j < len(trampoline); j += 4 {
-					inst := binary.LittleEndian.Uint32(trampoline[j:])
-					fmt.Printf("      +%02X: 0x%08X\n", j, inst)
-				}
-			}
-		}
+		var desc [16]byte
+		binary.LittleEndian.PutUint64(desc[0:], bcVA-selfVA) // 相对偏移
+		binary.LittleEndian.PutUint32(desc[8:], bcLen)
+		binary.LittleEndian.PutUint32(desc[12:], 0) // reserved
+		payload = append(payload, desc[:]...)
 	}
-	STANDARD_MODE_DISABLED */
+
+	// 更新 PT_LOAD 段大小 (payload 增长了)
+	newPhdr.Filesz = uint64(len(payload))
+	newPhdr.Memsz = uint64(len(payload))
+	writePhdr64(p.data, payloadPhdrOff, newPhdr)
+
+	// 重新追加 payload 到文件 (覆盖之前的)
+	p.data = p.data[:payloadFileOff]
+	p.data = append(p.data, payload...)
+
+	// 5b. Patch _token_table_va: 存储相对于自身地址的偏移 (PIE 兼容)
+	// selfVA = payloadVA + tokenTableVAOff (已在上面计算)
+	tblRelOff := tokenTableVA - selfVA
+	binary.LittleEndian.PutUint64(p.data[payloadFileOff+tokenTableVAOff:], tblRelOff)
+
+	fmt.Printf("    [TOKEN] descriptor table VA: 0x%X, entries: %d\n", tokenTableVA, len(funcs))
+	fmt.Printf("    [TOKEN] _token_table_va patched at blob offset 0x%X → relative offset 0x%X (PIE)\n", tokenTableVAOff, tblRelOff)
+
+	// 5c. 为每个函数生成 Token trampoline
+	vmEntryTokenVA := payloadVA + tokenEntryOff
+	fmt.Printf("    [TOKEN] vm_entry_token VA: 0x%X\n", vmEntryTokenVA)
+	if p.report != nil && p.report.Injection != nil {
+		p.report.Injection.PayloadSize = uint64(len(payload))
+		p.report.Injection.TokenEntryVA = vmEntryTokenVA
+	}
+
+	for i, fb := range funcs {
+		funcID := uint32(i) // func_id = 序号 (0-based)
+		token := (uint32(fb.XorKey) << 24) | (0 << 12) | (funcID & 0xFFF)
+
+		trampoline, err := BuildTokenTrampoline(fb.FI.Addr, vmEntryTokenVA, token)
+		if err != nil {
+			return fmt.Errorf("token trampoline for %s cannot reach VM entry: %v", fb.FI.Name, err)
+		}
+		if uint64(len(trampoline)) > fb.FI.Size {
+			return fmt.Errorf("token trampoline for %s (%d bytes) exceeds function size (%d bytes)",
+				fb.FI.Name, len(trampoline), fb.FI.Size)
+		}
+
+		// 写入跳板
+		for j := 0; j < len(trampoline); j++ {
+			p.data[fb.FI.Offset+uint64(j)] = trampoline[j]
+		}
+
+		// 销毁剩余原始代码
+		garbageLen := int(fb.FI.Size) - len(trampoline)
+		if garbageLen > 0 {
+			garbage := make([]byte, garbageLen)
+			rand.Read(garbage)
+			copy(p.data[fb.FI.Offset+uint64(len(trampoline)):], garbage)
+		}
+
+		fmt.Printf("    [TOKEN] %s: func_id=%d, token=0x%08X, trampoline=%d bytes\n",
+			fb.FI.Name, funcID, token, len(trampoline))
+	}
 
 	return nil
 }

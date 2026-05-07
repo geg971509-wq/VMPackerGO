@@ -109,7 +109,7 @@ vmp/
 │   │   ├── opcodes.go     # 58+ VM opcode definitions (randomly mapped values)
 │   │   └── disasm.go      # VM bytecode disassembler
 │   └── binary/elf/        # ELF binary manipulation
-│       ├── packer.go      # ELF VMP injection (PT_NOTE hijack, trampoline generation)
+│       ├── packer.go      # ELF VMP injection (note/add-segment, trampoline generation)
 │       └── trampoline.go  # Trampoline code generation
 │
 ├── stub/                  # C VM interpreter (compiled to PIC flat binary)
@@ -175,6 +175,25 @@ graph LR
     I --> J[Output Protected ELF]
 ```
 
+
+## Android arm64 / APK JNI support
+
+VMPacker has an explicit Android target lane for authorized APK `lib/arm64-v8a/*.so` JNI/native functions and standalone Android native executables:
+
+```bash
+make mac-cli
+./dist/vmpacker -target android -android-mode so -injector auto -profile compat -report libdemo.report.json -func Java_com_example_demo_NativeBridge_checkLicense -o libdemo.vmp.so libdemo.so
+
+make android-stub ANDROID_NDK=/path/to/android-ndk ANDROID_API=23
+./build/vmpacker.exe -target android -android-mode so -injector auto -profile compat -report libdemo.report.json -func Java_com_example_demo_NativeBridge_checkLicense -o libdemo.vmp.so libdemo.so
+./build/vmpacker.exe -target android -android-mode native -injector auto -report native.report.json -func protected_calc -o native_bin.vmp native_bin
+./build/vmpacker.exe -apk app.apk -lib libdemo.so -func Java_com_example_demo_NativeBridge_checkLicense -apk-sign debug -report app-vmp.report.json -o app-vmp.apk
+```
+
+`make mac-cli` builds a direct macOS host executable (`dist/vmpacker`) with the Android arm64 VM interpreter embedded, so pack-time use does not need a connected Android device.
+
+The APK runtime target is normal app-UID JNI `.so` invocation without `su`; `su` is only for lab diagnostics on owned devices. See [Android arm64 design](docs/android-arm64-packer.md) and [test plan](docs/android-arm64-test-plan.md).
+
 ## Quick Start
 
 ### Prerequisites
@@ -193,7 +212,73 @@ make all
 
 ## Usage
 
-### Protect by Function Name
+### Build a direct macOS/current-host CLI
+
+```bash
+# Builds dist/vmpacker with the Android arm64 VM interpreter blob embedded.
+make mac-cli
+
+# Optional host-only check: process an Android .so without adb/device access.
+make mac-so-pack-smoke
+```
+
+`make mac-cli` uses the Android NDK at build time to compile the arm64 VM stub, then embeds it into a normal host executable (`dist/vmpacker`). After that, packing a `.so` is a local file-to-file operation.
+
+### Process an Android JNI `.so` directly on macOS
+
+```bash
+./dist/vmpacker \
+  -target android \
+  -android-mode so \
+  -injector auto \
+  -profile compat \
+  -func Java_com_example_demo_NativeBridge_checkLicense \
+  -report libdemo.report.json \
+  -o libdemo.vmp.so \
+  libdemo.so
+```
+
+Use `-addr` when symbols are stripped:
+
+```bash
+./dist/vmpacker \
+  -target android \
+  -android-mode so \
+  -addr "0x12340-0x12480:native_check" \
+  -o libdemo.vmp.so \
+  libdemo.so
+```
+
+### Process an Android native executable / PIE
+
+```bash
+./dist/vmpacker \
+  -target android \
+  -android-mode native \
+  -injector auto \
+  -func protected_calc \
+  -report native.report.json \
+  -o native_bin.vmp \
+  native_bin
+```
+
+### Process an APK end-to-end
+
+```bash
+./dist/vmpacker \
+  -apk app.apk \
+  -lib libdemo.so \
+  -func Java_com_example_demo_NativeBridge_checkLicense \
+  -injector auto \
+  -profile compat \
+  -apk-sign debug \
+  -report app-vmp.report.json \
+  -o app-vmp.apk
+```
+
+`-lib libdemo.so` resolves to `lib/arm64-v8a/libdemo.so` by default. You can also pass `arm64-v8a/libdemo.so` or the full `lib/arm64-v8a/libdemo.so`.
+
+### Generic Linux/ELF function protection
 
 ```bash
 # Protect a single function
@@ -201,12 +286,8 @@ make all
 
 # Protect multiple functions
 ./vmpacker -func "check_license,verify_token" -v -o protected.elf original.elf
-```
 
-### Protect by Address Range
-
-```bash
-# Specify address range
+# Protect by address range
 ./vmpacker -addr "0x4006AC-0x400790:main" -v -o protected.elf original.elf
 
 # Mixed mode
@@ -216,7 +297,7 @@ make all
 ### Inspect ELF Info
 
 ```bash
-./vmpacker -info input.elf
+./dist/vmpacker -info libdemo.so
 ```
 
 ### CLI Options
@@ -224,30 +305,64 @@ make all
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-func` | — | Function name(s) to protect (comma-separated) |
-| `-addr` | — | Protect by address (`0xSTART-0xEND[:name]`) |
+| `-addr` | — | Protect by address (`0xSTART-0xEND[:name]` or `0xADDR[:name]`) |
 | `-o` | `input.vmp` | Output file path |
+| `-target` | `linux` | Target runtime: `linux` or `android` |
+| `-android-mode` | `auto` | Android artifact mode: `auto`, `so`, or `native` |
+| `-injector` | `auto` | Segment injection strategy: `auto`, `note`, or `add-segment` |
+| `-profile` | `balanced` | Compatibility/protection profile: `compat`, `balanced`, or `strong` |
+| `-report` | — | Write JSON pack report |
+| `-apk` | — | APK workflow input path |
+| `-lib` | — | APK workflow library name/path to protect |
+| `-abi` | `arm64-v8a` | APK workflow ABI |
+| `-apk-sign` | `debug` | APK signing mode: `debug` or `none` |
 | `-v` | `false` | Verbose output (show disassembly) |
-| `-strip` | `true` | Strip symbol table |
+| `-strip` | `true` | Strip symbol table/debug sections from output |
 | `-debug` | `false` | Generate ARM64 → VM bytecode debug mapping file |
-| `-token` | `true` | Token-based entry mode |
+| `-token` | `true` | Backward-compatible no-op; token entry mode is always enabled |
 | `-info` | `false` | Print ELF info only |
+
+### Common Make targets
+
+| Target | Description |
+|--------|-------------|
+| `make mac-cli` | Build `dist/vmpacker` for the current host, embedding Android arm64 VM stub |
+| `make mac-so-pack-smoke` | Host-only `.so -> .vmp.so` smoke test using `dist/vmpacker` |
+| `make android-stub` | Build Android-compatible arm64 VM interpreter blob with the NDK |
+| `make packer` | Build `build/vmpacker.exe` with embedded stub |
+| `make android-fixtures` | Build repository Android `.so` and native executable fixtures |
+| `make android-smoke` | Device smoke for packed APK `.so` plus native executable |
+| `make android-addsegment-smoke` | Device smoke for no-`PT_NOTE` add-segment fixtures |
+| `make android-apk-workflow-smoke` | End-to-end APK input → packed signed APK smoke |
 
 ## Building
 
-### Compile VM Interpreter Stub
+### Build standalone host CLI for Android `.so` packing
 
 ```bash
-# Standard build (GCC)
-aarch64-linux-gnu-gcc -Os -nostdlib -fPIC -ffreestanding \
-  -o stub.elf stub/vm_interp_clean.c \
-  -T stub/vm_interp.lds
-aarch64-linux-gnu-objcopy -O binary stub.elf vm_interp.bin
+# Requires Go + Android NDK. Produces dist/vmpacker.
+make mac-cli
+
+# Direct .so packing example:
+./dist/vmpacker -target android -android-mode so -func Java_com_example_demo_NativeBridge_checkLicense -o libdemo.vmp.so libdemo.so
 ```
 
-### Compile CLI Tool
+### Build development CLI
 
 ```bash
-go build -o vmpacker ./cmd/vmpacker/
+# Build Android VM stub then build build/vmpacker.exe
+make android-stub
+make packer
+```
+
+### Verification
+
+```bash
+make mac-so-pack-smoke
+make android-smoke
+make android-addsegment-smoke
+make android-apk-workflow-smoke
+go test ./...
 ```
 
 ### Build GUI

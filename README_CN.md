@@ -109,7 +109,7 @@ vmp/
 │   │   ├── opcodes.go     # 58+ 条 VM 操作码定义 (随机映射值)
 │   │   └── disasm.go      # VM 字节码反汇编器
 │   └── binary/elf/        # ELF 二进制操作
-│       ├── packer.go      # ELF VMP 注入 (PT_NOTE hijack, 跳板生成)
+│       ├── packer.go      # ELF VMP 注入 (note/add-segment, 跳板生成)
 │       └── trampoline.go  # 跳板代码生成
 │
 ├── stub/                  # C VM 解释器 (编译为 PIC flat binary)
@@ -175,6 +175,25 @@ graph LR
     I --> J[输出保护后 ELF]
 ```
 
+
+## Android arm64 / APK JNI 支持
+
+VMPacker 增加了显式 Android 目标通道，用于授权 APK 内 `lib/arm64-v8a/*.so` 的 JNI/native 函数保护，以及 Android native 可执行文件保护：
+
+```bash
+make mac-cli
+./dist/vmpacker -target android -android-mode so -injector auto -profile compat -report libdemo.report.json -func Java_com_example_demo_NativeBridge_checkLicense -o libdemo.vmp.so libdemo.so
+
+make android-stub ANDROID_NDK=/path/to/android-ndk ANDROID_API=23
+./build/vmpacker.exe -target android -android-mode so -injector auto -profile compat -report libdemo.report.json -func Java_com_example_demo_NativeBridge_checkLicense -o libdemo.vmp.so libdemo.so
+./build/vmpacker.exe -target android -android-mode native -injector auto -report native.report.json -func protected_calc -o native_bin.vmp native_bin
+./build/vmpacker.exe -apk app.apk -lib libdemo.so -func Java_com_example_demo_NativeBridge_checkLicense -apk-sign debug -report app-vmp.report.json -o app-vmp.apk
+```
+
+`make mac-cli` 会生成可直接在 macOS 主机运行的 `dist/vmpacker`，其中已嵌入 Android arm64 VM 解释器；pack `.so` 时不需要连接 Android 设备。
+
+APK 运行时目标是普通 app UID 调用 `.so`，不要求 `su`。`su` 仅用于本地实验设备上的诊断/取证。详见 [Android arm64 设计](docs/android-arm64-packer.md) 与 [测试计划](docs/android-arm64-test-plan.md)。
+
 ## Quick Start
 
 ### 前置要求
@@ -194,7 +213,73 @@ make all
 
 ## Usage
 
-### 按函数名保护
+### 构建 macOS/当前主机可直接运行的 CLI
+
+```bash
+# 生成已内嵌 Android arm64 VM 解释器的 dist/vmpacker
+make mac-cli
+
+# 可选：不连接手机，仅在主机侧验证 .so -> .vmp.so
+make mac-so-pack-smoke
+```
+
+`make mac-cli` 会在构建时使用 Android NDK 编译 arm64 VM stub，再嵌入到普通主机可执行文件 `dist/vmpacker`。之后 pack `.so` 是本地文件到文件的操作。
+
+### 在 macOS 上直接处理 Android JNI `.so`
+
+```bash
+./dist/vmpacker \
+  -target android \
+  -android-mode so \
+  -injector auto \
+  -profile compat \
+  -func Java_com_example_demo_NativeBridge_checkLicense \
+  -report libdemo.report.json \
+  -o libdemo.vmp.so \
+  libdemo.so
+```
+
+符号被 strip 时可用地址模式：
+
+```bash
+./dist/vmpacker \
+  -target android \
+  -android-mode so \
+  -addr "0x12340-0x12480:native_check" \
+  -o libdemo.vmp.so \
+  libdemo.so
+```
+
+### 处理 Android native executable / PIE
+
+```bash
+./dist/vmpacker \
+  -target android \
+  -android-mode native \
+  -injector auto \
+  -func protected_calc \
+  -report native.report.json \
+  -o native_bin.vmp \
+  native_bin
+```
+
+### 端到端处理 APK
+
+```bash
+./dist/vmpacker \
+  -apk app.apk \
+  -lib libdemo.so \
+  -func Java_com_example_demo_NativeBridge_checkLicense \
+  -injector auto \
+  -profile compat \
+  -apk-sign debug \
+  -report app-vmp.report.json \
+  -o app-vmp.apk
+```
+
+`-lib libdemo.so` 默认解析为 `lib/arm64-v8a/libdemo.so`；也可以传 `arm64-v8a/libdemo.so` 或完整 `lib/arm64-v8a/libdemo.so`。
+
+### 通用 Linux/ELF 函数保护
 
 ```bash
 # 保护单个函数
@@ -202,11 +287,7 @@ make all
 
 # 保护多个函数
 ./vmpacker -func "check_license,verify_token" -v -o protected.elf original.elf
-```
 
-### 按地址范围保护
-
-```bash
 # 指定地址范围
 ./vmpacker -addr "0x4006AC-0x400790:main" -v -o protected.elf original.elf
 
@@ -217,7 +298,7 @@ make all
 ### 查看 ELF 信息
 
 ```bash
-./vmpacker -info input.elf
+./dist/vmpacker -info libdemo.so
 ```
 
 ### CLI 选项
@@ -225,34 +306,64 @@ make all
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
 | `-func` | — | 要保护的函数名（逗号分隔） |
-| `-addr` | — | 按地址保护（格式: `0xSTART-0xEND[:name]`） |
+| `-addr` | — | 按地址保护（格式: `0xSTART-0xEND[:name]` 或 `0xADDR[:name]`） |
 | `-o` | `input.vmp` | 输出文件路径 |
+| `-target` | `linux` | 目标运行环境：`linux` 或 `android` |
+| `-android-mode` | `auto` | Android artifact 模式：`auto`、`so`、`native` |
+| `-injector` | `auto` | 段注入策略：`auto`、`note`、`add-segment` |
+| `-profile` | `balanced` | 兼容/保护配置：`compat`、`balanced`、`strong` |
+| `-report` | — | 输出 JSON pack 报告 |
+| `-apk` | — | APK 工作流输入路径 |
+| `-lib` | — | APK 工作流要保护的库名/路径 |
+| `-abi` | `arm64-v8a` | APK 工作流 ABI |
+| `-apk-sign` | `debug` | APK 签名模式：`debug` 或 `none` |
 | `-v` | `false` | 详细输出（显示反汇编） |
-| `-strip` | `true` | 清除符号表 |
+| `-strip` | `true` | 清除输出中的符号/调试 section |
 | `-debug` | `false` | 生成 ARM64 → VM 字节码对照文件 |
-| `-token` | `true` | Token 化入口模式 |
+| `-token` | `true` | 兼容旧命令的占位参数；当前始终启用 Token 入口 |
 | `-info` | `false` | 仅打印 ELF 信息 |
+
+### 常用 Make 目标
+
+| 目标 | 说明 |
+|------|------|
+| `make mac-cli` | 构建当前主机可运行的 `dist/vmpacker`，内嵌 Android arm64 VM stub |
+| `make mac-so-pack-smoke` | 使用 `dist/vmpacker` 做主机侧 `.so -> .vmp.so` smoke |
+| `make android-stub` | 使用 Android NDK 构建 Android arm64 VM 解释器 blob |
+| `make packer` | 构建内嵌 stub 的 `build/vmpacker.exe` |
+| `make android-fixtures` | 构建仓库内 Android `.so` 与 native executable fixtures |
+| `make android-smoke` | 真机验证 packed APK `.so` 和 native executable |
+| `make android-addsegment-smoke` | 真机验证无 `PT_NOTE` add-segment fixtures |
+| `make android-apk-workflow-smoke` | 验证 APK 输入 → packed signed APK 端到端流程 |
 
 ## Building
 
-### 编译 VM 解释器 Stub
+### 构建可直接 pack Android `.so` 的主机 CLI
 
 ```bash
-# 标准版 (GCC)
-aarch64-linux-gnu-gcc -Os -nostdlib -fPIC -ffreestanding \
-  -o stub.elf stub/vm_interp_clean.c \
-  -T stub/vm_interp.lds
-aarch64-linux-gnu-objcopy -O binary stub.elf vm_interp.bin
+# 需要 Go + Android NDK，输出 dist/vmpacker
+make mac-cli
 
-# OLLVM 混淆版
-# 使用 OLLVM 交叉编译器替换 GCC，启用 -mllvm 混淆选项
+# 直接处理 .so 示例
+./dist/vmpacker -target android -android-mode so -func Java_com_example_demo_NativeBridge_checkLicense -o libdemo.vmp.so libdemo.so
 ```
 
-### 编译 CLI 工具
+### 构建开发版 CLI
 
 ```bash
-# vmpacker (Go 二进制，内嵌 stub blob)
-go build -o vmpacker ./cmd/vmpacker/
+# 先构建 Android VM stub，再构建 build/vmpacker.exe
+make android-stub
+make packer
+```
+
+### 验证
+
+```bash
+make mac-so-pack-smoke
+make android-smoke
+make android-addsegment-smoke
+make android-apk-workflow-smoke
+go test ./...
 ```
 
 ### 编译 GUI
@@ -436,4 +547,3 @@ VMPacker 定义了一套自定义指令集架构（ISA），操作码采用**随
 **LeoChen** — [@LeoChen-CoreMind](https://github.com/LeoChen-CoreMind)
 
 Copyright © 2026 LeoChen. All rights reserved.
-

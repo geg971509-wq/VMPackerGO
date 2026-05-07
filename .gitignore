@@ -1,0 +1,11 @@
+# Build outputs
+/build/
+/dist/
+cmd/vmpacker/vm_interp.bin
+
+# Local tool/cache artifacts
+.omx/tools/
+.codex/
+AGENTS.md
+*.pyc
+__pycache__/
