@@ -1,5 +1,10 @@
 package vm
 
+import (
+	"crypto/sha256"
+	"encoding/binary"
+)
+
 // REG_XZR is the marker used for the AArch64 zero register.
 const REG_XZR = -2
 
@@ -18,6 +23,37 @@ type Instruction struct {
 	SF        bool
 	Offset    int
 	WB        int
+}
+
+// ExclusiveRegion is a complete, contiguous LDAXR...STLXR sequence that must
+// execute without returning to the interpreter. ID is derived from the exact
+// instruction words so bytecode and generated runtime thunks can be joined
+// without process-local numbering.
+type ExclusiveRegion struct {
+	ID           uint32
+	Instructions []uint32
+}
+
+func NewExclusiveRegion(instructions []uint32) ExclusiveRegion {
+	h := sha256.New()
+	h.Write([]byte("vmpacker-exclusive-region-v1\x00"))
+	var encoded [4]byte
+	for _, raw := range instructions {
+		binary.LittleEndian.PutUint32(encoded[:], raw)
+		h.Write(encoded[:])
+	}
+	sum := h.Sum(nil)
+	return ExclusiveRegion{
+		ID:           binary.LittleEndian.Uint32(sum[:4]),
+		Instructions: append([]uint32(nil), instructions...),
+	}
+}
+
+func (region ExclusiveRegion) Valid() bool {
+	if len(region.Instructions) < 2 {
+		return false
+	}
+	return NewExclusiveRegion(region.Instructions).ID == region.ID
 }
 
 // FuncInfo identifies a function in an ELF input.

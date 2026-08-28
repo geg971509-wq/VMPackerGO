@@ -32,37 +32,10 @@ func (t *Translator) trBranchCond(inst vm.Instruction) error {
 		return fmt.Errorf("conditional branch target 0x%X is outside function range [0, 0x%X]", target, t.funcSize)
 	}
 
-	var vmOp vm.Opcode
-	switch inst.Cond {
-	case COND_EQ:
-		vmOp = vm.OpJe
-	case COND_NE:
-		vmOp = vm.OpJne
-	case COND_LT:
-		vmOp = vm.OpJl
-	case COND_GE:
-		vmOp = vm.OpJge
-	case COND_GT:
-		vmOp = vm.OpJgt
-	case COND_LE:
-		vmOp = vm.OpJle
-	case COND_CS:
-		vmOp = vm.OpJae
-	case COND_CC:
-		vmOp = vm.OpJb
-	case COND_HI:
-		vmOp = vm.OpJa
-	case COND_LS:
-		vmOp = vm.OpJbe
-	case COND_MI:
-		vmOp = vm.OpJl // MI: N==1 → FL_SIGN set
-	case COND_PL:
-		vmOp = vm.OpJge // PL: N==0 → FL_SIGN not set
-	default:
-		return fmt.Errorf("unsupported condition code 0x%X", inst.Cond)
+	if inst.Cond < 0 || inst.Cond > 0xF {
+		return fmt.Errorf("invalid condition code 0x%X", inst.Cond)
 	}
-
-	t.emitOp(vmOp)
+	t.emitOp(vm.OpJCond, byte(inst.Cond))
 	fixPos := t.pos()
 	t.emitU32(0)
 	t.fixups = append(t.fixups, branchFixup{vmOffset: fixPos, arm64Target: target})
@@ -70,10 +43,15 @@ func (t *Translator) trBranchCond(inst vm.Instruction) error {
 }
 
 func (t *Translator) trBL(inst vm.Instruction) error {
-	target := uint64(int64(t.funcAddr) + int64(inst.Offset) + inst.Imm)
-
-	t.emitOp(vm.OpCallNative)
-	t.emitU64(target)
+	pc, err := addAddressDelta(t.funcAddr, int64(inst.Offset))
+	if err != nil {
+		return err
+	}
+	target, err := addAddressDelta(pc, inst.Imm)
+	if err != nil {
+		return err
+	}
+	t.emitImageReference(vm.OpCallImage, nil, target)
 	return nil
 }
 

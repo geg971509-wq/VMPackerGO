@@ -15,7 +15,12 @@ func TestSuccessGolden(t *testing.T) {
 	sig, _ := abi.Parse("i32(ptr)")
 	r := New("v1", "abc", `raw/../input.so`, `out.so`, "so", []Selection{{Source: "direct", Selector: "foo", Name: "foo", ABI: sig}})
 	artifact := []byte("artifact")
-	r.Success(elfpacker.Result{Artifact: artifact, TargetKind: elfpacker.TargetKindAndroidSO, DevelopmentStrategy: "note", Functions: []elfpacker.FunctionFact{{Name: "foo", Address: 16, Size: 8, Section: ".text", Instructions: 2, Translated: 2, Bytecode: 7}}})
+	r.Success(elfpacker.Result{
+		Artifact: artifact, TargetKind: elfpacker.TargetKindAndroidSO,
+		DevelopmentStrategy: "rewrite-plan-required", RuntimeStrategy: "ndk-r29-et-rel-validated",
+		OpcodeMapDigest: strings.Repeat("a", 64),
+		Functions:       []elfpacker.FunctionFact{{Name: "foo", Address: 16, Size: 8, Section: ".text", Instructions: 2, Translated: 2, Bytecode: 7}},
+	})
 	data, err := r.Marshal()
 	if err != nil {
 		t.Fatal(err)
@@ -23,12 +28,13 @@ func TestSuccessGolden(t *testing.T) {
 	sum := sha256.Sum256(artifact)
 	wantHash := hex.EncodeToString(sum[:])
 	text := string(data)
-	for _, want := range []string{`"schema_version": 1`, `"input": "raw/../input.so"`, `"functions": [`, `"status": "ok"`, wantHash, `"release_ready": false`} {
+	for _, want := range []string{`"schema_version": 1`, `"input": "raw/../input.so"`, `"functions": [`, `"status": "ok"`,
+		`"opcode_map_digest": "` + strings.Repeat("a", 64) + `"`, `"runtime_strategy": "ndk-r29-et-rel-validated"`, wantHash, `"release_ready": false`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in %s", want, text)
 		}
 	}
-	for _, secret := range []string{"seed", "ndk", "/Users/", "target_os", "injector_requested"} {
+	for _, secret := range []string{"seed", "/Users/", "/private/ndk-root", "target_os", "injector_requested"} {
 		if strings.Contains(strings.ToLower(text), secret) {
 			t.Fatalf("report contains prohibited %q: %s", secret, text)
 		}

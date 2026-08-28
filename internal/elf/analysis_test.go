@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"debug/elf"
 	"encoding/binary"
+	"encoding/hex"
+	"errors"
 	"math"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 
+	vmruntime "github.com/vmpacker/internal/runtime"
 	"github.com/vmpacker/internal/vm"
 )
 
@@ -970,38 +973,40 @@ func TestOverlapFailureRetainsPartialAnalysis(t *testing.T) {
 	}
 }
 
-func TestMalformedRuntimeOffsetsFailBeforeMutation(t *testing.T) {
+func TestMissingRuntimeImageFailsBeforeMutation(t *testing.T) {
 	fixture := buildELFFixture(fixtureOptions{dynamic: true})
-	makeBlob := func(entry, tokenEntry, tokenTable uint64) []byte {
-		blob := make([]byte, 24+16)
-		binary.LittleEndian.PutUint64(blob[:8], entry)
-		binary.LittleEndian.PutUint64(blob[8:16], tokenEntry)
-		binary.LittleEndian.PutUint64(blob[16:24], tokenTable)
-		return blob
+	input := append([]byte(nil), fixture.data...)
+	before := append([]byte(nil), input...)
+	result, err := Process(Request{
+		Input: input, Selections: []SelectionRequest{addressSelection(0x1200, 0x120c)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "runtime image") || len(result.Artifact) != 0 {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	cases := map[string][]byte{
-		"vm-entry-width":       makeBlob(13, 4, 8),
-		"token-entry-width":    makeBlob(0, 15, 8),
-		"token-table-width":    makeBlob(0, 4, 9),
-		"vm-entry-overflow":    makeBlob(math.MaxUint64-1, 4, 8),
-		"token-entry-overflow": makeBlob(0, math.MaxUint64-1, 8),
-		"token-table-overflow": makeBlob(0, 4, math.MaxUint64-1),
+	if !bytes.Equal(input, before) {
+		t.Fatal("Process mutated input without a runtime image")
 	}
-	for name, blob := range cases {
-		t.Run(name, func(t *testing.T) {
-			input := append([]byte(nil), fixture.data...)
-			before := append([]byte(nil), input...)
-			result, err := Process(Request{
-				Input: input, InterpBlob: blob,
-				Selections: []SelectionRequest{addressSelection(0x1200, 0x120c)},
-			})
-			if err == nil || len(result.Artifact) != 0 {
-				t.Fatalf("result=%+v err=%v", result, err)
-			}
-			if !bytes.Equal(input, before) {
-				t.Fatal("Process mutated input for malformed runtime offset")
-			}
-		})
+}
+
+func TestValidatedRuntimeStopsAtRewritePlannerBoundary(t *testing.T) {
+	fixture := buildELFFixture(fixtureOptions{dynamic: true})
+	input := append([]byte(nil), fixture.data...)
+	before := append([]byte(nil), input...)
+	opcodes := vm.IdentityOpcodeMap()
+	digest, err := opcodes.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Process(Request{
+		Input: input, Selections: []SelectionRequest{addressSelection(0x1200, 0x120c)},
+		Opcodes: opcodes, RuntimeImage: &vmruntime.Image{OpcodeMapDigest: hex.EncodeToString(digest[:])},
+	})
+	if !errors.Is(err, ErrRewritePlannerRequired) || result.DevelopmentStrategy != "rewrite-plan-required" ||
+		result.RuntimeStrategy != "ndk-r29-et-rel-validated" || result.OpcodeMapDigest == "" || len(result.Artifact) != 0 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if !bytes.Equal(input, before) {
+		t.Fatal("planner boundary mutated input")
 	}
 }
 
@@ -1025,25 +1030,112 @@ func TestAnalyzeLimitsAndMaliciousSymbolArithmetic(t *testing.T) {
 }
 
 func TestBytecodeBoundariesAndFailClosedHelpers(t *testing.T) {
+	opcodes := vm.IdentityOpcodeMap()
+	movImmWire := mustOpcodeWire(t, opcodes, vm.OpMovImm)
+	jmpWire := mustOpcodeWire(t, opcodes, vm.OpJmp)
+	unknownWire := findUnassignedWire(t, opcodes)
+
 	if err := validateFinalBytecodeSize(64 * 1024); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateFinalBytecodeSize(64*1024 + 1); err == nil {
 		t.Fatal("accepted bytecode over 64 KiB")
 	}
-	if _, _, err := reverseInstructions([]byte{0xff}, 1); err == nil {
+	if _, _, err := reverseInstructions([]byte{unknownWire}, 1, opcodes); err == nil {
 		t.Fatal("reverse accepted unknown opcode")
 	}
-	if _, _, err := reverseInstructions([]byte{vm.OpMovImm}, 1); err == nil {
+	if _, _, err := reverseInstructions([]byte{movImmWire}, 1, opcodes); err == nil {
 		t.Fatal("reverse accepted truncated instruction")
 	}
-	if err := encryptOpcodes([]byte{0xff}, 1, 1, false); err == nil {
+	if err := encryptOpcodes([]byte{unknownWire}, 1, 1, false, opcodes); err == nil {
 		t.Fatal("encrypt accepted unknown opcode")
 	}
-	branch := []byte{vm.OpJmp, 1, 0, 0, 0, 5}
-	if err := (&Packer{}).remapBranchTargets(branch, len(branch), map[int]int{}); err == nil {
+	branch := []byte{jmpWire, 1, 0, 0, 0, 5}
+	if err := (&Packer{opcodes: opcodes}).remapBranchTargets(branch, len(branch), map[int]int{}); err == nil {
 		t.Fatal("remap accepted unresolved target")
 	}
+}
+
+func TestBytecodeHelpersUseOpcodeMapAndPreserveNonOpcodes(t *testing.T) {
+	opcodes, err := vm.NewOpcodeMap(bytes.NewReader(make([]byte, 4096)))
+	if err != nil {
+		t.Fatalf("NewOpcodeMap: %v", err)
+	}
+	movImmWire := mustOpcodeWire(t, opcodes, vm.OpMovImm)
+	jmpWire := mustOpcodeWire(t, opcodes, vm.OpJmp)
+	haltWire := mustOpcodeWire(t, opcodes, vm.OpHalt)
+
+	forward := []byte{
+		movImmWire, 0x01, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80,
+		jmpWire, 0x00, 0x00, 0x00, 0x00,
+		haltWire,
+	}
+	reversed, offsets, err := reverseInstructions(forward, len(forward), opcodes)
+	if err != nil {
+		t.Fatalf("reverseInstructions: %v", err)
+	}
+	wantBeforeRemap := []byte{
+		haltWire, 1,
+		jmpWire, 0x00, 0x00, 0x00, 0x00, 5,
+		movImmWire, 0x01, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 10,
+	}
+	if !bytes.Equal(reversed, wantBeforeRemap) {
+		t.Fatalf("reverse changed wire/operand/marker bytes:\n got % x\nwant % x", reversed, wantBeforeRemap)
+	}
+
+	if err := (&Packer{opcodes: opcodes}).remapBranchTargets(reversed, len(reversed), offsets); err != nil {
+		t.Fatalf("remapBranchTargets: %v", err)
+	}
+	if got, want := binary.LittleEndian.Uint32(reversed[3:7]), uint32(offsets[0]); got != want {
+		t.Fatalf("remapped target=%d, want %d", got, want)
+	}
+	if reversed[0] != haltWire || reversed[1] != 1 || reversed[2] != jmpWire || reversed[7] != 5 ||
+		reversed[8] != movImmWire || reversed[18] != 10 {
+		t.Fatalf("remap changed opcode or raw marker: % x", reversed)
+	}
+	if !bytes.Equal(reversed[9:18], forward[1:10]) {
+		t.Fatalf("remap changed non-branch operands: got % x want % x", reversed[9:18], forward[1:10])
+	}
+
+	beforeEncrypt := append([]byte(nil), reversed...)
+	const key = uint32(0x12345678)
+	if err := encryptOpcodes(reversed, len(reversed), key, true, opcodes); err != nil {
+		t.Fatalf("encryptOpcodes: %v", err)
+	}
+	opcodeOffsets := map[int]bool{0: true, 2: true, 8: true}
+	for i := range reversed {
+		if opcodeOffsets[i] {
+			want := beforeEncrypt[i] ^ byte(key^(uint32(i)*0x9E3779B9))
+			if reversed[i] != want {
+				t.Fatalf("encrypted opcode[%d]=0x%02x, want 0x%02x", i, reversed[i], want)
+			}
+			continue
+		}
+		if reversed[i] != beforeEncrypt[i] {
+			t.Fatalf("encrypt changed non-opcode byte[%d]: 0x%02x -> 0x%02x", i, beforeEncrypt[i], reversed[i])
+		}
+	}
+}
+
+func mustOpcodeWire(t *testing.T, opcodes vm.OpcodeMap, op vm.Opcode) byte {
+	t.Helper()
+	wire, err := opcodes.Wire(op)
+	if err != nil {
+		t.Fatalf("Wire(%d): %v", op, err)
+	}
+	return wire
+}
+
+func findUnassignedWire(t *testing.T, opcodes vm.OpcodeMap) byte {
+	t.Helper()
+	for i := 0; i < 256; i++ {
+		wire := byte(i)
+		if _, err := opcodes.Decode(wire); err != nil {
+			return wire
+		}
+	}
+	t.Fatal("opcode map assigned every wire value")
+	return 0
 }
 
 func FuzzAnalyzeNoPanic(f *testing.F) {

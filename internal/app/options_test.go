@@ -9,6 +9,7 @@ import (
 )
 
 func TestOptionsContract(t *testing.T) {
+	clearNDKEnvironment(t)
 	input := filepath.Join(t.TempDir(), "in.so")
 	if err := os.WriteFile(input, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
@@ -37,10 +38,36 @@ func TestOptionsContract(t *testing.T) {
 	}
 }
 
-func TestSeedFailsClosed(t *testing.T) {
+func TestSeedAcceptsExactlyThirtyTwoBytes(t *testing.T) {
+	clearNDKEnvironment(t)
 	input := filepath.Join(t.TempDir(), "in.so")
-	if _, err := parseOptions([]string{"-seed", strings.Repeat("a", 64), "-func", "x", "-abi", "void()", input}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "Phase 4") {
-		t.Fatalf("unexpected seed result: %v", err)
+	seed := strings.Repeat("a", 64)
+	opts, err := parseOptions([]string{"-seed", seed, "-func", "x", "-abi", "void()", input}, &bytes.Buffer{})
+	if err != nil || opts.Seed != seed {
+		t.Fatalf("seed=%q err=%v", opts.Seed, err)
+	}
+	for _, invalid := range []string{"abc", strings.Repeat("g", 64)} {
+		if _, err := parseOptions([]string{"-seed", invalid, "-func", "x", "-abi", "void()", input}, &bytes.Buffer{}); err == nil {
+			t.Fatalf("accepted invalid seed %q", invalid)
+		}
+	}
+}
+
+func TestDefaultNDKPathPrecedence(t *testing.T) {
+	clearNDKEnvironment(t)
+	t.Setenv("NDK_HOME", "/ndk-home")
+	t.Setenv("ANDROID_NDK_ROOT", "/ndk-root")
+	t.Setenv("ANDROID_NDK_HOME", "/android-ndk-home")
+	t.Setenv("ANDROID_NDK", "/android-ndk")
+	if got := defaultNDKPath(); got != "/android-ndk" {
+		t.Fatalf("defaultNDKPath()=%q", got)
+	}
+}
+
+func clearNDKEnvironment(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{"ANDROID_NDK", "ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME"} {
+		t.Setenv(name, "")
 	}
 }
 

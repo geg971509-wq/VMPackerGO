@@ -2,75 +2,130 @@
 
 **Snapshot date:** 2026-08-28
 
-**Repository:** `/Volumes/work/android/VMPacker`
+**Repository:** `s54mj968zc-eng/VMPacker`
 
-**Branch:** `master`
+**Branch:** use the branch containing this document
 
-**HEAD:** `6a981e8316de4f1fd307cac6c0ad0f21970e42c0`
+**HEAD:** use the commit containing this document
 
-**Approved master plan:** `/Users/king/.claude/plans/crispy-giggling-fog.md`
-**Overall status:** In progress. Phases 0–3 are implemented and independently verified. Phase 4 is partially implemented and the repository is currently between compiling states because ELF tests have not yet been updated for the new opcode-map helper signatures. The product is not release-ready.
+**Product status:** development only; no release has been made
 
-## 1. Non-negotiable product contract
+## 1. Truthful status
 
-The finished product must satisfy all of the following:
+Phases 0-3 remain implemented and verified. The interrupted Phase 4 work has been repaired and advanced to the honest pre-Phase-8 boundary:
 
-- Publish one signed and notarized macOS ARM64 CLI.
-- Do not publish a GUI, APK/AAB workflow, Linux/Windows host binary, or stable public Go SDK.
-- Accept compiled Android AArch64 ELF64 inputs:
-  - shared objects: `ET_DYN + PT_DYNAMIC`, without `PT_INTERP`;
-  - Android PIE executables: `ET_DYN` with interpreter/dynamic metadata;
-  - Android `ET_EXEC` native executables.
-- Support Android API 23+ and both 4 KiB and 16 KiB device page configurations.
-- Preserve correct ASLR, BTI, PAC, common FP/SIMD, atomic/exclusive/barrier, raw SVC, complete internal AAPCS64 calls, and C++ exception/unwind behavior.
-- Require an explicit protected-entry ABI:
-  - at most eight integer/pointer parameters;
-  - result is `void` or one integer/pointer value.
-- Support complete AAPCS64 for internal native calls in the later bridge phase.
-- Reject or fail closed for unsupported control flow, including unresolved CFGs, statically provable `setjmp`/`longjmp`/signal-recovery paths, and exclusive regions that cannot be closed.
-- Limits:
-  - input: 1 GiB;
-  - functions per invocation: 4096;
-  - final bytecode per function: 64 KiB.
-- Rebuild the runtime from embedded templates for every pack using exact Android NDK r29 revision `29.0.14206865`.
-- Use `crypto/rand` by default. A 64-hex-character `-seed` is test/debug-only and makes a run reproducible.
-- Never record the seed, raw opcode map, NDK absolute path, temp paths, signing credentials, keys, or secrets in reports/logs.
-- Default to no-clobber. `-force` must use safe same-directory atomic replacement.
-- Default to stripping static symbols while preserving dynamic symbols.
-- Debug map is off by default and, when requested, is mode `0600`.
-- Keep report schema v1 stable and include only a one-way opcode-map digest.
-- Raise reverse-analysis cost; do not claim absolute protection.
-- License: AGPL-3.0-only; `Copyright (C) 2026 LeoChen`.
+- semantic opcode maps propagate through VM, ARM64 translation, and ELF bytecode helpers;
+- runtime source templates are embedded under `internal/runtime/templates/android/arm64`;
+- every default pack attempt creates a fresh opcode map with `crypto/rand`;
+- a valid 64-hex `-seed` creates a local deterministic AES-CTR entropy reader for tests/debugging;
+- the runtime is rebuilt with exact Android NDK revision `29.0.14206865` and absolute tools under `darwin-x86_64/bin`;
+- the output is validated as little-endian AArch64 ELF64 `ET_REL`, retaining sections, `SHT_NOBITS`, symbols, relocations, GNU BTI/PAC properties, and `.eh_frame`;
+- `vm_entry_token` is explicit assembly with BTI, PAC/AUT, and CFI;
+- the fixed interpreter blob and legacy direct-mutation/note-hijack writer are removed;
+- after analysis and runtime validation, the CLI returns `Phase 8 rewrite planner required` before translation or mutation;
+- no artifact or debug map is published at that boundary; an explicitly requested sanitized failure report may be published.
 
-## 2. Git and workspace safety
+This is not a packed-artifact implementation and is not release-ready. Phases 5-11 remain open.
 
-- No commit, push, PR, release, or new tag has been requested.
-- The working tree contains a large mixture of staged, unstaged, renamed, and untracked Phase 0–4 work. Do not reset, restore, clean, or overwrite it.
-- Do not use `git add -A`, `git reset --hard`, `git checkout .`, `git clean`, or any force operation.
-- Preserve all current archive moves and new `internal/` files.
-- Before any future commit, inspect staged and unstaged changes separately and stage explicit paths only.
-- Tool-generated untracked directories currently exist and are not product assets:
-  - `.claude/workflow-runs/`
-  - `.jspace/`
-- Remove those tool artifacts only after confirming they contain no required handoff evidence. Do not include them in a product commit.
+### Continuation status on the active draft PR
 
-## 3. Completed and verified work
+The product remains fail-closed at the Phase 8 boundary, but the following bounded slices have now been implemented and verified after the original handoff snapshot:
 
-### Phase 0 — Product contract and guards
+- Phase 5 host semantics: table-driven tri-state ARM64 policy, binary `UMULH`, architectural width-aware NZCV and all conditions, typed ASLR image references, entry BTI metadata, native PAC/AUT/XPAC helpers, and one exact-immediate BTI/CFI SVC thunk per observed immediate. Real-r29 verification passed in workflow runs `33175725869`, `33176634999`, and `33177595969`.
+- Phase 6 host implementation: V0-V31, FPCR, FPSR, native-call metadata, an explicit PAC/BTI/CFI AAPCS64 bridge for X0-X8, shadow-stack arguments, V0-V7, and integer/vector returns; native domain-preserving DMB/DSB/ISB; native 1/2/4/8-byte LDAR/STLR/LSE LDADD/CAS helpers; an exact-r29 `-O0/-O2/-Oz` FP/SIMD corpus gate with a mask-based whitelist and per-observed-encoding state-preserving native thunks; and content-addressed continuous closed `LDAXR...STLXR` thunks. Unknown FP/SIMD encodings and unclosed, nested, branching, mismatched, or reserved-register exclusive regions fail closed. Every generated thunk carries BTI/CFI and is required to have an FDE. Real-r29 verification passed most recently in workflow run `33182811799`. The physical-device ABI/contention gate remains open.
+- Phase 7 parsing/modeling slice: bounded DW_EH_PE, CIE/FDE, `.eh_frame_hdr`, LSDA call-site/action/type/filter tables, original-PC-to-VM-landing-pad mapping, throw-capable native-call locations, content-addressed invoke-thunk plans, and single-call LSDA rebuilding with explicit final-layout type-info relocations. The complete hosted workflow passed in run `33184075553`. The runtime personality/invoke/landing assembly bridge, final FDE merge, and device hard gate remain open.
+- Phase 9 manifest slice: `demo/manifest.json` is the exact machine-readable inventory of 83 C, one Go, and one Rust source, with schema, path, uniqueness, count, and existence validation.
 
-Implemented:
+Still open locally: the Android C++ personality/landing-pad bridge, the complete plan-first writer, actual packing of all 85 demos, and adversarial release rehearsal. The Phase 5/6 physical-device semantic, ABI, and multithreaded-contention gates, plus the canonical-module, Apple signing/notary, and independent-verifier gates in section 11, also remain open. No release-ready claim is permitted.
 
-- `docs/product-contract.md`
-- `docs/development.md`
-- `docs/report-schema-v1.md`
-- `NOTICE`
-- `scripts/check-contract.sh`
-- `scripts/check-contract-test.sh`
-- README scope synchronization and `.gitignore` updates
+## 2. Non-negotiable product contract
 
-Verified:
+- Publish only a signed and notarized macOS ARM64 CLI.
+- Accept compiled Android AArch64 ELF64 shared objects, PIE executables, and `ET_EXEC` native executables.
+- Minimum Android API is 23; generated layouts must load with both 4 KiB and 16 KiB pages.
+- Preserve correct ASLR, BTI, PAC, common FP/SIMD, atomics/exclusives/barriers, raw SVC, complete internal AAPCS64 calls, and C++ exception/unwind behavior.
+- Entry ABI remains explicit and limited to at most eight integer/pointer parameters and `void` or one integer/pointer result.
+- Fail closed for unresolved CFG, provable recovery paths, unsupported semantics, and unclosed exclusive regions.
+- Limits: 1 GiB input, 4096 functions, 64 KiB final bytecode per function.
+- Use exact NDK `29.0.14206865`; do not search `PATH` for runtime tools.
+- Never report or log seeds, raw opcode maps, encryption keys, NDK/temp absolute paths, signing credentials, or secrets.
+- Default to no-clobber; `-force` uses same-directory atomic replacement.
+- Debug maps are opt-in and mode `0600`.
+- Report schema remains version 1; the one-way opcode-map digest is explicitly allowed.
+- Do not claim absolute protection.
+- License is `AGPL-3.0-only`; `Copyright (C) 2026 LeoChen`.
+
+## 3. Phase 4 changes completed in this snapshot
+
+### Opcode-map closure
+
+- Repaired all old `internal/elf/analysis_test.go` helper calls.
+- Unknown-wire tests discover an unassigned wire instead of assuming `0xff`.
+- Added randomized-map tests for instruction reversal, branch remapping, raw marker/operand preservation, and opcode-only encryption.
+- Added a two-map ARM64 translator test proving semantic bytecode and fixups remain equal while wire bytes differ.
+- The test map proves HALT is not wire zero and another semantic may own wire zero.
+- Trailer emission now sorts ARM64 offsets; previous Go map iteration made seeded output nondeterministic.
+- Verbose logging no longer exposes per-function opcode-encryption keys.
+
+### Runtime build and validation
+
+New package: `internal/runtime`.
+
+Build behavior:
+
+1. validates exact NDK revision;
+2. resolves only absolute `aarch64-linux-android23-clang` and `ld.lld` paths;
+3. extracts embedded templates into a mode-`0700` temporary directory with mode-`0600` files;
+4. generates `vm_opcodes.h` from the current map;
+5. compiles PIC C and explicit assembly with `-mbranch-protection=pac-ret+bti` and unwind tables;
+6. links with `ld.lld -r`;
+7. validates and retains the relocatable image;
+8. removes the temporary directory on success, failure, or cancellation.
+
+Validation rejects wrong class/data/machine/type, missing or duplicate required symbols, unresolved symbols, invalid symbol storage, missing `.eh_frame`, missing BTI+PAC GNU property, malformed relocation tables, unknown relocation types, out-of-range relocations, and lack of an `.eh_frame` relocation for `vm_entry_token`.
+
+The current explicit relocation whitelist is intentionally narrow and must be confirmed against the real final r29 object. Never expand it speculatively.
+
+### Removed legacy pipeline
+
+Removed active use of:
+
+- `cmd/vmpacker/vm_interp.bin` and `go:embed` for that binary;
+- `app.Config.InterpBlob`, `elf.Request.InterpBlob`, and runtime-blob parsing;
+- flat blob generation and `scripts/make_stub_blob.py`;
+- `stub/linux/arm64` as an active template tree;
+- PT_NOTE reuse, blind PHDR append, fixed-runtime Makefile targets, and transitional CI blob builds;
+- obsolete host/device transformation smoke scripts that assumed the removed writer.
+
+Contract checks now reject reintroduction of those paths. `--release` deliberately fails while Phases 5-11 and physical-device evidence are incomplete.
+
+### Report and privacy
+
+Schema v1 now permits optional:
+
+- `opcode_map_digest`;
+- `runtime_strategy`;
+- future `segment_strategy`, `veneer_strategy`, and `unwind_strategy`.
+
+Current validated strategy is `ndk-r29-et-rel-validated`; the development boundary is `rewrite-plan-required`. Build errors omit NDK roots, tool paths, extraction paths, compiler stderr, and compiler temp paths.
+
+## 4. Verification evidence
+
+Executed successfully in the handoff environment with an official, SHA-256-verified Go 1.26.0 toolchain:
 
 ```text
+go test -count=1 ./...
+PASS
+
+go test -race -count=1 ./...
+PASS
+
+go vet ./...
+PASS
+
+bash -n scripts/*.sh
+PASS
+
 bash scripts/check-contract.sh
 [contract] active product contract passed
 
@@ -78,651 +133,136 @@ bash scripts/check-contract-test.sh
 check-contract self-test passed
 ```
 
-### Phase 1 — Archive old product surfaces and internalize packages
+Focused runtime tests cover exact/wrong/missing NDK metadata, missing tools, no `PATH` lookup, private extraction permissions, generated-header equality, cleanup, cancellation, path-neutral compiler failures, ELF identity, section/symbol/relocation retention, unknown relocation rejection, BTI+PAC property rejection, `.eh_frame`, entry unwind relocation, and map/Image digest mismatch.
 
-Implemented:
+### Local limitation and hosted real-toolchain evidence
 
-- GUI moved under `archive/vmp-gui/`.
-- APK package/workflow moved under `archive/apk-workflow/`.
-- Archive modules have nested `go.mod` boundaries so root `go list ./...` excludes them.
-- Active Go packages moved from `pkg/` to `internal/`.
-- Root product surface is CLI + internal implementation + runtime/demo/test material.
+The handoff environment did not contain Android NDK r29, so it could not execute the real-toolchain integration locally. GitHub Actions run `33174003003` on commit `cbcdb9a8bb413226352a1df734a56f5af3a8b390` resolved exact NDK `29.0.14206865` and passed the complete workflow, including `TestBuildInstalledExactR29Object`, ordinary tests, race tests, vet, contract checks, and CLI build. The integration test compiles the embedded C/assembly templates and passes the resulting real r29 `ET_REL` object through the production parser and validator.
 
-Do not repair or reconnect archived code.
+This closes the automated real-r29 build/validation sub-gate. It does not replace manual `llvm-readelf`/`llvm-objdump` inspection, independent review of the final relocation set and `vm_entry_token` FDE/CFI, or release rehearsal on an approved macOS ARM64 runner. Do not close Phase 4 until those reviews pass.
 
-### Phase 2 — CLI, ABI, reports, and safe publication
+## 5. Immediate resume checklist
 
-Implemented:
+1. Confirm the final GitHub branch check remains green after documentation-only updates.
+2. For the independent Phase 4 review, on macOS with exact r29 run:
 
-- `internal/app` CLI boundary with context-aware `Run`/`RunWithConfig`.
-- Strict direct and manifest selections.
-- Explicit integer/pointer entry ABI parser under `internal/abi`.
-- Strict manifest-v1 parsing, duplicate-key rejection, selection limits, and path collision checks.
-- Bounded opened-file input reads.
-- Typed report schema v1 under `internal/report`.
-- Same-directory temporary publication, no-clobber hard-link publication, atomic force replacement, rollback snapshots, error aggregation, and artifact-last publication under `internal/publish`.
-- Version/commit injection boundary in `cmd/vmpacker/version.go`.
+   ```sh
+   make runtime-integration ANDROID_NDK=/absolute/path/to/android-ndk-r29
+   go test -count=1 ./...
+   go test -race -count=1 ./...
+   go vet ./...
+   bash scripts/check-contract.sh
+   bash scripts/check-contract-test.sh
+   ```
 
-Previously independently verified against path aliases, existing destinations, symlinks, rollback failures, write/sync/close failures, permissions, cancellation, report privacy, and artifact-last behavior.
+3. Rebuild the final templates and inspect with the same NDK's tools:
 
-### Phase 3 — Bounded ELF analysis and conservative CFG
+   ```text
+   llvm-readelf -h -S -s -r -n --unwind runtime.o
+   llvm-objdump -d --no-show-raw-insn runtime.o
+   ```
 
-Implemented:
+4. Confirm `vm_entry_token` starts with BTI, signs before the manual frame, restores the frame, authenticates before return, and has a discoverable FDE with correct CFA/register rules.
+5. Compare every actual relocation against `supportedRelocations`; reject unknown types and add a type only with an application rule and fixture.
+6. Obtain an independent PASS for the complete Phase 4 slice.
+7. Begin Phase 5 only after Phase 4 is green.
 
-- `internal/elf/parse.go`
-- `internal/elf/symbols.go`
-- `internal/elf/selection.go`
-- `internal/elf/cfg.go`
-- extensive generated/malformed tests in `internal/elf/analysis_test.go`
+## 6. Remaining Phase 5 - core ARM64 semantics
 
-Key properties:
+- Replace ad-hoc acceptance with a table-driven instruction and addressing whitelist.
+- Correct binary `UMULH` behavior.
+- Implement width-aware N/Z/C/V and correct ADDS/SUBS/ADC/SBC/CCMP/CCMN/ANDS plus every condition.
+- Make ADR/ADRP/literal LDR/direct BL correct under ASLR and ET_EXEC zero bias.
+- Preserve BTI entries and wrappers; implement PAC/AUT/XPAC with native helpers rather than NOP approximation.
+- Emit one native SVC thunk per observed immediate while preserving the syscall ABI.
+- Reject unsupported system registers, exceptions, hints, and semantics.
 
-- Little-endian AArch64 ELF64 only.
-- Guarded header/segment/section/range arithmetic.
-- Extended numbering fails closed before the legacy writer.
-- Stale `PT_NULL` fields are sanitized only in the private parse copy.
-- LOAD overlap validation uses sorted sweeps rather than attacker-controlled O(n²) production checks.
-- Symtab/dynsym definitions are merged; identical definitions deduplicate; conflicting names fail while valid addresses still constrain CFG boundaries.
-- Explicit ranges are aligned, executable, file-backed, bounded, non-overlapping, and long enough.
-- CFG inference supports direct successors, loops, multiple returns, and calls with fallthrough; indirect/gap/unknown/external tail behavior fails closed.
-- Direct recovery-API detection covers defined symbols, `CALL26`/`JUMP26` relocations, and exact r29 PLT/JUMP_SLOT structure.
-- PLT entries are bound to their actual GOT slot by decoded `ADRP/LDR/ADD/BR` arithmetic.
-- `.got.plt` must be exactly `SHF_ALLOC|SHF_WRITE`, non-executable, aligned, and file-backed by one writable non-executable LOAD.
-- Renamed/non-PLT JUMP_SLOT relocations fail closed.
-- Runtime offsets were validated before mutation in the legacy blob path.
-- Limits and partial failure reporting are enforced.
+Gate: host differential vectors plus repeated physical-device ASLR, BTI/PAC, and SVC evidence.
 
-Final Phase 3 independent result:
+## 7. Phase 6 - host implementation complete; device gate open
 
-- Security review: `APPROVE`.
-- Verification verdict: `PASS`.
-- Full tests, full race, vet, temp CLI build, >10-second parser fuzz, exact installed-r29 PLT test, contract guards, gofmt, and active-tree whitespace scan passed at the Phase 3 gate.
-
-Important: the repository is no longer globally green because Phase 4 changed VM/translator APIs after that gate. The Phase 3 verdict remains evidence for the parser/CFG implementation, not a claim that the current mixed Phase 4 tree builds.
-
-## 4. Phase 4 current work state
-
-### 4.1 Completed VM opcode core
-
-Current files:
-
-- `internal/vm/opcodes.go`
-- `internal/vm/disasm.go`
-- `internal/vm/opcode_test.go`
-
-Implemented:
-
-- Exactly 115 dense semantic `Opcode` IDs.
-- One canonical definition table with:
-  - debug name;
-  - instruction size;
-  - C macro name;
-  - legacy identity wire byte;
-  - branch target operand offset.
-- `OpcodeMap` with initialized-state validation, semantic-to-wire and wire-to-semantic mappings.
-- Reader-driven collision-free shuffle over all 256 byte values.
-- Identity map for the temporary fixed-runtime bridge.
-- Stable SHA-256 digest over semantic order.
-- Generated C opcode header.
-- Map-aware disassembly and explicit unassigned-wire errors.
-- Independent 115-entry literal historical golden test, not derived from the production table.
-
-Independent gate after the golden repair: `PASS`.
-
-Current evidence:
-
-```text
-go test -count=1 ./internal/vm
-ok
-
-go test -race -count=1 ./internal/vm
-ok
-
-go vet ./internal/vm
-no output
-```
-
-The independent literal/header probe confirmed 115 unique semantics, wires, names, and C macros, and exact equality with `stub/linux/arm64/vm_opcodes.h`.
-
-### 4.2 Completed ARM64 semantic opcode emission migration
-
-Current files changed under `internal/arch/arm64/` include:
-
-- `translator.go`
-- `tr_alu.go`
-- `tr_bitfield.go`
-- `tr_branch.go`
-- `tr_loadstore.go`
-- `tr_special.go`
-- `tr_stack.go`
-- existing package tests updated for the constructor
-
-Implemented:
-
-- `Translator` stores a validated `vm.OpcodeMap`.
-- Constructor is now:
-
-```go
-func NewTranslator(funcAddr uint64, funcSize int, opcodes vm.OpcodeMap) (*Translator, error)
-```
-
-- Raw bytes use `emit`.
-- Semantic instructions use `emitOp`, which maps only the opcode and appends operands unchanged.
-- The known raw trailer/fixup zero remains raw.
-- Opcode variables and helper parameters use `vm.Opcode` rather than `byte`.
-- Stack opcode converters return explicit success rather than using semantic zero as an unsupported sentinel.
-
-Current evidence:
-
-```text
-go test -count=1 ./internal/arch/arm64
-ok
-
-go test -race -count=1 ./internal/arch/arm64
-ok
-
-go vet ./internal/arch/arm64
-no output
-```
-
-Still required before closing the opcode migration:
-
-- Add a dedicated two-map translator test proving:
-  - semantic instruction sequence and operands/fixups are identical after map-aware decoding;
-  - wire opcode positions differ;
-  - HALT is not assumed to be wire zero;
-  - some other semantic opcode may own wire zero;
-  - raw placeholder/trailer bytes are not mapped.
-- Run an independent review of the ARM64 diff after those tests.
-
-### 4.3 Partially completed ELF opcode helper migration
-
-Current production state in `internal/elf/packer.go`:
-
-- `Packer` has `opcodes vm.OpcodeMap`.
-- `processBytes` currently sets `p.opcodes = vm.IdentityOpcodeMap()` before translation. This is a temporary explicit bridge to the still-fixed C runtime.
-- `arm64.NewTranslator` receives `p.opcodes` and constructor errors are handled.
-- Debug disassembly calls map-aware `vm.DisasmRange` and handles errors.
-- `reverseInstructions` now accepts `vm.OpcodeMap`, decodes wire to semantic opcode, uses semantic size, copies the original wire/operands, and appends raw size markers.
-- `remapBranchTargets` decodes with `p.opcodes`, uses semantic branch metadata, and only rewrites the raw target operand.
-- `encryptOpcodes` accepts `vm.OpcodeMap`, decodes before sizing, and XORs only the original wire byte.
-- Production call sites pass `p.opcodes`.
-
-The interrupted workflow already completed the production helper migration. Do not revert it.
-
-### 4.4 Exact current compile break
-
-`internal/vm` and `internal/arch/arm64` pass. `internal/elf` currently fails only because `internal/elf/analysis_test.go` still uses old helper signatures/raw semantic constants:
-
-```text
-internal/elf/analysis_test.go:1034:52: not enough arguments in call to reverseInstructions
-internal/elf/analysis_test.go:1037:45: cannot use vm.OpMovImm as byte in slice literal
-internal/elf/analysis_test.go:1037:59: not enough arguments in call to reverseInstructions
-internal/elf/analysis_test.go:1040:47: not enough arguments in call to encryptOpcodes
-internal/elf/analysis_test.go:1043:19: cannot use vm.OpJmp as byte in slice literal
-```
-
-The next change should be test-only and minimal:
-
-```go
-opcodes := vm.IdentityOpcodeMap()
-movImmWire, err := opcodes.Wire(vm.OpMovImm)
-jmpWire, err := opcodes.Wire(vm.OpJmp)
-```
-
-- Find an unassigned wire by iterating `0..255` until `opcodes.Decode(byte(i))` returns an error; do not assume `0xff` is unassigned.
-- Pass `opcodes` to `reverseInstructions` and `encryptOpcodes`.
-- Build branch test bytes from `jmpWire`.
-- Use `&Packer{opcodes: opcodes}` for `remapBranchTargets`.
-- Add randomized-map helper tests proving marker/operand preservation and opcode-only encryption.
-
-Then run:
-
-```sh
-gofmt -w internal/elf/analysis_test.go
-go test -count=1 ./internal/elf
-go test -race -count=1 ./internal/elf
-go vet ./internal/elf
-go test -count=1 ./...
-go test -race -count=1 ./...
-go vet ./...
-bash scripts/check-contract.sh
-bash scripts/check-contract-test.sh
-git diff --check
-```
-
-Do not mark the opcode migration complete until the full repository is green and an independent verifier passes.
-
-## 5. Remaining Phase 4 work
-
-### 5.1 Finish and verify opcode-map propagation
-
-1. Fix the five current `analysis_test.go` compile points.
-2. Add focused randomized-map tests for ARM64 and ELF helpers.
-3. Verify no active Go bytecode walker interprets a wire byte as a semantic `Opcode` without `Decode`.
-4. Verify no opcode position is serialized directly from a dense semantic ID.
-5. Remove verbose logging of per-function opcode-encryption keys.
-6. Later, replace the temporary `IdentityOpcodeMap()` boundary with the per-pack map created by the application.
-
-### 5.2 Move and embed runtime templates
-
-Move the active runtime source tree:
-
-```text
-stub/linux/arm64/**
-  -> internal/runtime/templates/android/arm64/**
-```
-
-Known active closure:
-
-- `vm_interp.c`
-- `vm_decode.h`
-- `vm_dispatch.h`
-- generated replacement for `vm_opcodes.h`
-- `vm_sections.h`
-- `vm_token.h`
-- `vm_types.h`
-- eight `vm_handlers/h_*.h` files
-
-`vm_crc.h` is currently unused; verify again and remove it rather than embedding dead code if no active include exists.
-
-Do not reuse the old `vm_interp.lds` behavior. It merges text/rodata/data/bss into WAX and discards `.note*` and `.eh_frame*`.
-
-### 5.3 Implement `internal/runtime`
-
-Required API shape:
-
-```go
-type BuildConfig struct {
-    NDKDir  string
-    Opcodes vm.OpcodeMap
-}
-
-func Build(ctx context.Context, cfg BuildConfig) (*Image, error)
-```
-
-`Image` must retain validated:
-
-- allocatable sections and flags;
-- `SHT_NOBITS` information;
-- symbols, including local relocation targets;
-- relocations and addends;
-- GNU property note;
-- `.eh_frame` and related relocation information;
-- opcode-map digest.
-
-Build requirements:
-
-- Exact NDK revision: `29.0.14206865`.
-- Host tools under:
-
-```text
-<NDK>/toolchains/llvm/prebuilt/darwin-x86_64/bin/
-```
-
-- Use absolute tool paths; never PATH lookup or shell command composition.
-- Use `exec.CommandContext`.
-- Extract embedded templates into a private mode-`0700` temp directory; files mode `0600`; clean on success, failure, and cancellation.
-- Generate `vm_opcodes.h` from the current `OpcodeMap`; delete the tracked fixed numeric authority once runtime migration is complete.
-- Compile PIC C and explicit assembly bridge with API 23 target.
-- Use explicit `-mbranch-protection=pac-ret+bti`; do not use `standard`, because the verified r29 toolchain also emitted GCS.
-- Preserve unwind tables.
-- Link with `ld.lld -r`, not the destructive legacy linker script.
-
-### 5.4 Replace naked token entry
-
-Current `vm_entry_token` is naked inline assembly without BTI, PAC, or explicit CFI.
-
-Create an explicit `.S` entry that:
-
-- starts with correct BTI;
-- signs/authenticates LR using the selected PAC convention;
-- describes the manual frame with `.cfi_*`;
-- preserves the existing Phase 4 entry behavior;
-- calls the C inner function;
-- restores/authenticates on return.
-
-Validate disassembly and unwind metadata; compiler flags alone are not evidence for naked/manual assembly.
-
-### 5.5 Parse and validate the actual r29 object
-
-Fail closed unless the result is:
-
-- ELF64;
-- little-endian;
-- AArch64;
-- `ET_REL`;
-- contains required symbols:
-  - `vm_entry`;
-  - `vm_entry_token`;
-  - `_token_table_va`;
-- contains `.eh_frame`;
-- contains the required AArch64 GNU branch-protection property;
-- contains no unresolved/unsupported symbols;
-- uses only explicitly supported relocation types.
-
-Previously observed representative relocation evidence includes:
-
-- `R_AARCH64_ADR_PREL_LO21`
-- `R_AARCH64_CALL26`
-- `R_AARCH64_GOT_LD_PREL19`
-- `R_AARCH64_LD_PREL_LO19` in the existing object
-- `R_AARCH64_JUMP26`
-- `R_AARCH64_PREL32`
-
-Do not treat that list as authoritative. Rebuild with the final templates and derive the whitelist from actual `llvm-readelf -S -s -r -n --unwind` output. Reject anything else.
-
-### 5.6 Remove the fixed blob path
-
-Remove/refactor all active references:
-
-- `cmd/vmpacker/vm_interp.bin`
-- `scripts/make_stub_blob.py`
-- `//go:embed vm_interp.bin` from `cmd/vmpacker/main.go`
-- `app.Config.InterpBlob`
-- `elf.Request.InterpBlob`
-- `Packer.interpBlob`
-- `runtimeBlob`/`parseRuntimeBlob`
-- Makefile `android-stub`/flat blob prerequisites
-- CI transitional blob build
-- fixed-stub documentation
-
-Keep contract guards that assert those legacy paths remain absent.
-
-### 5.7 Seed and entropy integration
-
-- Stop rejecting a valid 64-hex `-seed`.
-- No seed: `crypto/rand.Reader`.
-- Seed: create a local deterministic reader from the decoded 32 bytes; do not use global random state.
-- Consume entropy in stable order from the same per-run reader for:
-  1. opcode map;
-  2. runtime randomized inputs;
-  3. per-function opcode-encryption keys;
-  4. replacement garbage/random bytes.
-- Never report/log the seed or encryption keys.
-- Same seed in clean directories must reproduce the map/runtime and eventually the whole artifact.
-- Default runs should produce different opcode-map digests.
-
-### 5.8 Honest Phase 4 / Phase 8 boundary
-
-The current injector accepts one pre-linked contiguous RX byte slice. It cannot consume an `ET_REL Image` while preserving:
-
-- section permissions/alignment;
-- symbols;
-- relocations;
-- GNU properties;
-- unwind metadata;
-- RW/NOBITS sections;
-- PHDR/SHDR integrity.
-
-Do not flatten the validated object back into a compatibility blob.
-
-Smallest honest integration before Phase 8:
-
-1. path preflight and bounded input read;
-2. `elf.Analyze`;
-3. create per-pack opcode map;
-4. `runtime.Build` and validate `Image`;
-5. pass `Image` + map to a post-analysis pack boundary;
-6. fail before translation/mutation with a typed “Phase 8 rewrite planner required” error;
-7. publish no artifact or debug map; at most publish a requested sanitized failure report.
-
-This temporarily means the development CLI validates the new pipeline but cannot produce a packed artifact until Phase 8. That is preferable to reintroducing metadata loss.
-
-### 5.9 Report and privacy changes
-
-Add optional schema-v1 fields for:
-
-- `opcode_map_digest`
-- `runtime_strategy`
-- later `segment_strategy`, `veneer_strategy`, `unwind_strategy`
-
-Phase 4 should report the digest and truthful runtime-image validation strategy. Do not claim segment/veneer/unwind integration before Phase 8 applies it.
-
-Sanitize public build errors so reports do not contain:
-
-- NDK root;
-- absolute tool paths;
-- temp extraction path;
-- compiler-generated temp paths.
-
-Update `docs/report-schema-v1.md` so the opcode-map digest is the explicit allowed one-way derivative; seed/raw map remain forbidden.
-
-### 5.10 Phase 4 tests and gate
-
-Required tests:
-
-- exact/wrong/missing NDK;
-- missing/non-executable tools;
-- no PATH lookup;
-- extraction permissions and cleanup;
-- cancellation;
-- path-neutral errors;
-- deterministic same-seed build across clean temp roots;
-- differing default map digest;
-- generated C header exactly matches map;
-- `ET_REL` class/machine/endian/type;
-- section/symbol/relocation bounds;
-- required symbols;
-- relocation whitelist and unknown relocation rejection;
-- GNU BTI/PAC property;
-- `.eh_frame` and correct entry FDE/CFI;
-- no fixed blob/script/reference;
-- Build failure before mutation/publication;
-- map/Image digest mismatch fails closed.
-
-Independent verification is mandatory before closing Phase 4.
-
-## 6. Remaining Phase 5 — Core ARM64 semantics
-
-Implement and verify:
-
-- Table-driven instruction + operand/addressing whitelist.
-- Correct binary `UMULH` semantics.
-- Full N/Z/C/V state and width-aware flag operations.
-- Correct ADDS/SUBS/ADC/SBC/CCMP/CCMN/ANDS and every condition code.
-- ASLR-correct ADR/ADRP/literal LDR/direct BL using link-time addresses plus runtime load bias.
-- ET_EXEC zero-bias behavior.
-- BTI-preserving entries and wrappers.
-- PAC/AUT/XPAC via correct native helpers; no NOP approximation.
-- One native SVC thunk per observed immediate, preserving syscall ABI register state.
-- Fail closed for unsupported system registers, exceptions, hints, or semantics.
-
-Gate: host differential vectors plus repeated physical-device ASLR, BTI/PAC, and SVC proof.
-
-## 7. Remaining Phase 6 — AAPCS64, FP/SIMD, atomics
-
-Implement and verify:
-
-- VM V0–V31, FPCR, FPSR, full NZCV, architectural SP, native-call metadata.
-- Entry ABI remains intentionally limited; do not pretend to support entry FP/HFA/sret.
-- Native call assembly bridge for:
-  - X0–X7;
-  - X8/sret;
-  - stack args;
-  - V0–V7;
-  - integer/FP/SIMD/complex/indirect returns.
+- Add V0-V31, FPCR, FPSR, full NZCV, architectural SP, and native-call metadata.
+- Implement the assembly native-call bridge for X0-X7, X8/sret, stack args, V0-V7, and all required return classes.
 - Remove C `u64` function-pointer casts.
-- Build r29 instruction corpus at `-O0`, `-O2`, and `-Oz` and implement only observed common FP/SIMD forms before whitelisting.
-- Native LSE atomic/RMW/barrier helpers.
-- Recognize closed LDXR/LDAXR → STXR/STLXR CFG regions and relocate each whole reservation region as one continuous native thunk.
-- Reject unclosed reservation regions; do not emulate with locks or CAS.
-- Emit and validate `.cfi_*` for all bridges/thunks.
+- Derive the common FP/SIMD whitelist from an exact-r29 `-O0/-O2/-Oz` corpus.
+- Add native LSE atomic/RMW/barrier helpers.
+- Relocate complete closed exclusive regions as continuous native thunks; reject unclosed regions.
+- Emit and validate CFI for every bridge and thunk.
 
-Gate: physical-device AAPCS64 differential and multithreaded atomic/exclusive contention proof.
+Host status: all items above are implemented and exact-r29 green in workflow run `33182811799`. Closed exclusive regions are intentionally restricted to a proven branch-free X0-X15 body; other shapes fail closed rather than being approximated. Runtime integration with transformed artifacts still depends on the Phase 8 plan-first writer.
 
-## 8. Remaining Phase 7 — C++ exception/unwind bridge
+Remaining gate: physical-device ABI differential and multithreaded contention evidence.
 
-Implement and prove before final writer integration:
+## 8. Remaining Phase 7 - C++ exception/unwind bridge
 
-- Parse `.eh_frame`, `.eh_frame_hdr`, `.gcc_except_table`, DW_EH_PE encodings, CIE/FDE, and LSDA tables.
-- Map original call-site PC → VM offset → landing pad.
-- Generate unique native call-thunk ranges with FDE/LSDA.
-- Reuse Android C++ personality from input metadata.
-- Landing-pad bridge restores VM state and resumes translated landing pad.
-- Wrapper CFI allows exceptions to escape a protected function to outer native catch.
-- Preserve runtime `.eh_frame`/LSDA.
-- Do not use Apple-only `__register_frame`.
-- Prove the architecture first in a standalone Android shared-library test on physical devices.
+- Parse `.eh_frame`, `.eh_frame_hdr`, `.gcc_except_table`, CIE/FDE, LSDA, and DW_EH_PE encodings.
+- Map original call-site PCs through VM offsets to landing pads.
+- Generate unique call-thunk FDE/LSDA ranges, reuse the Android C++ personality, and build landing-pad/wrapper bridges.
+- Preserve runtime unwind metadata and do not use Apple-only registration APIs.
 
-Hard gate: if Android loader/unwinder cannot discover the generated metadata, stop and report evidence. Do not document-away or bypass this requirement.
+Hard gate: prove Android loader/unwinder discovery in a standalone physical-device shared-library test before writer integration.
 
-## 9. Remaining Phase 8 — Plan-first ELF writer
+## 9. Remaining Phase 8 - plan-first ELF writer
 
-Replace legacy direct mutation/note hijacking with:
+Implement:
 
 ```go
-type RewritePlan struct { /* validated complete layout */ }
+type RewritePlan struct { /* complete validated layout */ }
 func PlanRewrite(...) (*RewritePlan, error)
 func ApplyPlan(original []byte, plan *RewritePlan) ([]byte, error)
 ```
 
-Required behavior:
+The plan must complete every section/segment/symbol/relocation/unwind/trampoline/PHDR decision before mutation. Preserve notes, GNU properties, build ID, dynamic symbols/strings/relocations, and original unwind metadata. New LOAD alignment/congruence is `0x4000`. Reuse only genuinely safe PT_NULL entries or relocate the full PHDR table. Apply only validated runtime relocations. Cluster functions by B-imm26 reach and add 16 KiB veneer islands. Never truncate branch immediates. Merge FDE/LSDA and update `.eh_frame_hdr`/`PT_GNU_EH_FRAME`. Apply to a clone and publish only after all invariants pass.
 
-- Complete layout/relocation/unwind/trampoline/PHDR plan before any byte mutation.
-- Preserve notes, GNU properties, build ID, dynsym/dynstr, dynamic relocations, and original unwind metadata.
-- New LOAD congruence/alignment at `0x4000` for 16 KiB support, while loading on 4 KiB devices.
-- Reuse only a genuinely safe PT_NULL or relocate the entire PHDR table and update all affected metadata.
-- Apply only validated runtime relocation types.
-- Cluster functions by B-imm26 reach and add 16 KiB veneer islands where needed; never truncate branch immediates.
-- Preserve BTI/PAC entry wrapper; reject functions shorter than the real prefix/trampoline.
-- Merge generated FDE/LSDA and update `.eh_frame_hdr`/`PT_GNU_EH_FRAME`.
-- Strip `.symtab`/private `.strtab` by default while preserving `.dynsym/.dynstr`.
-- Apply the plan to a clone and publish only after every invariant passes.
-- Remove all PT_NOTE reuse and blind PHDR append behavior.
+Gate: readelf/objdump, malformed and failure injection, far veneers, PHDR relocation, unwind, and physical 4 KiB/16 KiB load/run tests for SO, PIE, and ET_EXEC.
 
-Gate: `llvm-readelf -l -S -s -r -n --unwind`, malformed/failure injection, far-veneer fixtures, and physical 4 KiB/16 KiB load/run proof for SO and PIE/ET_EXEC.
+## 10. Remaining Phases 9-11
 
-## 10. Remaining Phase 9 — Demo corpus and physical-device differential gate
+### Phase 9 - corpus and device differential
 
-Required work:
+- Machine-readable manifest for exactly 85 legacy demos: 83 C, one Go, one Rust.
+- Exact-r29 cross-build and actual packing for every target.
+- Physical-device baseline-versus-packed comparison; reject emulators.
+- Record API, ABI, page size, PAC/BTI/CPU features, exit/output, and side effects.
+- No expected-failure release waivers.
 
-- Create a machine-readable manifest covering exactly 85 legacy demos:
-  - 83 C;
-  - 1 Go;
-  - 1 Rust.
-- Record build mode/optimization/ABI/selector/inputs/expected output/exit/side effects/device capability.
-- Repair unreliable oracles such as programs that print failure but exit zero.
-- Cross-compile with r29 and actually pack every target.
-- Run baseline vs packed comparisons on physical devices only.
-- Detect and reject emulators.
-- Record API, ABI, PAGE_SIZE, PAC/BTI/CPU features at runner startup.
-- Cover API 23, mainstream API, 4 KiB/16 KiB, PAC/BTI, atomics, and exceptions.
-- Store machine-readable CI evidence without host absolute paths.
+### Phase 10 - documentation and macOS ARM64 release
 
-Known non-blocking diagnostic to revisit during corpus cleanup:
+- Final English source-of-truth README and synchronized Chinese sections.
+- Canonical repository/module URLs after the owner provides them.
+- Only `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0` release binary.
+- Exact tag-to-HEAD, pinned actions, minimal permissions, complete gates.
+- Developer ID hardened-runtime signing with timestamp, `codesign`/`spctl`, ZIP notarization with `notarytool`, source archive, and `SHA256SUMS`.
 
-- `demo/demo_insn_ubfm.c` has format warnings around lines 95, 101, and 107 because the format expects `long` while `int64_t` is `long long` on the current host compiler.
+### Phase 11 - adversarial rehearsal
 
-No expected-failure waivers are allowed for the release gate.
+- Clean tag checkout; all guards/tests/race/vet/lint/forbidden scans.
+- Same-seed builds in two clean roots; differing default map digests.
+- Full malformed/boundary/unwind/veneer/PHDR/16 KiB fixtures.
+- Every failure leaves input unchanged and artifact absent.
+- Full physical-device matrix.
+- Exercise the downloaded notarized ZIP and rebuild from the source archive.
+- Final independent verifier PASS with command/output evidence.
 
-## 11. Remaining Phase 10 — Documentation and macOS ARM64 release
+## 11. External blockers
 
-Required work:
+These do not block local implementation but do block completion/release:
 
-- Final English README as source of truth; section-synchronized Chinese translation.
-- Remove outdated fixed-runtime/Linux/APK/GUI/profile/security claims.
-- Update canonical repository/module/import/release URLs after the user supplies the final public repository.
-- Build only `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0`.
-- Inject exact tag and commit.
-- Pin CI actions to reviewed commit SHAs.
-- Minimal default workflow permissions; write only in release job.
-- Require exact tag → HEAD.
-- Run all unit/corpus/physical-device gates before release.
-- Developer ID sign with hardened runtime and timestamp.
-- Verify with `codesign` and `spctl`.
-- Submit ZIP through `notarytool`; do not use stapler on a bare CLI/ZIP and do not use `codesign --deep`.
-- Generate exact-commit source archive and `SHA256SUMS`.
-- Release only:
-  - notarized macOS ARM64 CLI ZIP;
-  - exact source archive;
-  - checksums.
+1. Final public repository URL and canonical Go module/import path; `github.com/vmpacker` is still a placeholder.
+2. Apple Developer ID, notary API credentials, and an approved macOS ARM64 release runner.
+3. Physical Android runner/device inventory proving API 23, mainstream API, 4 KiB and 16 KiB pages, PAC/BTI, atomics/exclusives, and C++ unwind.
 
-No release may occur while canonical repo, Apple credentials/runner, or device matrix is missing.
+Never store those credentials in the repository or logs.
 
-## 12. Remaining Phase 11 — Independent adversarial release rehearsal
+## 12. Completion statement
 
-From a clean checkout/tag:
-
-1. Run contract guards, all tests, race/vet/lint, and forbidden-pattern scans.
-2. Rebuild with same seed in two clean roots and compare.
-3. Confirm default runs have different opcode-map digests.
-4. Re-run malformed/boundary/stripped/dynsym/unwind/far-veneer/PHDR/16 KiB fixtures.
-5. Confirm every failure path leaves input unchanged and artifact absent.
-6. Check final ELFs with both Go validators and r29 `llvm-readelf`.
-7. Run full physical-device differential matrix.
-8. Exercise the downloaded notarized ZIP, not the workspace binary.
-9. Rebuild from source archive and confirm version/commit/checksum.
-10. Obtain final independent verification-agent `PASS` with command/output evidence.
-
-Only after this gate may the product be described as complete or a formal release be created.
-
-## 13. External blockers requiring user-provided resources
-
-These do not block local implementation but block release:
-
-1. Final public repository URL and canonical Go module path. Current `github.com/vmpacker` is a placeholder.
-2. Apple Developer ID, notary API credentials, and an approved macOS ARM64 release runner. Never store credentials in the repository or logs.
-3. Self-hosted physical Android device inventory and runner labels proving:
-   - API 23;
-   - mainstream API;
-   - 4 KiB and 16 KiB pages;
-   - PAC/BTI;
-   - atomics/exclusive contention;
-   - C++ exceptions/unwind.
-
-## 14. Immediate resume checklist
-
-Resume in this exact order:
-
-1. Read this file and the approved master plan.
-2. Run `git status --short`; preserve mixed staged/unstaged work.
-3. Confirm no background workflow/agent is still modifying the tree.
-4. Fix only the five current `internal/elf/analysis_test.go` compile points using `vm.IdentityOpcodeMap()` and identity wire lookups.
-5. Add map-aware ELF helper tests for randomized maps, unknown wires, opcode-only encryption, and raw marker/operand preservation.
-6. Run full Go tests/race/vet/contract/format gates.
-7. Obtain independent PASS for the complete VM + ARM64 + ELF opcode-map slice.
-8. Implement `internal/runtime` templates/build/Image and explicit PAC/BTI/CFI assembly entry.
-9. Remove fixed blob pipeline.
-10. Integrate analysis → opcode map → runtime build → explicit Phase-8-required fail-closed boundary, including seed/report/privacy behavior.
-11. Independently verify Phase 4.
-12. Continue Phases 5 through 11 in dependency order.
-
-## 15. Commands for a cold handoff
-
-```sh
-cd /Volumes/work/android/VMPacker
-
-git status --short
-git rev-parse --abbrev-ref HEAD
-git rev-parse HEAD
-
-# Currently expected green
-go test -count=1 ./internal/vm
-go test -count=1 ./internal/arch/arm64
-
-# Currently expected to fail at analysis_test.go until immediate resume step 4
-go test -count=1 ./internal/elf
-
-# Run after the test migration is repaired
-go test -count=1 ./...
-go test -race -count=1 ./...
-go vet ./...
-bash scripts/check-contract.sh
-bash scripts/check-contract-test.sh
-git diff --check
-```
-
-## 16. Completion truth statement
-
-At this snapshot:
-
-- Product contract and archive boundary: complete and verified.
-- Safe CLI/ABI/report/publication boundary: complete and verified.
-- Bounded ELF analysis/CFG: complete and independently verified.
-- Semantic opcode core: complete and independently verified.
-- ARM64 map-aware emission: compiles and passes package checks; dedicated randomized-map tests and independent review remain.
-- ELF map-aware helper production code: implemented; tests are in an interrupted signature-migration state.
-- Dynamic r29 runtime build/Image: not implemented.
-- Core ISA correctness, full AAPCS64/FP/SIMD/atomics, C++ unwind, final ELF writer, complete demo/device gates, signing/notarization, and final rehearsal: not implemented.
-- No release has been made and the product must not be represented as finished.
+- Product boundary, ABI/manifest, bounded analysis, reports, and safe publication: implemented.
+- Semantic opcode map and ARM64/ELF propagation: implemented and locally green.
+- Dynamic exact-r29 runtime build/Image and explicit assembly entry: implemented with simulated-tool tests; real-r29 and independent PASS still required.
+- Fixed blob and legacy writer: removed.
+- Phase 8 fail-closed boundary: implemented.
+- Core ISA/AAPCS64/FP-SIMD/atomic/exclusive host semantics: implemented and real-r29 green; physical-device semantic, ABI, and multithreaded-contention gates remain open.
+- C++ unwind metadata and relocation-safe invoke/LSDA planning: implemented and host-tested; the Android personality/invoke/landing assembly bridge, final FDE merge, and physical-device unwinder proof remain open.
+- Exact 85-demo manifest: implemented and validated; cross-build, packing, and physical-device differential execution remain open.
+- Final writer, signing/notarization, and release rehearsal: not implemented.
+- Release readiness: false.

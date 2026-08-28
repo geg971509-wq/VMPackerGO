@@ -48,12 +48,12 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&opts.Func, "func", "", "protect one function by name")
 	fs.StringVar(&opts.Addr, "addr", "", "protect one address or range: 0xADDR or 0xSTART-0xEND[:name]")
 	fs.StringVar(&opts.Output, "o", "", "output ELF path (default: input+.vmp)")
-	fs.StringVar(&opts.NDK, "ndk", os.Getenv("ANDROID_NDK_HOME"), "Android NDK r29 path for later runtime compilation")
+	fs.StringVar(&opts.NDK, "ndk", defaultNDKPath(), "Android NDK r29 path used to rebuild the runtime")
 	fs.StringVar(&opts.Report, "report", "", "write report schema v1 JSON")
 	fs.StringVar(&opts.DebugMap, "debug-map", "", "write ARM64-to-VM debug mapping")
 	fs.BoolVar(&opts.Strip, "strip", true, "strip the static symbol table")
 	fs.BoolVar(&opts.Force, "force", false, "atomically replace existing destinations")
-	fs.StringVar(&opts.Seed, "seed", "", "64 hexadecimal characters; reserved for Phase 4 debug/test use")
+	fs.StringVar(&opts.Seed, "seed", "", "64 hexadecimal characters for reproducible test/debug builds")
 	fs.StringVar(&opts.Manifest, "manifest", "", "manifest v1 JSON for one or more functions")
 	fs.StringVar(&opts.ABI, "abi", "", "direct entry ABI, for example i32(ptr,u64)")
 	fs.BoolVar(&opts.Info, "info", false, "print Android ELF information without transforming")
@@ -89,7 +89,6 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 		if _, err := hex.DecodeString(opts.Seed); err != nil {
 			return opts, fmt.Errorf("-seed must contain exactly 64 hexadecimal characters")
 		}
-		return opts, fmt.Errorf("-seed is reserved for Phase 4 and is not accepted by the current fixed runtime")
 	}
 	if err := validateNDK(opts.NDK); err != nil {
 		return opts, err
@@ -148,6 +147,15 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 		opts.Selected = []selectedFunction{selected}
 	}
 	return opts, nil
+}
+
+func defaultNDKPath() string {
+	for _, name := range []string{"ANDROID_NDK", "ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME"} {
+		if path := strings.TrimSpace(os.Getenv(name)); path != "" {
+			return path
+		}
+	}
+	return ""
 }
 
 func validateNDK(path string) error {

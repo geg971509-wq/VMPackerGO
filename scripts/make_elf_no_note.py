@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert ELF64 PT_NOTE program headers to PT_NULL for no-note fixtures.
 
-This is a test-fixture helper for validating the add-segment injector. It does
+This is a test-fixture helper for validating the plan-first Phase 8 writer. It does
 not alter section contents; it only removes runtime PT_NOTE program-header slots
 so the packer must use a non-note payload segment strategy.
 """

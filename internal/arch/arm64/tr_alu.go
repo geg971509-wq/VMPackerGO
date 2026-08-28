@@ -1,6 +1,8 @@
 package arm64
 
 import (
+	"fmt"
+
 	"github.com/vmpacker/internal/vm"
 )
 
@@ -58,6 +60,15 @@ func (t *Translator) trCCMP(inst vm.Instruction, isNeg bool, isImm bool) error {
 // 格式: [OpMrs][d][sysreg_lo][sysreg_hi] = 4B
 // sysreg 是 15-bit 编码，存为 uint16 LE
 func (t *Translator) trMRS(inst vm.Instruction) error {
+	switch inst.Imm {
+	case 0x5F02, // CNTVCT_EL0
+		0x5F00, // CNTFRQ_EL0
+		0x5E82, // TPIDR_EL0
+		0x5E83, // TPIDRRO_EL0
+		0x5A10: // NZCV
+	default:
+		return fmt.Errorf("unsupported system register encoding 0x%X", inst.Imm)
+	}
 	rd, err := t.mapReg(inst.Rd)
 	if err != nil {
 		return err

@@ -168,6 +168,7 @@ fi
 check "sync-public pattern" 'sync-public' "${text_files[@]}"
 check "commercial-license offer" 'Commercial Licensing|contact[^.]*commercial license|commercial-license offer available|商业许可[^。]*(联系|获取)|闭源商用[^。]*(联系|获取)' "${text_files[@]}"
 check "restrictive assent text" 'By downloading[^.]*agreed|read and agreed to the above|下载[^。]*(即表示|代表)[^。]*同意' "${text_files[@]}"
+check "removed fixed runtime pipeline" 'go:embed[[:space:]]+vm_interp\.bin|cmd/vmpacker/vm_interp\.bin|scripts/make_stub_blob\.py|STUB_DIR[[:space:]]*=.*stub/linux/arm64|InterpBlob|parseRuntimeBlob|runtimeBlob' "${active_files[@]}"
 
 if (( ${#wails_configs[@]} > 0 )); then
   echo "[contract] active Wails configuration" >&2
@@ -178,8 +179,8 @@ if (( ${#wails_configs[@]} > 0 )); then
 fi
 
 if [[ "$MODE" == "--release" ]]; then
-  check "Phase 4 blocker: fixed command-local interpreter blob" 'go:embed[[:space:]]+vm_interp\.bin|cmd/vmpacker/vm_interp\.bin|CMD_DIR.*/vm_interp\.bin' "${active_files[@]}"
-  check "Phase 4 blocker: active runtime template path" 'STUB_DIR[[:space:]]*=.*stub/linux/arm64' "${active_files[@]}"
+  echo "[contract] release blocked: Phase 5-11 implementation and physical-device evidence are incomplete" >&2
+  failures=$((failures + 1))
 fi
 
 if (( failures > 0 )); then

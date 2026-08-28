@@ -133,6 +133,22 @@ const (
 	OpSSt16
 	OpSSt32
 	OpSSt64
+	OpJCond
+	OpSAddFlags
+	OpSSubFlags
+	OpSAndFlags
+	OpSAdcFlags
+	OpSSbcFlags
+	OpCbz
+	OpCbnz
+	OpMovImage
+	OpSPushImage
+	OpCallImage
+	OpPAuth
+	OpBarrier
+	OpAtomic
+	OpExclusive
+	OpFPSIMD
 	OpcodeCount
 )
 
@@ -199,8 +215,8 @@ var opcodeDefinitions = [OpcodeCount]OpcodeDefinition{
 	{OpBrReg, "BR_REG", 2, "OP_BR_REG", 0xCD, -1},
 	{OpRet, "RET", 2, "OP_RET", 0xEE, -1},
 	{OpHalt, "HALT", 1, "OP_HALT", 0x00, -1},
-	{OpVld16, "VLD16", 3, "OP_VLD16", 0xC1, -1},
-	{OpVst16, "VST16", 3, "OP_VST16", 0xC2, -1},
+	{OpVld16, "VLD16", 4, "OP_VLD16", 0xC1, -1},
+	{OpVst16, "VST16", 4, "OP_VST16", 0xC2, -1},
 	{OpTbz, "TBZ", 7, "OP_TBZ", 0x16, 3},
 	{OpTbnz, "TBNZ", 7, "OP_TBNZ", 0x17, 3},
 	{OpCcmpReg, "CCMP_REG", 6, "OP_CCMP_REG", 0x18, -1},
@@ -261,6 +277,22 @@ var opcodeDefinitions = [OpcodeCount]OpcodeDefinition{
 	{OpSSt16, "S_ST16", 1, "OP_S_ST16", 0x95, -1},
 	{OpSSt32, "S_ST32", 1, "OP_S_ST32", 0x96, -1},
 	{OpSSt64, "S_ST64", 1, "OP_S_ST64", 0x97, -1},
+	{OpJCond, "JCOND", 6, "OP_JCOND", 0x2E, 2},
+	{OpSAddFlags, "S_ADD_FLAGS", 2, "OP_S_ADD_FLAGS", 0x30, -1},
+	{OpSSubFlags, "S_SUB_FLAGS", 2, "OP_S_SUB_FLAGS", 0x31, -1},
+	{OpSAndFlags, "S_AND_FLAGS", 2, "OP_S_AND_FLAGS", 0x32, -1},
+	{OpSAdcFlags, "S_ADC_FLAGS", 2, "OP_S_ADC_FLAGS", 0x33, -1},
+	{OpSSbcFlags, "S_SBC_FLAGS", 2, "OP_S_SBC_FLAGS", 0x34, -1},
+	{OpCbz, "CBZ", 6, "OP_CBZ", 0x35, 2},
+	{OpCbnz, "CBNZ", 6, "OP_CBNZ", 0x38, 2},
+	{OpMovImage, "MOV_IMAGE", 10, "OP_MOV_IMAGE", 0x39, -1},
+	{OpSPushImage, "S_PUSH_IMAGE", 9, "OP_S_PUSH_IMAGE", 0x3A, -1},
+	{OpCallImage, "CALL_IMAGE", 9, "OP_CALL_IMAGE", 0x3B, -1},
+	{OpPAuth, "PAUTH", 2, "OP_PAUTH", 0x3E, -1},
+	{OpBarrier, "BARRIER", 3, "OP_BARRIER", 0x40, -1},
+	{OpAtomic, "ATOMIC", 7, "OP_ATOMIC", 0x41, -1},
+	{OpExclusive, "EXCLUSIVE", 5, "OP_EXCLUSIVE", 0x42, -1},
+	{OpFPSIMD, "FPSIMD", 5, "OP_FPSIMD", 0x43, -1},
 }
 
 func OpcodeDefinitionFor(op Opcode) (OpcodeDefinition, bool) {

@@ -162,6 +162,7 @@ const (
 	BTI_J
 	BTI_JC
 	BTI
+	FPSIMD_NATIVE
 	UNSUPPORTED
 )
 
@@ -199,6 +200,10 @@ func (d *Decoder) Decode(raw uint32, offset int) vm.Instruction {
 	// NOP 快速路径
 	if raw == 0xD503201F {
 		inst.Op = int(NOP)
+		return inst
+	}
+	if _, ok := matchFPSIMD(raw); ok {
+		inst.Op = int(FPSIMD_NATIVE)
 		return inst
 	}
 
@@ -331,6 +336,7 @@ func OpName(op Op) string {
 		LDPSW: "LDPSW", LDADD: "LDADD", CAS: "CAS",
 		PACIASP: "PACIASP", AUTIASP: "AUTIASP", PACIAZ: "PACIAZ", AUTIAZ: "AUTIAZ", PACIBSP: "PACIBSP", AUTIBSP: "AUTIBSP", XPACLRI: "XPACLRI",
 		BTI_C: "BTI c", BTI_J: "BTI j", BTI_JC: "BTI jc", BTI: "BTI",
+		FPSIMD_NATIVE: "FP/SIMD(native)",
 	}
 	if n, ok := names[op]; ok {
 		return n

@@ -2,9 +2,13 @@ package elf
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
+
+	vmruntime "github.com/vmpacker/internal/runtime"
+	"github.com/vmpacker/internal/vm"
 )
 
 type TargetKind string
@@ -24,24 +28,17 @@ const (
 	AndroidModeNative AndroidMode = "native"
 )
 
-type InjectorKind string
-
-const (
-	InjectorAuto       InjectorKind = "auto"
-	InjectorNoteHijack InjectorKind = "note"
-	InjectorAddSegment InjectorKind = "add-segment"
-)
-
 type Request struct {
-	Context    context.Context
-	Input      []byte
-	Selections []SelectionRequest
-	Mode       string
-	Verbose    bool
-	Strip      bool
-	Debug      bool
-	InterpBlob []byte
-	Log        io.Writer
+	Context      context.Context
+	Input        []byte
+	Selections   []SelectionRequest
+	Mode         string
+	Verbose      bool
+	Strip        bool
+	Debug        bool
+	Opcodes      vm.OpcodeMap
+	RuntimeImage *vmruntime.Image
+	Log          io.Writer
 }
 
 type FunctionFact struct {
@@ -58,27 +55,19 @@ type FunctionFact struct {
 	Instructions int
 }
 
-type InjectionFact struct {
-	Strategy      InjectorKind
-	PhdrIndex     *int
-	SegmentSource string
-	PayloadOffset uint64
-	PayloadVA     uint64
-	PayloadSize   uint64
-	VMEntryVA     uint64
-	TokenEntryVA  uint64
-}
-
 type Result struct {
 	Artifact            []byte
 	Debug               []byte
 	TargetKind          TargetKind
 	DevelopmentStrategy string
+	OpcodeMapDigest     string
+	RuntimeStrategy     string
 	Functions           []FunctionFact
 	AnalysisLimitations []string
 	Warnings            []string
-	Injection           *InjectionFact
 }
+
+var ErrRewritePlannerRequired = errors.New("Phase 8 rewrite planner required")
 
 func Process(req Request) (Result, error) {
 	if req.Context != nil {
@@ -105,22 +94,27 @@ func Process(req Request) (Result, error) {
 			return Result{TargetKind: analysis.TargetKind}, err
 		}
 	}
-	if req.Log == nil {
-		req.Log = io.Discard
+	return ProcessAnalyzed(req, analysis)
+}
+
+func ProcessAnalyzed(req Request, analysis Analysis) (Result, error) {
+	result := Result{
+		TargetKind: analysis.TargetKind, AnalysisLimitations: append([]string(nil), analysis.Limitations...),
+		Warnings: append([]string(nil), analysis.Warnings...),
 	}
-	p := &Packer{
-		selections:   analysis.Selections,
-		analysis:     analysis,
-		verbose:      req.Verbose,
-		stripSymbols: req.Strip,
-		debug:        req.Debug,
-		targetOS:     "android",
-		androidMode:  mode,
-		injector:     InjectorAuto,
-		interpBlob:   req.InterpBlob,
-		out:          req.Log,
+	if req.Context != nil {
+		if err := req.Context.Err(); err != nil {
+			return result, err
+		}
 	}
-	err = p.processBytes(req.Input)
-	p.result.Debug = append([]byte(nil), p.debugLog.Bytes()...)
-	return p.result, err
+	if req.RuntimeImage == nil {
+		return result, fmt.Errorf("validated runtime image is required")
+	}
+	if err := req.RuntimeImage.ValidateOpcodeMap(req.Opcodes); err != nil {
+		return result, err
+	}
+	result.OpcodeMapDigest = req.RuntimeImage.OpcodeMapDigest
+	result.RuntimeStrategy = "ndk-r29-et-rel-validated"
+	result.DevelopmentStrategy = "rewrite-plan-required"
+	return result, ErrRewritePlannerRequired
 }

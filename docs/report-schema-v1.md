@@ -18,7 +18,12 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `output` | string | yes | Requested output path text exactly as supplied by the user, or the documented default. |
 | `mode` | string | yes | `auto`, `so`, or `native`. |
 | `target_kind` | string | on classified runs | `android-so`, `android-pie`, or `android-exec`. |
-| `development_strategy` | string | on classified runs | Accurate current internal strategy, currently `note` or `add-segment`; this is not a stable product choice. |
+| `development_strategy` | string | on classified runs | Accurate current internal boundary, currently `rewrite-plan-required`; this is not a stable product choice. |
+| `opcode_map_digest` | string | after map creation | Lower-case SHA-256 of the semantic-to-wire byte sequence. This is the only allowed one-way opcode-map derivative. |
+| `runtime_strategy` | string | after runtime validation | Accurate runtime build/validation strategy, currently `ndk-r29-et-rel-validated`. |
+| `segment_strategy` | string | after Phase 8 planning | Applied segment-layout strategy; omitted until implemented. |
+| `veneer_strategy` | string | after Phase 8 planning | Applied far-branch veneer strategy; omitted until implemented. |
+| `unwind_strategy` | string | after Phase 8 planning | Applied unwind integration strategy; omitted until implemented. |
 | `functions` | array | yes | Per-function selection, ABI, and transformation facts; never `null`. |
 | `output_sha256` | string | on success | Lower-case SHA-256 of the exact artifact bytes. |
 | `status` | string | yes | `ok` or `failed`. |
@@ -26,7 +31,7 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `release_ready` | boolean | yes | `false` during the development phases. |
 | `limitations` | array | yes | Current development limitations; never `null`. |
 
-Reports never contain seed values, values derived from seeds, NDK paths, home-directory paths added by the tool, keys, or secret configuration. Raw input/output path text is preserved even when it contains relative components.
+Reports never contain seed values, the raw opcode map, NDK paths, home-directory paths added by the tool, temporary paths, encryption keys, signing credentials, or secret configuration. The one-way `opcode_map_digest` is explicitly allowed. Raw input/output path text is preserved even when it contains relative components.
 
 ## Function object
 
@@ -38,7 +43,7 @@ Each function contains:
 - `abi`: `params` and `result` using `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `ptr`, and result-only `void`.
 - successful transformation facts: normalized `address`/`range`, optional `section` and `symbol_source` (`symtab` or `dynsym`), `size`, `instructions`, `translated`, and final `bytecode_bytes`.
 
-The report does not include original function bytes. Mapping digests are omitted until the Phase 4 dynamic runtime mapping exists.
+The report does not include original function bytes. The opcode-map digest cannot reconstruct the seed or map and is included only after the map is created.
 
 ## Path, publication, and failure behavior
 
@@ -58,7 +63,9 @@ A failed transform never publishes an artifact or debug map. When `-report` was 
   "output": "libdemo.vmp.so",
   "mode": "so",
   "target_kind": "android-so",
-  "development_strategy": "note",
+  "development_strategy": "rewrite-plan-required",
+  "opcode_map_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "runtime_strategy": "ndk-r29-et-rel-validated",
   "functions": [],
   "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "status": "ok",

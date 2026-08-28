@@ -8,7 +8,7 @@ VMPacker is a development-stage virtual-machine packer for independent Android A
 - Inputs: independent Android AArch64 ELF64 shared objects (`.so`) and PIE/`ET_EXEC` native executables.
 - Minimum Android runtime: API 23.
 - Selection: one direct function/address with `-abi`, or multiple manifest-v1 entries with explicit ABIs; names merge `.symtab` and `.dynsym`, while single addresses use fail-closed CFG inference.
-- Output: a transformed ELF plus optional report-v1 JSON and explicit debug map.
+- Target output: a transformed ELF plus optional report-v1 JSON and explicit debug map.
 - Not active product scope: APK, AAB, GUI, Linux releases, or Windows releases. Historical APK and GUI work is retained under `archive/` and is unsupported.
 
 VMPacker only increases the cost of reverse analysis. It does not make code impossible to inspect, copy, modify, or bypass.
@@ -22,18 +22,19 @@ See the [product contract](docs/product-contract.md), [development guide](docs/d
 ## Development commands
 
 ```sh
-make android-stub ANDROID_NDK=/path/to/android-ndk-r29
-make packer ANDROID_NDK=/path/to/android-ndk-r29
+make packer
+make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 go list ./...
 go test ./...
 go vet ./cmd/vmpacker ./internal/...
 bash scripts/check-contract.sh
 
-./build/vmpacker -mode so -func exported_name -abi 'i32(ptr)' \
-  -report pack.json -o libdemo.vmp.so libdemo.so
+./build/vmpacker -ndk /path/to/android-ndk-r29 -mode so \
+  -func exported_name -abi 'i32(ptr)' -report pack.json \
+  -o libdemo.vmp.so libdemo.so
 ```
 
-Building the current CLI still uses the fixed interpreter-blob path scheduled for replacement in a later phase. See [development.md](docs/development.md).
+The fixed interpreter blob has been removed. Each pack attempt creates a per-run opcode map, rebuilds and validates a relocatable runtime from embedded source with exact NDK r29, and then fails closed with `Phase 8 rewrite planner required` before translating or mutating the input. The development runtime now includes the Phase 5 core semantic fixes and a real-r29-validated Phase 6 host implementation: AAPCS64/native atomics, an exact-r29 `-O0/-O2/-Oz` FP/SIMD corpus whitelist with state-preserving native thunks, and continuous closed exclusive-region thunks. Unwind parsing and the exact 85-demo manifest are also present. The physical-device Phase 5/6 gates, C++ exception bridge, writer, device packing evidence, and release gates remain open. No artifact or debug map is emitted at this boundary.
 
 ## License and use
 

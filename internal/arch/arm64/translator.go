@@ -3,6 +3,7 @@ package arm64
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 
 	"github.com/vmpacker/internal/vm"
 )
@@ -30,11 +31,28 @@ import (
 
 // TranslateResult 翻译结果
 type TranslateResult struct {
-	Bytecode    []byte   // 生成的 VM 字节码 (含 trailer)
-	CodeLen     int      // 纯字节码长度 (不含 trailer，用于 opcode 加密范围)
-	Unsupported []string // 不支持的指令列表
-	TotalInsts  int      // 总指令数
-	TransInsts  int      // 已翻译指令数
+	Bytecode           []byte   // 生成的 VM 字节码 (含 trailer)
+	CodeLen            int      // 纯字节码长度 (不含 trailer，用于 opcode 加密范围)
+	Unsupported        []string // 不支持的指令列表
+	TotalInsts         int      // 总指令数
+	TransInsts         int      // 已翻译指令数
+	Relocations        []BytecodeRelocation
+	SVCImmediates      []uint16
+	ExclusiveRegions   []vm.ExclusiveRegion
+	FPSIMDInstructions []uint32
+	NativeCallSites    []NativeCallSite
+	EntryBTI           Op
+	HasEntryBTI        bool
+}
+
+type BytecodeRelocation struct {
+	Offset   int
+	TargetVA uint64
+}
+
+type NativeCallSite struct {
+	ARM64Offset int
+	VMOffset    int
 }
 
 // DebugEntry 单条指令的 debug 对照信息
@@ -48,16 +66,23 @@ type DebugEntry struct {
 
 // Translator ARM64 → VM 翻译器
 type Translator struct {
-	code        []byte        // 输出缓冲
-	labels      map[int]int   // ARM64偏移 → VM字节码位置 映射
-	fixups      []branchFixup // 待修补的分支目标
-	funcSize    int           // 原函数大小（字节）
-	funcAddr    uint64        // 原函数起始地址
-	opcodes     vm.OpcodeMap
-	unsupported []string
-	decoder     *Decoder     // 解码器引用（用于名称查找）
-	debug       bool         // debug 模式
-	debugLog    []DebugEntry // debug 对照记录
+	code               []byte        // 输出缓冲
+	labels             map[int]int   // ARM64偏移 → VM字节码位置 映射
+	fixups             []branchFixup // 待修补的分支目标
+	funcSize           int           // 原函数大小（字节）
+	funcAddr           uint64        // 原函数起始地址
+	opcodes            vm.OpcodeMap
+	unsupported        []string
+	decoder            *Decoder     // 解码器引用（用于名称查找）
+	debug              bool         // debug 模式
+	debugLog           []DebugEntry // debug 对照记录
+	relocations        []BytecodeRelocation
+	svcImmediates      map[uint16]bool
+	exclusiveRegions   map[uint32]vm.ExclusiveRegion
+	fpSIMDInstructions map[uint32]bool
+	nativeCallSites    []NativeCallSite
+	entryBTI           Op
+	hasEntryBTI        bool
 }
 
 type branchFixup struct {
@@ -72,12 +97,15 @@ func NewTranslator(funcAddr uint64, funcSize int, opcodes vm.OpcodeMap) (*Transl
 		return nil, fmt.Errorf("validate opcode map: %w", err)
 	}
 	return &Translator{
-		code:     make([]byte, 0, funcSize*4),
-		labels:   make(map[int]int),
-		funcAddr: funcAddr,
-		funcSize: funcSize,
-		opcodes:  opcodes,
-		decoder:  NewDecoder(),
+		code:               make([]byte, 0, funcSize*4),
+		labels:             make(map[int]int),
+		funcAddr:           funcAddr,
+		funcSize:           funcSize,
+		opcodes:            opcodes,
+		decoder:            NewDecoder(),
+		svcImmediates:      make(map[uint16]bool),
+		exclusiveRegions:   make(map[uint32]vm.ExclusiveRegion),
+		fpSIMDInstructions: make(map[uint32]bool),
 	}, nil
 }
 
@@ -201,6 +229,9 @@ func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult,
 			t.emitOp(vm.OpHalt)
 		} else {
 			result.TransInsts++
+			if op := Op(instructions[i].Op); op == BL || op == BLR {
+				t.nativeCallSites = append(t.nativeCallSites, NativeCallSite{ARM64Offset: instructions[i].Offset, VMOffset: vmStartPos})
+			}
 		}
 	}
 
@@ -222,7 +253,13 @@ func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult,
 	// entry: [arm64_off:u32][vm_off:u32]
 	// reverse 和 oc_key 由 packer 填充实际值
 	mapCount := uint32(len(t.labels))
-	for arm64Off, vmOff := range t.labels {
+	arm64Offsets := make([]int, 0, len(t.labels))
+	for arm64Off := range t.labels {
+		arm64Offsets = append(arm64Offsets, arm64Off)
+	}
+	sort.Ints(arm64Offsets)
+	for _, arm64Off := range arm64Offsets {
+		vmOff := t.labels[arm64Off]
 		t.emitU32(uint32(arm64Off))
 		t.emitU32(uint32(vmOff))
 	}
@@ -234,13 +271,47 @@ func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult,
 
 	result.Bytecode = t.code
 	result.Unsupported = t.unsupported
+	result.Relocations = append([]BytecodeRelocation(nil), t.relocations...)
+	result.EntryBTI = t.entryBTI
+	result.HasEntryBTI = t.hasEntryBTI
+	for immediate := range t.svcImmediates {
+		result.SVCImmediates = append(result.SVCImmediates, immediate)
+	}
+	sort.Slice(result.SVCImmediates, func(i, j int) bool { return result.SVCImmediates[i] < result.SVCImmediates[j] })
+	for _, region := range t.exclusiveRegions {
+		result.ExclusiveRegions = append(result.ExclusiveRegions, region)
+	}
+	sort.Slice(result.ExclusiveRegions, func(i, j int) bool {
+		return result.ExclusiveRegions[i].ID < result.ExclusiveRegions[j].ID
+	})
+	for raw := range t.fpSIMDInstructions {
+		result.FPSIMDInstructions = append(result.FPSIMDInstructions, raw)
+	}
+	sort.Slice(result.FPSIMDInstructions, func(i, j int) bool { return result.FPSIMDInstructions[i] < result.FPSIMDInstructions[j] })
+	result.NativeCallSites = append([]NativeCallSite(nil), t.nativeCallSites...)
 	return result, nil
+}
+
+func (t *Translator) emitImageReference(op vm.Opcode, register *byte, targetVA uint64) {
+	t.emitOp(op)
+	if register != nil {
+		t.emit(*register)
+	}
+	offset := t.pos()
+	t.emitU64(0)
+	t.relocations = append(t.relocations, BytecodeRelocation{Offset: offset, TargetVA: targetVA})
 }
 
 // translateOne 翻译单条指令，返回需要跳过的后续指令数
 func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, error) {
 	inst := instructions[idx]
 	op := Op(inst.Op)
+	if op == LDAXR {
+		return t.trExclusiveRegion(instructions, idx)
+	}
+	if err := validateInstructionPolicy(inst); err != nil {
+		return 0, err
+	}
 
 	switch op {
 	case NOP:
@@ -254,28 +325,6 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	case SUB_IMM:
 		return 0, t.trStackAluImm(inst, vm.OpSSub)
 	case ADDS_IMM, SUBS_IMM:
-		if inst.Rd == vm.REG_XZR {
-			// CMN/CMP Xn, #imm — 栈模式
-			rn, err := t.mapReg(inst.Rn)
-			if err != nil {
-				return 0, err
-			}
-			if op == ADDS_IMM {
-				// CMN: flags from Xn + imm
-				t.pushRegOrZero(inst.Rn, rn)
-				t.sPushImm(uint64(inst.Imm))
-				t.emitOp(vm.OpSAdd)
-				t.sPushImm32(0)
-				t.emitOp(vm.OpSCmp)
-				t.sDrop() // discard sum
-			} else {
-				// CMP: flags from Xn - imm
-				t.pushRegOrZero(inst.Rn, rn)
-				t.sPushImm(uint64(inst.Imm))
-				t.emitOp(vm.OpSCmp)
-			}
-			return 0, nil
-		}
 		if op == ADDS_IMM {
 			return 0, t.trStackAluImmFlags(inst, vm.OpSAdd, true)
 		}
@@ -284,20 +333,6 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	case AND_IMM:
 		return 0, t.trStackAluImm(inst, vm.OpSAnd)
 	case ANDS_IMM:
-		if inst.Rd == vm.REG_XZR {
-			// TST Xn, #imm — 栈模式
-			rn, err := t.mapReg(inst.Rn)
-			if err != nil {
-				return 0, err
-			}
-			t.pushRegOrZero(inst.Rn, rn)
-			t.sPushImm(uint64(inst.Imm))
-			t.emitOp(vm.OpSAnd)
-			t.sPushImm32(0)
-			t.emitOp(vm.OpSCmp)
-			t.sDrop() // discard AND result
-			return 0, nil
-		}
 		return 0, t.trStackAluImmFlags(inst, vm.OpSAnd, true)
 	case ORR_IMM:
 		return 0, t.trStackAluImm(inst, vm.OpSOr)
@@ -361,57 +396,13 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 		return 0, t.trStackAluReg(inst, vm.OpSRor)
 
 	case ADDS_REG, SUBS_REG:
-		if inst.Rd == vm.REG_XZR {
-			// CMN/CMP Xn, Xm — 栈模式
-			rn, err := t.mapReg(inst.Rn)
-			if err != nil {
-				return 0, err
-			}
-			rm, err := t.mapReg(inst.Rm)
-			if err != nil {
-				return 0, err
-			}
-			if op == ADDS_REG {
-				// CMN: VLOAD(rn) VLOAD(rm) S_ADD PUSH(0) S_CMP DROP
-				t.pushRegOrZero(inst.Rn, rn)
-				t.pushRegOrZero(inst.Rm, rm)
-				t.emitOp(vm.OpSAdd)
-				t.sPushImm32(0)
-				t.emitOp(vm.OpSCmp)
-				t.sDrop()
-			} else {
-				// CMP: VLOAD(rn) VLOAD(rm) S_CMP
-				t.pushRegOrZero(inst.Rn, rn)
-				t.pushRegOrZero(inst.Rm, rm)
-				t.emitOp(vm.OpSCmp)
-			}
-			return 0, nil
-		}
 		if op == ADDS_REG {
 			return 0, t.trStackAluRegFlags(inst, vm.OpSAdd, true)
 		}
 		return 0, t.trStackAluRegFlags(inst, vm.OpSSub, true)
 
 	case ANDS_REG:
-		if inst.Rd == vm.REG_XZR {
-			// TST Xn, Xm — 栈模式
-			rn, err := t.mapReg(inst.Rn)
-			if err != nil {
-				return 0, err
-			}
-			rm, err := t.mapReg(inst.Rm)
-			if err != nil {
-				return 0, err
-			}
-			t.pushRegOrZero(inst.Rn, rn)
-			t.pushRegOrZero(inst.Rm, rm)
-			t.emitOp(vm.OpSAnd)
-			t.sPushImm32(0)
-			t.emitOp(vm.OpSCmp)
-			t.sDrop()
-			return 0, nil
-		}
-		return 0, t.trStackAluReg(inst, vm.OpSAnd)
+		return 0, t.trStackAluRegFlags(inst, vm.OpSAnd, true)
 
 	case BIC:
 		return 0, t.trStackBitLogicalNot(inst, vm.OpSAnd, false)
@@ -488,7 +479,7 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	case UMSUBL:
 		return 0, t.trStackUMADDL(inst, true)
 	case UMULH:
-		return 0, t.trStackUnary(inst, vm.OpSUmulh) // UMULH 是二元但不设 flags
+		return 0, t.trStackAluReg(inst, vm.OpSUmulh)
 
 	// ========== 扩展寄存器加减 (T4) — 栈模式 ==========
 	case ADD_EXT:
@@ -572,19 +563,32 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 
 	// ========== SIMD LD1/ST1 ==========
 	case LD1_16B:
+		vd, err := t.mapReg(inst.Rd)
+		if err != nil {
+			return 0, err
+		}
 		rn, err := t.mapReg(inst.Rn)
 		if err != nil {
 			return 0, err
 		}
-		t.emitOp(vm.OpVld16, rn)
+		t.emitOp(vm.OpVld16, vd, rn)
 		t.code = append(t.code, byte(inst.Imm))
 		return 0, nil
+	case FPSIMD_NATIVE:
+		t.fpSIMDInstructions[inst.Raw] = true
+		t.emitOp(vm.OpFPSIMD)
+		t.emitU32(inst.Raw)
+		return 0, nil
 	case ST1_16B:
+		vd, err := t.mapReg(inst.Rd)
+		if err != nil {
+			return 0, err
+		}
 		rn, err := t.mapReg(inst.Rn)
 		if err != nil {
 			return 0, err
 		}
-		t.emitOp(vm.OpVst16, rn)
+		t.emitOp(vm.OpVst16, vd, rn)
 		t.code = append(t.code, byte(inst.Imm))
 		return 0, nil
 
@@ -593,35 +597,36 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 		return 0, t.trStackEXTR(inst)
 
 	// ========== NOP 化指令 (Batch 4/6/7) ==========
-	case DMB, DSB, ISB, WFE, WFI, YIELD_ARM, CLREX, MSR_WRITE, PRFM:
-		t.emitOp(vm.OpNop)
+	case DMB, DSB, ISB:
+		kind := byte(op - DMB)
+		option := byte((inst.Raw >> 8) & 0xf)
+		t.emitOp(vm.OpBarrier, kind, option)
 		return 0, nil
+	case WFE, WFI, YIELD_ARM, CLREX, MSR_WRITE, PRFM:
+		return 0, fmt.Errorf("native system semantics require a validated thunk")
 	case HLT, BRK:
 		t.emitOp(vm.OpHalt)
 		return 0, nil
 
 	// ========== Acquire/Release (Batch 5) ==========
-	case LDAR, LDAXR:
-		return 0, t.trLdar(inst)
-	case STLR:
-		return 0, t.trStlr(inst)
-	case STLXR:
-		return 0, t.trStlxr(inst)
+	case LDAXR, STLXR:
+		return 0, fmt.Errorf("acquire/release or exclusive semantics require a validated native thunk")
+	case LDAR, STLR, LDADD, CAS:
+		return 0, t.trAtomic(inst)
 
 	// ========== LDPSW (Batch 8) ==========
 	case LDPSW:
 		return 0, t.trStackLdpsw(inst)
 
-	// ========== Atomic LSE (Batch 8) ==========
-	case LDADD:
-		return 0, t.trStackLdadd(inst)
-	case CAS:
-		return 0, t.trStackCas(inst)
 	// ========== PAC/BTI NOP化 ==========
 	case PACIASP, AUTIASP, PACIAZ, AUTIAZ, PACIBSP, AUTIBSP, XPACLRI:
-		t.emitOp(vm.OpNop)
+		kind := map[Op]byte{PACIASP: 0, AUTIASP: 1, PACIAZ: 2, AUTIAZ: 3,
+			PACIBSP: 4, AUTIBSP: 5, XPACLRI: 6}[op]
+		t.emitOp(vm.OpPAuth, kind)
 		return 0, nil
 	case BTI_C, BTI_J, BTI_JC, BTI:
+		t.entryBTI = op
+		t.hasEntryBTI = true
 		t.emitOp(vm.OpNop)
 		return 0, nil
 

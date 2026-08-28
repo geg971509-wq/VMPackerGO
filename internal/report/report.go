@@ -45,6 +45,11 @@ type Report struct {
 	Mode                string     `json:"mode"`
 	TargetKind          string     `json:"target_kind,omitempty"`
 	DevelopmentStrategy string     `json:"development_strategy,omitempty"`
+	OpcodeMapDigest     string     `json:"opcode_map_digest,omitempty"`
+	RuntimeStrategy     string     `json:"runtime_strategy,omitempty"`
+	SegmentStrategy     string     `json:"segment_strategy,omitempty"`
+	VeneerStrategy      string     `json:"veneer_strategy,omitempty"`
+	UnwindStrategy      string     `json:"unwind_strategy,omitempty"`
 	Functions           []Function `json:"functions"`
 	OutputSHA256        string     `json:"output_sha256,omitempty"`
 	Status              string     `json:"status"`
@@ -92,6 +97,8 @@ func New(version, commit, input, output, mode string, selections []Selection) Re
 func (r *Report) Success(result elfpacker.Result) {
 	r.TargetKind = string(result.TargetKind)
 	r.DevelopmentStrategy = result.DevelopmentStrategy
+	r.OpcodeMapDigest = result.OpcodeMapDigest
+	r.RuntimeStrategy = result.RuntimeStrategy
 	r.Limitations = append(r.Limitations, result.AnalysisLimitations...)
 	r.Warnings = append([]string(nil), result.Warnings...)
 	for i := range r.Functions {
@@ -128,6 +135,12 @@ func (r *Report) Fail(err error, result elfpacker.Result) {
 	}
 	if result.DevelopmentStrategy != "" {
 		r.DevelopmentStrategy = result.DevelopmentStrategy
+	}
+	if result.OpcodeMapDigest != "" {
+		r.OpcodeMapDigest = result.OpcodeMapDigest
+	}
+	if result.RuntimeStrategy != "" {
+		r.RuntimeStrategy = result.RuntimeStrategy
 	}
 	if len(result.AnalysisLimitations) != 0 {
 		r.Limitations = append(r.Limitations, result.AnalysisLimitations...)

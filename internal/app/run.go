@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,15 +11,18 @@ import (
 	elfpacker "github.com/vmpacker/internal/elf"
 	"github.com/vmpacker/internal/publish"
 	"github.com/vmpacker/internal/report"
+	vmruntime "github.com/vmpacker/internal/runtime"
+	"github.com/vmpacker/internal/vm"
 )
 
 type Processor func(elfpacker.Request) (elfpacker.Result, error)
+type RuntimeBuilder func(context.Context, vmruntime.BuildConfig) (*vmruntime.Image, error)
 
 type Config struct {
-	InterpBlob []byte
-	Version    string
-	Commit     string
-	Process    Processor
+	Version      string
+	Commit       string
+	Process      Processor
+	BuildRuntime RuntimeBuilder
 }
 
 type exitError struct {
@@ -81,11 +85,6 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 		return elfpacker.PrintELFInfo(input, opts.Input, opts.Mode, stdout)
 	}
 	opts.InputMode = mode
-	processor := cfg.Process
-	if processor == nil {
-		processor = elfpacker.Process
-	}
-
 	selections := make([]report.Selection, len(opts.Selected))
 	for i, selected := range opts.Selected {
 		selections[i] = report.Selection{
@@ -113,11 +112,52 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 		}
 		analysisSelections = append(analysisSelections, selection)
 	}
-	result, transformErr := processor(elfpacker.Request{
+	request := elfpacker.Request{
 		Context: ctx, Input: input, Selections: analysisSelections, Mode: opts.Mode,
 		Verbose: opts.Verbose, Strip: opts.Strip, Debug: opts.DebugMap != "",
-		InterpBlob: cfg.InterpBlob, Log: stdout,
-	})
+		Log: stdout,
+	}
+	var result elfpacker.Result
+	var transformErr error
+	if cfg.Process != nil {
+		result, transformErr = cfg.Process(request)
+	} else {
+		analysis, analysisErr := elfpacker.Analyze(request)
+		if analysisErr != nil {
+			result = elfpacker.Result{
+				TargetKind: analysis.TargetKind, AnalysisLimitations: analysis.Limitations, Warnings: analysis.Warnings,
+			}
+			transformErr = analysisErr
+		} else {
+			result = elfpacker.Result{
+				TargetKind: analysis.TargetKind, AnalysisLimitations: analysis.Limitations, Warnings: analysis.Warnings,
+			}
+			entropy, entropyErr := runEntropy(opts.Seed)
+			if entropyErr != nil {
+				transformErr = entropyErr
+			} else {
+				opcodes, opcodeErr := vm.NewOpcodeMap(entropy)
+				if opcodeErr != nil {
+					transformErr = fmt.Errorf("create per-pack opcode map: %w", opcodeErr)
+				} else {
+					digest, _ := opcodes.Digest()
+					result.OpcodeMapDigest = hex.EncodeToString(digest[:])
+					builder := cfg.BuildRuntime
+					if builder == nil {
+						builder = vmruntime.Build
+					}
+					image, buildErr := builder(ctx, vmruntime.BuildConfig{NDKDir: opts.NDK, Opcodes: opcodes})
+					if buildErr != nil {
+						transformErr = buildErr
+					} else {
+						request.Opcodes = opcodes
+						request.RuntimeImage = image
+						result, transformErr = elfpacker.ProcessAnalyzed(request, analysis)
+					}
+				}
+			}
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

@@ -31,7 +31,7 @@ type opcodeGolden struct {
 	branchTargetOffset int
 }
 
-var opcodeGoldenTable = [115]opcodeGolden{
+var opcodeGoldenTable = [131]opcodeGolden{
 	{0, 0xC3, "NOP", 1, "OP_NOP", -1},
 	{1, 0x5A, "MOV_IMM64", 10, "OP_MOV_IMM", -1},
 	{2, 0x49, "MOV_IMM32", 6, "OP_MOV_IMM32", -1},
@@ -85,8 +85,8 @@ var opcodeGoldenTable = [115]opcodeGolden{
 	{50, 0xCD, "BR_REG", 2, "OP_BR_REG", -1},
 	{51, 0xEE, "RET", 2, "OP_RET", -1},
 	{52, 0x00, "HALT", 1, "OP_HALT", -1},
-	{53, 0xC1, "VLD16", 3, "OP_VLD16", -1},
-	{54, 0xC2, "VST16", 3, "OP_VST16", -1},
+	{53, 0xC1, "VLD16", 4, "OP_VLD16", -1},
+	{54, 0xC2, "VST16", 4, "OP_VST16", -1},
 	{55, 0x16, "TBZ", 7, "OP_TBZ", 3},
 	{56, 0x17, "TBNZ", 7, "OP_TBNZ", 3},
 	{57, 0x18, "CCMP_REG", 6, "OP_CCMP_REG", -1},
@@ -147,11 +147,27 @@ var opcodeGoldenTable = [115]opcodeGolden{
 	{112, 0x95, "S_ST16", 1, "OP_S_ST16", -1},
 	{113, 0x96, "S_ST32", 1, "OP_S_ST32", -1},
 	{114, 0x97, "S_ST64", 1, "OP_S_ST64", -1},
+	{115, 0x2E, "JCOND", 6, "OP_JCOND", 2},
+	{116, 0x30, "S_ADD_FLAGS", 2, "OP_S_ADD_FLAGS", -1},
+	{117, 0x31, "S_SUB_FLAGS", 2, "OP_S_SUB_FLAGS", -1},
+	{118, 0x32, "S_AND_FLAGS", 2, "OP_S_AND_FLAGS", -1},
+	{119, 0x33, "S_ADC_FLAGS", 2, "OP_S_ADC_FLAGS", -1},
+	{120, 0x34, "S_SBC_FLAGS", 2, "OP_S_SBC_FLAGS", -1},
+	{121, 0x35, "CBZ", 6, "OP_CBZ", 2},
+	{122, 0x38, "CBNZ", 6, "OP_CBNZ", 2},
+	{123, 0x39, "MOV_IMAGE", 10, "OP_MOV_IMAGE", -1},
+	{124, 0x3A, "S_PUSH_IMAGE", 9, "OP_S_PUSH_IMAGE", -1},
+	{125, 0x3B, "CALL_IMAGE", 9, "OP_CALL_IMAGE", -1},
+	{126, 0x3E, "PAUTH", 2, "OP_PAUTH", -1},
+	{127, 0x40, "BARRIER", 3, "OP_BARRIER", -1},
+	{128, 0x41, "ATOMIC", 7, "OP_ATOMIC", -1},
+	{129, 0x42, "EXCLUSIVE", 5, "OP_EXCLUSIVE", -1},
+	{130, 0x43, "FPSIMD", 5, "OP_FPSIMD", -1},
 }
 
 func TestOpcodeMetadataMatchesLegacyGoldenTable(t *testing.T) {
-	if len(opcodeGoldenTable) != 115 {
-		t.Fatalf("golden table has %d entries, want 115", len(opcodeGoldenTable))
+	if len(opcodeGoldenTable) != 131 {
+		t.Fatalf("golden table has %d entries, want 131", len(opcodeGoldenTable))
 	}
 	if OpcodeCount != Opcode(len(opcodeGoldenTable)) {
 		t.Fatalf("OpcodeCount = %d, want %d golden entries", OpcodeCount, len(opcodeGoldenTable))
@@ -227,8 +243,8 @@ func TestOpcodeMetadataMatchesLegacyGoldenTable(t *testing.T) {
 }
 
 func TestOpcodeDefinitions(t *testing.T) {
-	if OpcodeCount != 115 || len(opcodeDefinitions) != 115 {
-		t.Fatalf("got %d constants and %d definitions, want 115", OpcodeCount, len(opcodeDefinitions))
+	if OpcodeCount != 131 || len(opcodeDefinitions) != 131 {
+		t.Fatalf("got %d constants and %d definitions, want 131", OpcodeCount, len(opcodeDefinitions))
 	}
 
 	semantics := map[Opcode]bool{}
@@ -393,8 +409,8 @@ func TestOpcodeMapCHeader(t *testing.T) {
 		}
 		defines[fields[1]] = true
 	}
-	if len(defines) != 115 {
-		t.Fatalf("got %d OP_* defines, want 115", len(defines))
+	if len(defines) != 131 {
+		t.Fatalf("got %d OP_* defines, want 131", len(defines))
 	}
 	for _, def := range opcodeDefinitions {
 		if !defines[def.CMacro] {

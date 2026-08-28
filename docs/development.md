@@ -22,8 +22,8 @@ The trimmed value must be `29.0.14206865`.
 ## Repository checks
 
 ```sh
-make android-stub ANDROID_NDK=/path/to/android-ndk-r29
-make packer ANDROID_NDK=/path/to/android-ndk-r29
+make packer
+make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 go list ./...
 go test -count=1 ./...
 go vet ./cmd/vmpacker ./internal/...
@@ -38,16 +38,16 @@ The default contract check covers completed Phase 0-2 product-scope and applicat
 bash scripts/check-contract.sh --release
 ```
 
-Release mode is expected to report the fixed `cmd/vmpacker/vm_interp.bin` embedding as a deferred Phase 4 blocker until the later runtime-template phase removes it.
+The contract guard rejects any reintroduction of the removed fixed blob, flat-blob generator, or legacy runtime-template path. Release mode remains an explicit failure while Phase 5-11 implementation and physical-device evidence are incomplete.
 
 ## Current build
 
 ```sh
-make android-stub ANDROID_NDK=/path/to/android-ndk-r29
-make mac-cli ANDROID_NDK=/path/to/android-ndk-r29
+make mac-cli
+make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 ```
 
-The selected NDK's `source.properties` must contain revision 29.0.14206865. The resulting development CLI is `dist/vmpacker-darwin-arm64` with `dist/vmpacker` as the direct runner. The fixed embedded interpreter blob is retained only to keep the existing build functional during Phase 0-1; it is not release-compliant.
+The selected NDK's `source.properties` must contain revision 29.0.14206865. The resulting development CLI is `dist/vmpacker-darwin-arm64` with `dist/vmpacker` as the direct runner. Runtime sources are embedded and rebuilt per invocation; the current post-validation boundary intentionally requires the Phase 8 rewrite planner before an artifact can be produced.
 
 Independent fixtures remain under `testdata/android/`. Active host/native smoke entry points are:
 

@@ -128,9 +128,19 @@ func disasmOne(code []byte, pc int, opcodeMap OpcodeMap) (string, int, error) {
 		return fmt.Sprintf("%04X: RET R%d", pc, code[pc+1]), 2, nil
 
 	case OpVld16:
-		return fmt.Sprintf("%04X: VLD16 R%d, %d", pc, code[pc+1], code[pc+2]), 3, nil
+		return fmt.Sprintf("%04X: VLD16 V%d, R%d, %d", pc, code[pc+1], code[pc+2], code[pc+3]), 4, nil
 	case OpVst16:
-		return fmt.Sprintf("%04X: VST16 R%d, %d", pc, code[pc+1], code[pc+2]), 3, nil
+		return fmt.Sprintf("%04X: VST16 V%d, R%d, %d", pc, code[pc+1], code[pc+2], code[pc+3]), 4, nil
+	case OpBarrier:
+		return fmt.Sprintf("%04X: BARRIER %d, %d", pc, code[pc+1], code[pc+2]), 3, nil
+	case OpAtomic:
+		return fmt.Sprintf("%04X: ATOMIC %d, %d, %d, R%d, R%d, R%d", pc, code[pc+1], code[pc+2], code[pc+3], code[pc+4], code[pc+5], code[pc+6]), 7, nil
+	case OpExclusive:
+		id := binary.LittleEndian.Uint32(code[pc+1:])
+		return fmt.Sprintf("%04X: EXCLUSIVE 0x%08X", pc, id), 5, nil
+	case OpFPSIMD:
+		raw := binary.LittleEndian.Uint32(code[pc+1:])
+		return fmt.Sprintf("%04X: FPSIMD 0x%08X", pc, raw), 5, nil
 
 	case OpTbz, OpTbnz:
 		reg := code[pc+1]

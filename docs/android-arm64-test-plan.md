@@ -5,32 +5,27 @@ This plan covers independent AArch64 ELF64 shared objects and native executables
 ## Tier 0: repository checks
 
 ```sh
-make android-stub ANDROID_NDK=/path/to/android-ndk-r29
-make packer ANDROID_NDK=/path/to/android-ndk-r29
+make packer
+make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 go list ./...
 go test ./...
-go vet ./cmd/vmpacker ./internal/...
+go vet ./...
 bash -n scripts/*.sh
 bash scripts/check-contract.sh
 ```
 
-Phase 3 adds generated ELF fixtures for malformed tables/ranges, symtab/dynsym merge, explicit ranges, CFG inference/rejection, selection limits, bytecode limits, and no-panic fuzz seeds. `bash scripts/check-contract.sh --release` is expected to fail while the fixed embedded interpreter blob remains a deferred runtime-template blocker.
+Phase 3 adds generated ELF fixtures for malformed tables/ranges, symtab/dynsym merge, explicit ranges, CFG inference/rejection, selection limits, bytecode limits, and no-panic fuzz seeds. Phase 4 removes the fixed blob and validates an exact-r29 relocatable runtime before the explicit Phase 8 planner boundary.
 
-## Tier 1: host transformation
+## Tier 1: host pipeline validation
 
-1. Build the Android API 23 interpreter blob and macOS ARM64 CLI.
+1. Build the macOS ARM64 CLI and validate the Android API 23 relocatable runtime with exact NDK r29.
 2. Build repository fixtures with `make android-fixtures`.
-3. Run `make mac-so-pack-smoke`.
-4. Confirm the output remains an AArch64 shared object and the report records `target_kind: android-so`, the current `development_strategy`, and `status: ok`.
-5. Repeat with the no-note shared-object fixture and confirm `development_strategy: add-segment`.
+3. Run the development CLI with a requested report and confirm it records the target, `opcode_map_digest`, `runtime_strategy: ndk-r29-et-rel-validated`, and the explicit `Phase 8 rewrite planner required` failure.
+4. Confirm that no artifact or debug map is published and the input remains byte-for-byte unchanged.
 
 ## Tier 2: native executable device smoke
 
-1. Connect an authorized `arm64-v8a` test device with API 23 or newer.
-2. Run `make android-native-smoke`.
-3. Run `make android-addsegment-native-smoke`.
-4. Compare baseline and transformed stdout and exit status.
-5. Capture crashes, linker failures, signal failures, and relevant SELinux diagnostics.
+This tier resumes only after the Phase 8 writer is implemented and independently verified. Then connect authorized physical `arm64-v8a` devices, compare baseline and transformed behavior, and capture linker, signal, unwind, and SELinux diagnostics.
 
 Root access is optional diagnostic tooling and must not become a runtime requirement.
 
@@ -39,7 +34,7 @@ Root access is optional diagnostic tooling and must not become a runtime require
 - Android API 23 and representative later API levels.
 - 4 KiB and 16 KiB page-size devices.
 - Shared object, PIE, and `ET_EXEC` inputs.
-- Note-hijack and conservative add-segment layouts.
+- Plan-first layouts with 4 KiB/16 KiB-compatible LOAD alignment and far-branch veneers; note hijacking is forbidden.
 - BTI-enabled and PAC-enabled binaries and devices.
 - Every supported translated instruction plus explicit rejection for unsupported instructions.
 - Repeatable loading and execution on physical devices.

@@ -2,6 +2,8 @@ name: Verification
 
 on:
   push:
+    branches:
+      - master
   pull_request:
   workflow_dispatch:
 
@@ -10,20 +12,20 @@ permissions:
 
 jobs:
   verify:
-    name: Go checks (macOS ARM64)
-    runs-on: macos-14-xlarge
+    name: Go checks (macOS)
+    runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Contract checks
         run: |
           bash -n scripts/*.sh
           bash scripts/check-contract.sh
           bash scripts/check-contract-test.sh
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: Verify host architecture
-        run: test "$(uname -s)" = Darwin && test "$(uname -m)" = arm64
+        run: test "$(uname -s)" = Darwin
       - name: Verify exact Android NDK
         shell: bash
         run: |
@@ -56,18 +58,40 @@ jobs:
           done
 
           if [[ -z "$ndk" ]]; then
-            printf '::error::Android NDK %s is required but was not found. Install that exact revision on this macOS ARM64 runner or set ANDROID_NDK_ROOT to it. Checked: %s\n' "$expected" "${checked[*]}"
-            exit 1
+            sdkmanager="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+            if [[ ! -x "$sdkmanager" ]]; then
+              sdkmanager="$(command -v sdkmanager || true)"
+            fi
+            if [[ -z "$sdkmanager" ]]; then
+              printf '::error::Android NDK %s was not found and sdkmanager is unavailable. Checked: %s\n' "$expected" "${checked[*]}"
+              exit 1
+            fi
+            "$sdkmanager" "ndk;$expected"
+            sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+            ndk="$sdk_root/ndk/$expected"
+            [[ -f "$ndk/source.properties" ]] || { printf '::error::sdkmanager did not install Android NDK %s\n' "$expected"; exit 1; }
           fi
-          printf 'ANDROID_NDK=%s\n' "$ndk" >> "$GITHUB_ENV"
+          {
+            printf 'ANDROID_NDK=%s\n' "$ndk"
+            printf 'ANDROID_NDK_HOME=%s\n' "$ndk"
+            printf 'ANDROID_NDK_ROOT=%s\n' "$ndk"
+            printf 'NDK_HOME=%s\n' "$ndk"
+          } >> "$GITHUB_ENV"
           printf 'Using Android NDK %s at %s\n' "$expected" "$ndk"
-      - name: Build current NDK runtime and transitional blob
-        run: make android-stub ANDROID_NDK="$ANDROID_NDK"
       - name: Go list
         run: go list ./...
       - name: Go test
         run: go test -count=1 ./...
+      - name: Go race test
+        run: go test -race -count=1 ./...
+      - name: Derive exact-r29 FP/SIMD corpus
+        run: |
+          corpus="$RUNNER_TEMP/fpsimd-r29.tsv"
+          bash scripts/derive-fpsimd-corpus.sh "$ANDROID_NDK" > "$corpus"
+          VMPACKER_FPSIMD_CORPUS="$corpus" go test -count=1 -run TestExactR29FPSIMDCorpusClosesWhitelist ./internal/arch/arm64
+      - name: Build and validate exact-r29 runtime
+        run: go test -count=1 -run TestBuildInstalledExactR29Object ./internal/runtime
       - name: Go vet
-        run: go vet ./cmd/vmpacker ./internal/...
+        run: go vet ./...
       - name: Go build
         run: go build ./cmd/vmpacker

@@ -4,7 +4,7 @@
 
 ## Status and official product
 
-This is the complete approved TARGET contract. The current Phase 0-3 development tree implements the application boundary, explicit entry ABI/manifest, bounded input, report v1, atomic publication, guarded Android AArch64 ELF analysis, symtab/dynsym selection, strict ranges, and conservative single-address CFG inference. Later runtime, instruction-semantic, writer, and release gates are not claimed as passing. Requirements below describe acceptance criteria, not current behavior.
+This is the complete approved TARGET contract. The current development tree implements the Phase 0-3 boundary, Phase 5 host semantic fixes, an embedded-source exact-r29 validated `ET_REL` runtime, the Phase 6 host AAPCS64/native-atomic/FP-SIMD/closed-exclusive implementation, bounded unwind metadata parsing, and the exact 85-demo manifest. It deliberately stops before translation or mutation until the Phase 8 plan-first writer exists. Physical-device Phase 5/6 evidence, final unwind integration, writer, packing, and release gates are not claimed as passing. Requirements below describe acceptance criteria, not current behavior.
 
 The official VMPacker product is a macOS ARM64 command-line application for independent Android AArch64 ELF64 binaries. Accepted inputs are:
 

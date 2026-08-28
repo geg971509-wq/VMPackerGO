@@ -118,12 +118,14 @@ func (t *Translator) trStackAluRegFlags(inst vm.Instruction, sOp vm.Opcode, setF
 		t.pushRegOrZero(inst.Rm, rm)
 	}
 
-	t.emitOp(sOp)
-
 	if setFlags {
-		t.sDup()            // duplicate result for CMP
-		t.sPushImm32(0)     // push 0
-		t.emitOp(vm.OpSCmp) // compare result with 0 → set flags
+		flagsOp, err := stackFlagOpcode(sOp)
+		if err != nil {
+			return err
+		}
+		t.emitOp(flagsOp, boolByte(inst.SF))
+	} else {
+		t.emitOp(sOp)
 	}
 
 	if !inst.SF {
@@ -158,12 +160,14 @@ func (t *Translator) trStackAluImmFlags(inst vm.Instruction, sOp vm.Opcode, setF
 	t.pushRegOrZero(inst.Rn, rn)
 	t.sPushImm(uint64(inst.Imm))
 
-	t.emitOp(sOp)
-
 	if setFlags {
-		t.sDup()
-		t.sPushImm32(0)
-		t.emitOp(vm.OpSCmp)
+		flagsOp, err := stackFlagOpcode(sOp)
+		if err != nil {
+			return err
+		}
+		t.emitOp(flagsOp, boolByte(inst.SF))
+	} else {
+		t.emitOp(sOp)
 	}
 
 	if !inst.SF {
@@ -279,7 +283,8 @@ func (t *Translator) trStackCmp(inst vm.Instruction) error {
 
 	t.pushRegOrZero(inst.Rn, rn)
 	t.pushRegOrZero(inst.Rm, rm)
-	t.emitOp(vm.OpSCmp)
+	t.emitOp(vm.OpSSubFlags, boolByte(inst.SF))
+	t.sDrop()
 	return nil
 }
 
@@ -292,7 +297,8 @@ func (t *Translator) trStackCmpImm(inst vm.Instruction) error {
 
 	t.pushRegOrZero(inst.Rn, rn)
 	t.sPushImm(uint64(inst.Imm))
-	t.emitOp(vm.OpSCmp)
+	t.emitOp(vm.OpSSubFlags, boolByte(inst.SF))
+	t.sDrop()
 	return nil
 }
 
@@ -539,19 +545,18 @@ func (t *Translator) trStackCBZ(inst vm.Instruction, isZero bool) error {
 		return err
 	}
 
-	// 纯栈比较: VLOAD(rd) PUSH(0) S_CMP
-	t.sVload(rd)
-	t.sPushImm32(0)
-	t.emitOp(vm.OpSCmp)
-
 	var vmOp vm.Opcode
 	if isZero {
-		vmOp = vm.OpJe
+		vmOp = vm.OpCbz
 	} else {
-		vmOp = vm.OpJne
+		vmOp = vm.OpCbnz
 	}
 
-	t.emitOp(vmOp)
+	encodedReg := rd
+	if inst.SF {
+		encodedReg |= 0x80
+	}
+	t.emitOp(vmOp, encodedReg)
 	fixPos := t.pos()
 	t.emitU32(0)
 	t.fixups = append(t.fixups, branchFixup{vmOffset: fixPos, arm64Target: target})
@@ -623,50 +628,19 @@ func (t *Translator) trStackCSEL(inst vm.Instruction) error {
 		return err
 	}
 
-	// 条件码映射
-	var vmOp vm.Opcode
-	switch inst.Cond {
-	case COND_EQ:
-		vmOp = vm.OpJe
-	case COND_NE:
-		vmOp = vm.OpJne
-	case COND_LT:
-		vmOp = vm.OpJl
-	case COND_GE:
-		vmOp = vm.OpJge
-	case COND_GT:
-		vmOp = vm.OpJgt
-	case COND_LE:
-		vmOp = vm.OpJle
-	case COND_CS:
-		vmOp = vm.OpJae
-	case COND_CC:
-		vmOp = vm.OpJb
-	case COND_HI:
-		vmOp = vm.OpJa
-	case COND_LS:
-		vmOp = vm.OpJbe
-	case COND_MI:
-		vmOp = vm.OpJl
-	case COND_PL:
-		vmOp = vm.OpJge
-	default:
+	if inst.Cond < 0 || inst.Cond > 0xF {
 		return fmt.Errorf("CSEL: unsupported condition code 0x%X", inst.Cond)
 	}
-
-	// CSEL 的分支逻辑不能用栈操作改写（它用 VM 分支指令）
-	// 但 XZR 处理改为栈模式 push 0
-	if inst.Rn == vm.REG_XZR {
-		t.sPushImm32(0)
-		t.sVstore(rn)
-	}
-	if inst.Rm == vm.REG_XZR {
-		t.sPushImm32(0)
-		t.sVstore(rm)
+	storeResult := func() {
+		if inst.Rd == vm.REG_XZR {
+			t.sDrop()
+		} else {
+			t.sVstore(rd)
+		}
 	}
 
 	// 条件跳转到 true 路径
-	t.emitOp(vmOp)
+	t.emitOp(vm.OpJCond, byte(inst.Cond))
 	jccPos := t.pos()
 	t.emitU32(0)
 
@@ -675,26 +649,26 @@ func (t *Translator) trStackCSEL(inst vm.Instruction) error {
 	switch op {
 	case CSINC:
 		// Rd = Rm + 1
-		t.sVload(rm)
+		t.pushRegOrZero(inst.Rm, rm)
 		t.sPushImm32(1)
 		t.emitOp(vm.OpSAdd)
-		t.sVstore(rd)
+		storeResult()
 	case CSINV:
 		// Rd = ~Rm
-		t.sVload(rm)
+		t.pushRegOrZero(inst.Rm, rm)
 		t.emitOp(vm.OpSNot)
-		t.sVstore(rd)
+		storeResult()
 	case CSNEG:
 		// Rd = ~Rm + 1 (= -Rm)
-		t.sVload(rm)
+		t.pushRegOrZero(inst.Rm, rm)
 		t.emitOp(vm.OpSNot)
 		t.sPushImm32(1)
 		t.emitOp(vm.OpSAdd)
-		t.sVstore(rd)
+		storeResult()
 	default:
 		// CSEL: Rd = Rm
-		t.sVload(rm)
-		t.sVstore(rd)
+		t.pushRegOrZero(inst.Rm, rm)
+		storeResult()
 	}
 
 	t.emitOp(vm.OpJmp)
@@ -703,8 +677,8 @@ func (t *Translator) trStackCSEL(inst vm.Instruction) error {
 
 	// true path: Rd = Rn
 	truePos := t.pos()
-	t.sVload(rn)
-	t.sVstore(rd)
+	t.pushRegOrZero(inst.Rn, rn)
+	storeResult()
 	endPos := t.pos()
 
 	binary.LittleEndian.PutUint32(t.code[jccPos:], uint32(truePos))
@@ -989,21 +963,9 @@ func (t *Translator) trStackLoadReg(inst vm.Instruction) error {
 		return err
 	}
 
-	s := (inst.Raw >> 12) & 1
-	size := (inst.Raw >> 30) & 3
-	shift := uint32(0)
-	if s == 1 {
-		shift = size
+	if err := t.emitRegisterOffsetAddress(inst, rn, rm); err != nil {
+		return err
 	}
-
-	// addr = Rn + (Rm << shift)
-	t.sVload(rn)
-	t.sVload(rm)
-	if shift > 0 {
-		t.sPushImm32(shift)
-		t.emitOp(vm.OpSShl)
-	}
-	t.emitOp(vm.OpSAdd) // addr on stack
 
 	op := Op(inst.Op)
 	var sLdOp vm.Opcode
@@ -1040,21 +1002,9 @@ func (t *Translator) trStackStoreReg(inst vm.Instruction) error {
 		return err
 	}
 
-	s := (inst.Raw >> 12) & 1
-	size := (inst.Raw >> 30) & 3
-	shift := uint32(0)
-	if s == 1 {
-		shift = size
+	if err := t.emitRegisterOffsetAddress(inst, rn, rm); err != nil {
+		return err
 	}
-
-	// addr = Rn + (Rm << shift)
-	t.sVload(rn)
-	t.sVload(rm)
-	if shift > 0 {
-		t.sPushImm32(shift)
-		t.emitOp(vm.OpSShl)
-	}
-	t.emitOp(vm.OpSAdd) // addr on stack
 
 	op := Op(inst.Op)
 	var sStOp vm.Opcode
@@ -1096,12 +1046,14 @@ func (t *Translator) trStackBitLogicalNot(inst vm.Instruction, sOp vm.Opcode, se
 	t.emitOp(vm.OpSNot) // NOT(shift(Rm))
 
 	// Rd = Rn OP NOT(shift(Rm))
-	t.emitOp(sOp)
-
 	if setFlags {
-		t.sDup()
-		t.sPushImm32(0)
-		t.emitOp(vm.OpSCmp)
+		flagsOp, err := stackFlagOpcode(sOp)
+		if err != nil {
+			return err
+		}
+		t.emitOp(flagsOp, boolByte(inst.SF))
+	} else {
+		t.emitOp(sOp)
 	}
 
 	if !inst.SF {
@@ -1176,12 +1128,14 @@ func (t *Translator) trStackAddSubExt(inst vm.Instruction, sOp vm.Opcode, setFla
 	}
 
 	// Rn op extend(Rm)
-	t.emitOp(sOp)
-
 	if setFlags {
-		t.sDup()
-		t.sPushImm32(0)
-		t.emitOp(vm.OpSCmp)
+		flagsOp, err := stackFlagOpcode(sOp)
+		if err != nil {
+			return err
+		}
+		t.emitOp(flagsOp, boolByte(inst.SF))
+	} else {
+		t.emitOp(sOp)
 	}
 
 	if !inst.SF {
@@ -1194,6 +1148,30 @@ func (t *Translator) trStackAddSubExt(inst vm.Instruction, sOp vm.Opcode, setFla
 		t.sVstore(rd)
 	}
 	return nil
+}
+
+func boolByte(v bool) byte {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+func stackFlagOpcode(op vm.Opcode) (vm.Opcode, error) {
+	switch op {
+	case vm.OpSAdd:
+		return vm.OpSAddFlags, nil
+	case vm.OpSSub:
+		return vm.OpSSubFlags, nil
+	case vm.OpSAnd:
+		return vm.OpSAndFlags, nil
+	case vm.OpSAdc:
+		return vm.OpSAdcFlags, nil
+	case vm.OpSSbc:
+		return vm.OpSSbcFlags, nil
+	default:
+		return 0, fmt.Errorf("stack operation %d has no architectural flag form", op)
+	}
 }
 
 // abs64 返回 int64 绝对值
@@ -1281,21 +1259,9 @@ func (t *Translator) trStackLoadRegSigned(inst vm.Instruction) error {
 		return err
 	}
 
-	s := (inst.Raw >> 12) & 1
-	size := (inst.Raw >> 30) & 3
-	shift := uint32(0)
-	if s == 1 {
-		shift = size
+	if err := t.emitRegisterOffsetAddress(inst, rn, rm); err != nil {
+		return err
 	}
-
-	// addr = Rn + (Rm << shift) on stack
-	t.sVload(rn)
-	t.sVload(rm)
-	if shift > 0 {
-		t.sPushImm32(shift)
-		t.emitOp(vm.OpSShl)
-	}
-	t.emitOp(vm.OpSAdd)
 
 	// load
 	op := Op(inst.Op)
@@ -1326,6 +1292,39 @@ func (t *Translator) trStackLoadRegSigned(inst vm.Instruction) error {
 	}
 
 	t.sVstore(rd)
+	return nil
+}
+
+func (t *Translator) emitRegisterOffsetAddress(inst vm.Instruction, rn, rm byte) error {
+	option := (inst.Raw >> 13) & 0x7
+	scaled := (inst.Raw>>12)&1 != 0
+
+	t.sVload(rn)
+	if inst.Rm == 31 || inst.Rm == vm.REG_XZR {
+		t.sPushImm32(0)
+	} else {
+		t.sVload(rm)
+	}
+
+	switch option {
+	case 2: // UXTW
+		t.emitOp(vm.OpSTrunc32)
+	case 3: // LSL (Xm)
+	case 6: // SXTW
+		t.emitOp(vm.OpSSext32)
+	case 7: // SXTX
+	default:
+		return fmt.Errorf("unsupported register-offset extend option %d", option)
+	}
+
+	if scaled {
+		shift := (inst.Raw >> 30) & 0x3
+		if shift > 0 {
+			t.sPushImm32(shift)
+			t.emitOp(vm.OpSShl)
+		}
+	}
+	t.emitOp(vm.OpSAdd)
 	return nil
 }
 
@@ -1812,10 +1811,17 @@ func (t *Translator) trStackLdrLiteral(inst vm.Instruction) error {
 		return err
 	}
 
-	absAddr := uint64(inst.Imm)
+	pc, err := addAddressDelta(t.funcAddr, int64(inst.Offset))
+	if err != nil {
+		return err
+	}
+	target, err := addAddressDelta(pc, inst.Imm)
+	if err != nil {
+		return err
+	}
 
-	// push absolute address on stack
-	t.sPushImm(absAddr)
+	// The rewrite planner patches the signed delta from the runtime anchor.
+	t.emitImageReference(vm.OpSPushImage, nil, target)
 
 	op := Op(inst.Op)
 	switch {

@@ -93,12 +93,21 @@ func matchAndDecode(raw uint32, patterns []InstrPattern, inst *vm.Instruction) b
 	for i := range patterns {
 		p := &patterns[i]
 		if raw&p.Mask == p.Value {
-			inst.Op = int(p.Op)
+			candidate := *inst
+			candidate.Op = int(p.Op)
 			fields := extractFields(raw, p.Fields)
-			applyCommonFields(fields, inst)
+			applyCommonFields(fields, &candidate)
 			if p.Post != nil {
-				p.Post(fields, inst)
+				p.Post(fields, &candidate)
 			}
+			// A broad architectural class may match reserved field values that
+			// belong to a more specific pattern later in the table. Post marks
+			// those candidates unsupported; continue instead of shadowing the
+			// later exact pattern.
+			if Op(candidate.Op) == UNSUPPORTED {
+				continue
+			}
+			*inst = candidate
 			return true
 		}
 	}
