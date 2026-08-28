@@ -27,7 +27,7 @@ Phases 0-3 remain implemented and verified. The interrupted Phase 4 work has bee
 
 This is not a packed-artifact implementation and is not release-ready. Phases 5-11 remain open.
 
-### Continuation status on the active draft PR
+### Continuation status after the original snapshot
 
 The product remains fail-closed at the Phase 8 boundary, but the following bounded slices have now been implemented and verified after the original handoff snapshot:
 
@@ -35,6 +35,7 @@ The product remains fail-closed at the Phase 8 boundary, but the following bound
 - Phase 6 host implementation: V0-V31, FPCR, FPSR, native-call metadata, an explicit PAC/BTI/CFI AAPCS64 bridge for X0-X8, shadow-stack arguments, V0-V7, and integer/vector returns; native domain-preserving DMB/DSB/ISB; native 1/2/4/8-byte LDAR/STLR/LSE LDADD/CAS helpers; an exact-r29 `-O0/-O2/-Oz` FP/SIMD corpus gate with a mask-based whitelist and per-observed-encoding state-preserving native thunks; and content-addressed continuous closed `LDAXR...STLXR` thunks. Unknown FP/SIMD encodings and unclosed, nested, branching, mismatched, or reserved-register exclusive regions fail closed. Every generated thunk carries BTI/CFI and is required to have an FDE. Real-r29 verification passed most recently in workflow run `33182811799`. The physical-device ABI/contention gate remains open.
 - Phase 7 parsing/modeling slice: bounded DW_EH_PE, CIE/FDE, `.eh_frame_hdr`, LSDA call-site/action/type/filter tables, original-PC-to-VM-landing-pad mapping, throw-capable native-call locations, content-addressed invoke-thunk plans, and single-call LSDA rebuilding with explicit final-layout type-info relocations. The complete hosted workflow passed in run `33184075553`. The runtime personality/invoke/landing assembly bridge, final FDE merge, and device hard gate remain open.
 - Phase 9 manifest slice: `demo/manifest.json` is the exact machine-readable inventory of 83 C, one Go, and one Rust source, with schema, path, uniqueness, count, and existence validation.
+- Host build entry point: root `build.sh` builds the current Git checkout through the canonical `make mac-cli` target, verifies an executable macOS ARM64 Mach-O, and confirms `dist/vmpacker-darwin-arm64` and `dist/vmpacker` are identical.
 
 Still open locally: the Android C++ personality/landing-pad bridge, the complete plan-first writer, actual packing of all 85 demos, and adversarial release rehearsal. The Phase 5/6 physical-device semantic, ABI, and multithreaded-contention gates, plus the canonical-module, Apple signing/notary, and independent-verifier gates in section 11, also remain open. No release-ready claim is permitted.
 

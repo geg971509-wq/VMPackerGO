@@ -43,11 +43,11 @@ The contract guard rejects any reintroduction of the removed fixed blob, flat-bl
 ## Current build
 
 ```sh
-make mac-cli
+./build.sh
 make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 ```
 
-The selected NDK's `source.properties` must contain revision 29.0.14206865. The resulting development CLI is `dist/vmpacker-darwin-arm64` with `dist/vmpacker` as the direct runner. Runtime sources are embedded and rebuilt per invocation; the current post-validation boundary intentionally requires the Phase 8 rewrite planner before an artifact can be produced.
+The root build entry point may be invoked from any working directory. It builds the current Git checkout through the canonical `make mac-cli` target, verifies that the result is an executable macOS ARM64 Mach-O, and confirms both output copies are identical. The selected NDK's `source.properties` must contain revision 29.0.14206865. The resulting development CLI is `dist/vmpacker-darwin-arm64` with `dist/vmpacker` as the direct runner. Runtime sources are embedded and rebuilt per invocation; the current post-validation boundary intentionally requires the Phase 8 rewrite planner before an artifact can be produced.
 
 Independent fixtures remain under `testdata/android/`. Active host/native smoke entry points are:
 

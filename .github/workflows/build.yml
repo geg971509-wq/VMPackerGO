@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Contract checks
         run: |
-          bash -n scripts/*.sh
+          bash -n build.sh scripts/*.sh
           bash scripts/check-contract.sh
           bash scripts/check-contract-test.sh
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -93,5 +93,5 @@ jobs:
         run: go test -count=1 -run TestBuildInstalledExactR29Object ./internal/runtime
       - name: Go vet
         run: go vet ./...
-      - name: Go build
-        run: go build ./cmd/vmpacker
+      - name: Build macOS ARM64 CLI
+        run: ./build.sh
