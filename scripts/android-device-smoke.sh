@@ -35,4 +35,4 @@ if [[ "${CHECK_ONLY}" == "1" ]]; then
   exit 0
 fi
 
-echo "[+] smoke target ready; build/install an APK that loads the protected arm64-v8a .so, then capture logcat around the JNI call."
+echo "[+] smoke target ready; run the independent AArch64 native fixture checks."

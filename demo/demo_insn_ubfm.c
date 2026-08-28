@@ -89,19 +89,19 @@ __attribute__((noinline)) int64_t check_ubfm3(void) {
 
 int main(void) {
     int64_t v = check_ubfm();
-    if (v == 1) { 
+    if (v == 1) {
         printf("PASS:UBFM\n");
     } else {
         printf("FAIL:UBFM r=%ld\n", v);
     }
     v = check_ubfm2();
-    if (v == 1) { 
+    if (v == 1) {
         printf("PASS:UBFM2\n");
     } else {
         printf("FAIL:UBFM2 r=%ld\n", v);
     }
     v = check_ubfm3();
-    if (v == 1) { 
+    if (v == 1) {
         printf("PASS:UBFM3\n");
     } else {
         printf("FAIL:UBFM3 r=%ld\n", v);

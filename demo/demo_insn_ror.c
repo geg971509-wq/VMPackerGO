@@ -17,7 +17,7 @@ __attribute__((noinline)) int check_ror(void){
 
 __attribute__((noinline)) int check_ror_w_all(void){
     int out1 = -1, out2 = -1, out3 = -1, out4 = -1;
-    
+
     // 用例1: 32位循环右移8位
     __asm__ volatile(
         "mov w1, #42\n"           // w1 = 42 (0x2A)
@@ -27,7 +27,7 @@ __attribute__((noinline)) int check_ror_w_all(void){
         : [o1] "=r"(out1)
         :
         : "w1", "w2", "w3", "memory", "cc");
-    
+
     // 用例2: 32位循环右移0位（应该不变）
     __asm__ volatile(
         "mov w1, #42\n"           // w1 = 42
@@ -37,7 +37,7 @@ __attribute__((noinline)) int check_ror_w_all(void){
         : [o2] "=r"(out2)
         :
         : "w1", "w2", "w3", "memory", "cc");
-    
+
     // 用例3: 32位循环右移16位
     __asm__ volatile(
         "mov w1, #0x5678\n"
@@ -48,7 +48,7 @@ __attribute__((noinline)) int check_ror_w_all(void){
         : [o3] "=r"(out3)
         :
         : "w1", "w2", "w3", "memory", "cc");
-    
+
     // 用例4: 32位循环右移31位（相当于左移1位）
     __asm__ volatile(
         "mov w1, #0x80000000\n"   // w1 = 0x80000000 (最高位为1)
@@ -58,9 +58,9 @@ __attribute__((noinline)) int check_ror_w_all(void){
         : [o4] "=r"(out4)
         :
         : "w1", "w2", "w3", "memory", "cc");
-    
+
     __asm__ volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;");
-    
+
     // 验证结果
     if (out1 == 0x2A000000) {        // 42 ROR 8 = 0x2A000000
         printf("ROR #8: 0x%08X (PASS)\n", out1);
@@ -68,28 +68,28 @@ __attribute__((noinline)) int check_ror_w_all(void){
         printf("ROR #8: 0x%08X (FAIL, expected 0x2A000000)\n", out1);
         return 0;
     }
-    
+
     if (out2 == 42) {
         printf("ROR #0: %d (PASS)\n", out2);
     } else {
         printf("ROR #0: %d (FAIL, expected 42)\n", out2);
         return 0;
     }
-    
+
     if (out3 == 0x56781234) {
         printf("ROR #16: 0x%08X (PASS)\n", out3);
     } else {
         printf("ROR #16: 0x%08X (FAIL, expected 0x56781234)\n", out3);
         return 0;
     }
-    
+
     if (out4 == 0x00000001) {
         printf("ROR #31: 0x%08X (PASS)\n", out4);
     } else {
         printf("ROR #31: 0x%08X (FAIL, expected 0x00000001)\n", out4);
         return 0;
     }
-    
+
     return 1;
 }
 

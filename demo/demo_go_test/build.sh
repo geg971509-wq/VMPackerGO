@@ -1,9 +1,9 @@
 #!/bin/bash
 # 交叉编译 Go 程序为 ARM64 Linux ELF (带符号表)
-# 
+#
 # 用法: bash demo/demo_go_test/build.sh
 #
-# 注意: 
+# 注意:
 #   -ldflags="-compressdwarf=false" 保留完整调试信息
 #   CGO_ENABLED=0 确保纯 Go 编译，无 C 依赖
 #   -gcflags="-N -l" 禁用优化和内联，保证函数不被优化掉

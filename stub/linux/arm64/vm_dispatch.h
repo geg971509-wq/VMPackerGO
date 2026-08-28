@@ -1,7 +1,6 @@
 /*
  * vm_dispatch.h — 间接 Dispatch 跳转表
  *
- * 当 VM_INDIRECT_DISPATCH 宏定义时启用。
  * 使用绝对函数指针数组，运行时在栈上填充，
  * 通过间接调用 handler，断裂 IDA 交叉引用。
  *
@@ -14,8 +13,6 @@
  */
 #ifndef VM_DISPATCH_H
 #define VM_DISPATCH_H
-
-#ifdef VM_INDIRECT_DISPATCH
 
 #include "vm_opcodes.h"
 #include "vm_sections.h"
@@ -626,5 +623,4 @@ __attribute__((noinline)) static void vm_init_jump_table(vm_handler_fn *tbl) {
   tbl[OP_S_ST64] = hw_s_st64;
 }
 
-#endif /* VM_INDIRECT_DISPATCH */
 #endif /* VM_DISPATCH_H */

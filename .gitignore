@@ -4,6 +4,7 @@
 cmd/vmpacker/vm_interp.bin
 
 # Local tool/cache artifacts
+.omc/
 .omx/tools/
 .codex/
 AGENTS.md

@@ -14,13 +14,11 @@ FUNC="${HOST_SO_FUNC:-Java_com_example_demo_NativeBridge_checkLicense}"
 
 rm -f "$OUTPUT_SO" "$REPORT" "$OUTPUT_SO.debug.txt"
 "$PACKER" \
-  -target android \
-  -android-mode so \
-  -injector auto \
-  -profile compat \
+  -mode so \
   -report "$REPORT" \
   -func "$FUNC" \
-  -debug \
+  -abi 'i32(ptr,ptr,i32)' \
+  -debug-map "$OUTPUT_SO.debug.txt" \
   -o "$OUTPUT_SO" \
   "$INPUT_SO"
 
@@ -35,7 +33,9 @@ with open(path, "r", encoding="utf-8") as f:
     report = json.load(f)
 assert report["status"] == "ok", report
 assert report["target_kind"] == "android-so", report
-assert report["injector_selected"] in ("note", "add-segment"), report
+assert report["schema_version"] == 1, report
+assert report["release_ready"] is False, report
+assert report["development_strategy"] in ("note", "add-segment"), report
 print(f"[+] host .so pack report ok: {path}")
 PY
 

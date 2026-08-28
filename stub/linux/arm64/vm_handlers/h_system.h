@@ -35,9 +35,7 @@ static inline u32 h_call_reg(vm_ctx_t *vm) {
 }
 
 /* BR_REG: BR Xn (寄存器间接跳转) [2B: op | rn]
- * 两种情况:
- *   1) 目标在被保护函数内 → computed goto, 查映射表做 VM 内部跳转
- *   2) 目标在函数外 → 尾调用, 当 native call 处理
+ * 内部目标查映射表并设置 vm->pc，外部目标按 native 尾调用处理。
  * 返回 0 表示已直接设置 vm->pc (内部跳转) */
 static inline u32 h_br_reg(vm_ctx_t *vm) {
   u8 rn = vm->bc[vm->pc + 1];
@@ -135,7 +133,7 @@ static inline u32 h_mrs(vm_ctx_t *vm) {
     break;
   case 0x5E82: /* TPIDR_EL0 - Software Thread ID */
     __asm__ volatile("mrs %0, tpidr_el0" : "=r"(val));
-    break;  
+    break;
   case 0x5E83: /* TPIDRRO_EL0 - Read-only Software Thread ID */
     __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(val));
     break;
