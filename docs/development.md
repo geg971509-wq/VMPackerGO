@@ -49,15 +49,13 @@ make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 
 The root build entry point may be invoked from any working directory. It builds the current Git checkout through the canonical `make mac-cli` target, verifies that the result is an executable macOS ARM64 Mach-O, and confirms both output copies are identical. The selected NDK's `source.properties` must contain revision 29.0.14206865. The resulting development CLI is `dist/vmpacker-darwin-arm64` with `dist/vmpacker` as the direct runner. Runtime sources are embedded and rebuilt per invocation; the current post-validation boundary intentionally requires the Phase 8 rewrite planner before an artifact can be produced.
 
-Independent fixtures remain under `testdata/android/`. Active host/native smoke entry points are:
+Independent fixtures remain under `testdata/android/`:
 
 ```sh
 make android-fixtures ANDROID_NDK=/path/to/android-ndk-r29
-make mac-so-pack-smoke ANDROID_NDK=/path/to/android-ndk-r29
-make android-native-smoke ANDROID_NDK=/path/to/android-ndk-r29
 ```
 
-The archived APK and GUI snapshots are unsupported and have isolated Go modules so root traversal excludes them.
+The archived APK, GUI, and packing-era snapshots are unsupported and have isolated Go modules so root traversal excludes them.
 
 ## Approved target contract
 
@@ -74,7 +72,7 @@ The authoritative complete target contract is [product-contract.md](product-cont
 
 Release claims require reproducible physical-device load and execution checks for API 23+, 4 KiB and 16 KiB page sizes, BTI, PAC, dynamic-linker behavior, and transformed entry/return behavior. These gates are not currently claimed as passing.
 
-The workflow retains `macos-14-xlarge` because this repository does not yet document entitlement to a standard macOS ARM64 runner label. Moving to another label is blocked until that runner availability is documented for this repository.
+The workflow currently uses `macos-14`. Changing the runner label is blocked until this repository documents entitlement to a specific macOS ARM64 runner.
 
 ## Scope discipline
 

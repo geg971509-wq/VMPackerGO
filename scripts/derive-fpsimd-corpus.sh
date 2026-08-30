@@ -13,7 +13,11 @@ properties="$ndk/source.properties"
 revision="$(awk -F= '$1 ~ /^[[:space:]]*Pkg.Revision[[:space:]]*$/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit }' "$properties")"
 [[ "$revision" == "$expected" ]] || { printf 'exact Android NDK revision %s is required\n' "$expected" >&2; exit 1; }
 
-bin="$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+host="${ANDROID_HOST_TAG:-darwin-x86_64}"
+if [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 && -d "$ndk/toolchains/llvm/prebuilt/darwin-arm64" ]]; then
+  host=darwin-arm64
+fi
+bin="$ndk/toolchains/llvm/prebuilt/$host/bin"
 clang="$bin/aarch64-linux-android23-clang"
 objdump="$bin/llvm-objdump"
 [[ -x "$clang" && -x "$objdump" ]] || { printf 'required absolute r29 tools are unavailable\n' >&2; exit 1; }

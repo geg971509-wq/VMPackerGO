@@ -1,7 +1,7 @@
 # Build outputs
 /build/
 /dist/
-cmd/vmpacker/vm_interp.bin
+/target/
 
 # Local tool/cache artifacts
 .omc/

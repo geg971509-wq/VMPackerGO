@@ -107,7 +107,7 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 		return nil, err
 	}
 
-	binDir := filepath.Join(cfg.NDKDir, "toolchains", "llvm", "prebuilt", "darwin-x86_64", "bin")
+	binDir := ndkBinDir(cfg.NDKDir)
 	clang, err := executableTool(binDir, "aarch64-linux-android23-clang")
 	if err != nil {
 		return nil, err
@@ -229,6 +229,15 @@ func validateNDK(root string) error {
 		}
 	}
 	return fmt.Errorf("Android NDK revision metadata is incomplete")
+}
+
+func ndkBinDir(ndkDir string) string {
+	prebuilt := filepath.Join(ndkDir, "toolchains", "llvm", "prebuilt")
+	arm64 := filepath.Join(prebuilt, "darwin-arm64", "bin")
+	if _, err := executableTool(arm64, "aarch64-linux-android23-clang"); err == nil {
+		return arm64
+	}
+	return filepath.Join(prebuilt, "darwin-x86_64", "bin")
 }
 
 func executableTool(binDir, name string) (string, error) {

@@ -22,6 +22,7 @@ VMPacker 只能提高逆向分析成本，不能让代码变得无法检查、�
 ## 开发命令
 
 ```sh
+./build.sh
 make packer
 make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 go list ./...

@@ -210,13 +210,30 @@ func TestBuildCancellationCleansExtraction(t *testing.T) {
 	t.Setenv("VMPACKER_TEST_CAPTURE", capture)
 	t.Setenv("VMPACKER_TEST_FIXTURE", fixture)
 	t.Setenv("VMPACKER_TEST_BLOCK", "1")
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, err := Build(ctx, BuildConfig{NDKDir: root, Opcodes: vm.IdentityOpcodeMap()})
-	if !errors.Is(err, context.DeadlineExceeded) {
+	done := make(chan error, 1)
+	go func() {
+		_, err := Build(ctx, BuildConfig{NDKDir: root, Opcodes: vm.IdentityOpcodeMap()})
+		done <- err
+	}()
+	dirPath := capture + ".dir"
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(dirPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("compiler never started")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v", err)
 	}
-	buildDirBytes, readErr := os.ReadFile(capture + ".dir")
+	buildDirBytes, readErr := os.ReadFile(dirPath)
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
@@ -251,6 +268,35 @@ func TestExtractTemplatesPermissionsAndGeneratedHeaderAuthority(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "vm_opcodes.h")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("fixed opcode header is still embedded")
+	}
+}
+
+func TestNDKBinDirPrefersDarwinArm64(t *testing.T) {
+	root := t.TempDir()
+	arm64 := filepath.Join(root, "toolchains", "llvm", "prebuilt", "darwin-arm64", "bin")
+	x86 := filepath.Join(root, "toolchains", "llvm", "prebuilt", "darwin-x86_64", "bin")
+	if err := os.MkdirAll(arm64, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(x86, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(arm64, "aarch64-linux-android23-clang"), []byte("#!/bin/sh\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(x86, "aarch64-linux-android23-clang"), []byte("#!/bin/sh\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ndkBinDir(root); got != arm64 {
+		t.Fatalf("ndkBinDir()=%q, want %q", got, arm64)
+	}
+}
+
+func TestNDKBinDirFallsBackToDarwinX86(t *testing.T) {
+	root := t.TempDir()
+	x86 := filepath.Join(root, "toolchains", "llvm", "prebuilt", "darwin-x86_64", "bin")
+	if got := ndkBinDir(root); got != x86 {
+		t.Fatalf("ndkBinDir()=%q, want %q", got, x86)
 	}
 }
 
