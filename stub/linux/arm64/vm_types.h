@@ -67,8 +67,9 @@ typedef struct {
   u8 vtmp[VM_SIMD_BUF];
 
   /* BR 间接跳转支持 */
-  u64 func_addr;              /* 被保护函数的原始起始地址 */
+  u64 func_addr;              /* 被保护函数的运行时起始地址 */
   u32 func_size;              /* 被保护函数的大小 */
+  u64 load_bias;              /* runtime VA - ELF file VA */
   addr_map_entry_t *addr_map; /* ARM64偏移→VM偏移 映射表 */
   u32 map_count;              /* 映射表条目数 */
 
@@ -113,6 +114,7 @@ static inline void vm_ctx_init(vm_ctx_t *vm, u64 *args, u8 *bytecode, u32 len) {
   /* BR 间接跳转映射表：默认无 */
   vm->func_addr = 0;
   vm->func_size = 0;
+  vm->load_bias = 0;
   vm->addr_map = 0;
   vm->map_count = 0;
 

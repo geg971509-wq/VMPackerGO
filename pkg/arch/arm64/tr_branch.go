@@ -72,7 +72,7 @@ func (t *Translator) trBranchCond(inst vm.Instruction) error {
 func (t *Translator) trBL(inst vm.Instruction) error {
 	target := uint64(int64(t.funcAddr) + int64(inst.Offset) + inst.Imm)
 
-	t.emit(vm.OpCallNative)
+	t.emit(vm.OpCallImage)
 	t.emitU64(target)
 	return nil
 }

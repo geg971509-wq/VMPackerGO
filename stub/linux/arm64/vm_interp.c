@@ -74,7 +74,8 @@ static inline void sys_munmap(void *addr, unsigned long size) {
  * 返回: R[0] (模拟 X0 返回值)
  */
 __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
-                                                     u32 bc_len, u8 xor_key);
+                                                     u32 bc_len, u8 xor_key,
+                                                     u64 load_bias);
 
 /* ================================================================
  * Token 化入口 (条件编译)
@@ -91,6 +92,8 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
 
 /* Packer 在 payload 中 patch 此变量为 token 描述符表的 VA */
 __attribute__((section(".data.entry"), used)) volatile u64 _token_table_va = 0;
+/* Packer 写入 _token_table_va 的 ELF file VA，运行时 ADR 减它得到 load_bias */
+__attribute__((section(".data.entry"), used)) volatile u64 _image_file_va = 0;
 
 /* 内部 C 函数: 解码 token 并调用 vm_entry */
 __attribute__((noinline, section(".text.entry"))) u64
@@ -111,11 +114,13 @@ vm_entry_token_inner(u64 *args, u32 token) {
   /* bc_off 也是相对于 _token_table_va 的偏移 */
   u8 *enc_bc = (u8 *)(self_va + table[func_id].bc_off);
   u32 bc_len = table[func_id].bc_len;
+  u64 file_va = *(volatile u64 *)&_image_file_va;
+  u64 load_bias = (file_va == 0) ? 0 : (self_va - file_va);
 
   if (__builtin_expect(enc_bc == (u8 *)self_va || bc_len == 0, 0))
     return 0; /* 无效条目, 安全退出 */
 
-  return vm_entry(args, enc_bc, bc_len, xor_key);
+  return vm_entry(args, enc_bc, bc_len, xor_key, load_bias);
 }
 
 /* Naked 汇编入口: 保存调用方寄存器, 调用 C 内部函数 */
@@ -142,7 +147,8 @@ __attribute__((naked, section(".text.entry"), used)) void vm_entry_token(void) {
 
 /* ---- vm_entry 实现 ---- */
 __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
-                                                     u32 bc_len, u8 xor_key) {
+                                                     u32 bc_len, u8 xor_key,
+                                                     u64 load_bias) {
   u64 ret = 0;
 
   /* ---- 1. 动态分配字节码缓冲区 (mmap, 替代栈上 64KB) ---- */
@@ -176,6 +182,7 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
     return 0;
   }
   vm_ctx_init(vm, args, bc_buf, bc_len);
+  vm->load_bias = load_bias;
 
   /* ---- 2c. 解析字节码尾部 trailer ---- */
   /* 尾部格式 (从末尾向前剥离):
@@ -202,7 +209,7 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
 
     if (trail_func_addr != 0 && trail_map_count > 0 &&
         map_data_size <= bc_len) {
-      vm->func_addr = trail_func_addr;
+      vm->func_addr = trail_func_addr + load_bias;
       vm->func_size = trail_func_size;
       vm->map_count = trail_map_count;
       vm->addr_map = (addr_map_entry_t *)&bc_buf[bc_len - map_data_size];
@@ -349,6 +356,7 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
   dtab[OP_MOV_IMM] = &&L_MOV_IMM;
   dtab[OP_MOV_IMM32] = &&L_MOV_IMM32;
   dtab[OP_MOV_REG] = &&L_MOV_REG;
+  dtab[OP_MOV_IMAGE] = &&L_MOV_IMAGE;
   /* 内存 */
   dtab[OP_LOAD8] = &&L_LOAD8;
   dtab[OP_LOAD32] = &&L_LOAD32;
@@ -401,6 +409,7 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
   dtab[OP_POP] = &&L_POP;
   /* 原生调用 */
   dtab[OP_CALL_NAT] = &&L_CALL_NAT;
+  dtab[OP_CALL_IMAGE] = &&L_CALL_IMAGE;
   dtab[OP_CALL_REG] = &&L_CALL_REG;
   dtab[OP_BR_REG] = &&L_BR_REG;
   /* SIMD */
@@ -486,6 +495,8 @@ L_MOV_IMM32:
   NEXT(h_mov_imm32(vm));
 L_MOV_REG:
   NEXT(h_mov_reg(vm));
+L_MOV_IMAGE:
+  NEXT(h_mov_image(vm));
 
 /* ---- 内存访问 ---- */
 L_LOAD8:
@@ -601,6 +612,8 @@ L_POP:
 /* ---- 原生调用 ---- */
 L_CALL_NAT:
   NEXT(h_call_nat(vm));
+L_CALL_IMAGE:
+  NEXT(h_call_image(vm));
 L_CALL_REG:
   NEXT(h_call_reg(vm));
 L_BR_REG: {

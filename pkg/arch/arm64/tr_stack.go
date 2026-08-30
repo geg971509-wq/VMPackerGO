@@ -1814,8 +1814,8 @@ func (t *Translator) trStackLdrLiteral(inst vm.Instruction) error {
 
 	absAddr := uint64(inst.Imm)
 
-	// push absolute address on stack
-	t.sPushImm(absAddr)
+	t.emit(vm.OpSPushImage)
+	t.emitU64(absAddr)
 
 	op := Op(inst.Op)
 	switch {

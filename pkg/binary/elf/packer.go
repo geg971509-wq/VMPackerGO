@@ -711,23 +711,27 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 		return fmt.Errorf("interp blob too small: %d bytes", len(p.interpBlob))
 	}
 
-	var entryOff, tokenEntryOff, tokenTableVAOff uint64
+	var entryOff, tokenEntryOff, tokenTableVAOff, imageFileVAOff uint64
 	var interpCode []byte
 
 	// Token 模式是唯一入口: blob 头为
-	// [vm_entry_off:u64][vm_entry_token_off:u64][_token_table_va_off:u64].
-	if len(p.interpBlob) < 24 {
-		return fmt.Errorf("token mode requires extended blob header (24 bytes), got %d", len(p.interpBlob))
+	// [vm_entry_off:u64][vm_entry_token_off:u64][_token_table_va_off:u64][_image_file_va_off:u64].
+	if len(p.interpBlob) < 32 {
+		return fmt.Errorf("token mode requires extended blob header (32 bytes), got %d", len(p.interpBlob))
 	}
 	entryOff = binary.LittleEndian.Uint64(p.interpBlob[:8])
 	tokenEntryOff = binary.LittleEndian.Uint64(p.interpBlob[8:16])
 	tokenTableVAOff = binary.LittleEndian.Uint64(p.interpBlob[16:24])
-	interpCode = p.interpBlob[24:]
+	imageFileVAOff = binary.LittleEndian.Uint64(p.interpBlob[24:32])
+	interpCode = p.interpBlob[32:]
 	if tokenEntryOff == 0 {
 		return fmt.Errorf("vm_entry_token not found in blob (compile with -DVM_TOKEN_ENTRY)")
 	}
 	if tokenTableVAOff == 0 {
 		return fmt.Errorf("_token_table_va not found in blob (compile with -DVM_TOKEN_ENTRY)")
+	}
+	if imageFileVAOff == 0 {
+		return fmt.Errorf("_image_file_va not found in blob")
 	}
 
 	// 1. 构造 payload: [interpCode][bc0][pad][bc1][pad][...]
@@ -919,9 +923,11 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 	// selfVA = payloadVA + tokenTableVAOff (已在上面计算)
 	tblRelOff := tokenTableVA - selfVA
 	binary.LittleEndian.PutUint64(p.data[payloadFileOff+tokenTableVAOff:], tblRelOff)
+	binary.LittleEndian.PutUint64(p.data[payloadFileOff+imageFileVAOff:], selfVA)
 
 	fmt.Printf("    [TOKEN] descriptor table VA: 0x%X, entries: %d\n", tokenTableVA, len(funcs))
 	fmt.Printf("    [TOKEN] _token_table_va patched at blob offset 0x%X → relative offset 0x%X (PIE)\n", tokenTableVAOff, tblRelOff)
+	fmt.Printf("    [TOKEN] _image_file_va patched at blob offset 0x%X → file VA 0x%X\n", imageFileVAOff, selfVA)
 
 	// 5c. 为每个函数生成 Token trampoline
 	vmEntryTokenVA := payloadVA + tokenEntryOff

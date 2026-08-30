@@ -75,7 +75,10 @@ var opTable = map[byte]opInfo{
 	OpPop:  {"POP", 2},
 
 	OpCallNative: {"CALL_NATIVE", 9}, // op + imm64
-	OpCallReg:    {"CALL_REG", 2},    // op + rn (BLR)
+	OpMovImage:   {"MOV_IMAGE", 10},  // op + r + imm64
+	OpCallImage:  {"CALL_IMAGE", 9},  // op + imm64
+	OpSPushImage: {"S_PUSH_IMAGE", 9},
+	OpCallReg:    {"CALL_REG", 2}, // op + rn (BLR)
 	OpBrReg:      {"BR_REG", 2},      // op + rn (BR)
 	OpRet:        {"RET", 2},         // op + rx
 	OpHalt:       {"HALT", 1},
@@ -251,6 +254,16 @@ func DisasmOne(code []byte, pc int) (string, int) {
 	case OpCallNative:
 		target := binary.LittleEndian.Uint64(code[pc+1:])
 		return fmt.Sprintf("%04X: CALL 0x%X", pc, target), 9
+	case OpMovImage:
+		r := code[pc+1]
+		v := binary.LittleEndian.Uint64(code[pc+2:])
+		return fmt.Sprintf("%04X: MOV_IMAGE R%d, 0x%X", pc, r, v), 10
+	case OpCallImage:
+		target := binary.LittleEndian.Uint64(code[pc+1:])
+		return fmt.Sprintf("%04X: CALL_IMAGE 0x%X", pc, target), 9
+	case OpSPushImage:
+		v := binary.LittleEndian.Uint64(code[pc+1:])
+		return fmt.Sprintf("%04X: S_PUSH_IMAGE 0x%X", pc, v), 9
 
 	case OpCallReg:
 		return fmt.Sprintf("%04X: BLR R%d", pc, code[pc+1]), 2

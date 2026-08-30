@@ -59,6 +59,12 @@ static inline u32 h_s_push_imm64(vm_ctx_t *vm) {
   return 9;
 }
 
+/* PUSH_IMAGE: push load_bias+#imm64 */
+static inline u32 h_s_push_image(vm_ctx_t *vm) {
+  SPUSH(vm, vm->load_bias + rd64(&vm->bc[vm->pc + 1]));
+  return 9;
+}
+
 /* ================================================================
  * 栈控制
  * ================================================================ */

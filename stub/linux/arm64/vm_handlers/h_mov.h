@@ -31,4 +31,11 @@ static inline u32 h_mov_reg(vm_ctx_t *vm) {
   return 3;
 }
 
+/* MOV Xd, load_bias+#imm64  [10B: op | d | imm64] */
+static inline u32 h_mov_image(vm_ctx_t *vm) {
+  u8 d = vm->bc[vm->pc + 1];
+  vm->R[d & 31] = vm->load_bias + rd64(&vm->bc[vm->pc + 2]);
+  return 10;
+}
+
 #endif /* H_MOV_H */

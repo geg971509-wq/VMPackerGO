@@ -24,6 +24,15 @@ static inline u32 h_call_nat(vm_ctx_t *vm) {
   return 9;
 }
 
+/* CALL_IMAGE: BLR load_bias+#imm64  [9B: op | addr64] */
+static inline u32 h_call_image(vm_ctx_t *vm) {
+  u64 addr = vm->load_bias + rd64(&vm->bc[vm->pc + 1]);
+  native_fn_t fn = (native_fn_t)addr;
+  vm->R[0] = fn(vm->R[0], vm->R[1], vm->R[2], vm->R[3], vm->R[4], vm->R[5],
+                vm->R[6], vm->R[7]);
+  return 9;
+}
+
 /* CALL_REG: BLR Xn (寄存器间接调用) [2B: op | rn] */
 static inline u32 h_call_reg(vm_ctx_t *vm) {
   u8 rn = vm->bc[vm->pc + 1];

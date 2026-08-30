@@ -78,6 +78,9 @@ const (
 
 	// 特殊
 	OpCallNative byte = 0xAB // 调用原生函数地址    9B: [op][imm64] (BL到绝对地址)
+	OpMovImage   byte = 0x39 // Rx = load_bias+imm64  10B: [op][r][imm64_LE]
+	OpCallImage  byte = 0x3B // call load_bias+imm64  9B: [op][imm64]
+	OpSPushImage byte = 0x3E // push load_bias+imm64  9B: [op][imm64]
 	OpCallReg    byte = 0xBC // BLR Xn 寄存器间接调用 2B: [op][rn]
 	OpBrReg      byte = 0xCD // BR  Xn 寄存器间接跳转 2B: [op][rn]
 	OpRet        byte = 0xEE // RET Rx             2B

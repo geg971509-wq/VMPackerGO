@@ -71,6 +71,9 @@ __attribute__((noinline)) VM_SECTION_MEM static u32 hw_mov_imm32(vm_ctx_t *vm) {
 __attribute__((noinline)) VM_SECTION_MEM static u32 hw_mov_reg(vm_ctx_t *vm) {
   return h_mov_reg(vm);
 }
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_mov_image(vm_ctx_t *vm) {
+  return h_mov_image(vm);
+}
 
 /* ---- 内存 ---- */
 __attribute__((noinline)) VM_SECTION_MEM static u32 hw_load8(vm_ctx_t *vm) {
@@ -233,6 +236,10 @@ hw_call_nat(vm_ctx_t *vm) {
   return h_call_nat(vm);
 }
 __attribute__((noinline)) VM_SECTION_SYSTEM static u32
+hw_call_image(vm_ctx_t *vm) {
+  return h_call_image(vm);
+}
+__attribute__((noinline)) VM_SECTION_SYSTEM static u32
 hw_call_reg(vm_ctx_t *vm) {
   return h_call_reg(vm);
 }
@@ -339,6 +346,10 @@ hw_s_push_imm32(vm_ctx_t *vm) {
 __attribute__((noinline)) VM_SECTION_MEM static u32
 hw_s_push_imm64(vm_ctx_t *vm) {
   return h_s_push_imm64(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32
+hw_s_push_image(vm_ctx_t *vm) {
+  return h_s_push_image(vm);
 }
 
 /* ---- 栈控制 ---- */
@@ -483,6 +494,7 @@ __attribute__((noinline)) static void vm_init_jump_table(vm_handler_fn *tbl) {
   tbl[OP_MOV_IMM] = hw_mov_imm;
   tbl[OP_MOV_IMM32] = hw_mov_imm32;
   tbl[OP_MOV_REG] = hw_mov_reg;
+  tbl[OP_MOV_IMAGE] = hw_mov_image;
 
   /* 内存 */
   tbl[OP_LOAD8] = hw_load8;
@@ -542,6 +554,7 @@ __attribute__((noinline)) static void vm_init_jump_table(vm_handler_fn *tbl) {
 
   /* 原生调用 */
   tbl[OP_CALL_NAT] = hw_call_nat;
+  tbl[OP_CALL_IMAGE] = hw_call_image;
   tbl[OP_CALL_REG] = hw_call_reg;
   tbl[OP_BR_REG] = hw_br_reg;
 
@@ -587,6 +600,7 @@ __attribute__((noinline)) static void vm_init_jump_table(vm_handler_fn *tbl) {
   tbl[OP_S_VSTORE] = hw_s_vstore;
   tbl[OP_S_PUSH_IMM32] = hw_s_push_imm32;
   tbl[OP_S_PUSH_IMM64] = hw_s_push_imm64;
+  tbl[OP_S_PUSH_IMAGE] = hw_s_push_image;
   tbl[OP_S_DUP] = hw_s_dup;
   tbl[OP_S_SWAP] = hw_s_swap;
   tbl[OP_S_DROP] = hw_s_drop;

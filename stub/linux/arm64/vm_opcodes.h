@@ -81,6 +81,9 @@
 
 /* ---- 原生调用 ---- */
 #define OP_CALL_NAT 0xAB /* BLR  imm64 (绝对地址)        9B: [op][imm64] */
+#define OP_MOV_IMAGE 0x39 /* MOV Xd, load_bias+#imm64    10B: [op][d][imm64] */
+#define OP_CALL_IMAGE 0x3B /* BLR load_bias+#imm64       9B: [op][imm64] */
+#define OP_S_PUSH_IMAGE 0x3E /* push load_bias+#imm64    9B: [op][imm64] */
 #define OP_CALL_REG 0xBC /* BLR  Xn   (寄存器间接调用)   2B: [op][rn] */
 #define OP_BR_REG 0xCD   /* BR   Xn   (寄存器间接跳转)   2B: [op][rn] */
 

@@ -34,6 +34,9 @@ func main() {
 	strip := flag.Bool("strip", true, "清除符号表（防止strip破坏保护）")
 	debug := flag.Bool("debug", false, "生成 debug 对照文件（ARM64 → VM 字节码映射）")
 	_ = flag.Bool("token", true, "兼容旧命令；当前固定启用 Token 化入口模式")
+	_ = flag.Bool("force", false, "兼容 nainiu pack_entry；当前忽略")
+	_ = flag.String("ndk", "", "兼容 nainiu pack_entry；当前忽略")
+	compatMode := flag.String("mode", "", "兼容 nainiu pack_entry: so|native，等价于 -android-mode")
 	targetOS := flag.String("target", "linux", "目标运行环境: linux 或 android（android 用于 APK 内 arm64-v8a JNI .so）")
 	androidMode := flag.String("android-mode", "auto", "Android artifact 模式: auto, so, native")
 	injector := flag.String("injector", "auto", "注入策略: auto, note, add-segment")
@@ -70,6 +73,18 @@ func main() {
 	}
 
 	flag.Parse()
+
+	if *compatMode != "" {
+		*androidMode = *compatMode
+	}
+	if *apkABI != "arm64-v8a" && strings.Contains(*apkABI, "(") {
+		*apkABI = "arm64-v8a"
+	}
+	if *androidMode == "so" || *androidMode == "native" {
+		if *targetOS == "linux" {
+			*targetOS = "android"
+		}
+	}
 
 	if *apkPath != "" {
 		runAPKMode(*apkPath, *apkLib, *apkABI, *apkSign, *output, *funcList, *addrList, *injector, *profile, *strip, *debug, *reportPath)
