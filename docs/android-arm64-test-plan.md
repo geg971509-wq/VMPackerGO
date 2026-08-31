@@ -20,7 +20,7 @@ Phase 3 adds generated ELF fixtures for malformed tables/ranges, symtab/dynsym m
 
 1. Build the macOS ARM64 CLI and validate the Android API 23 relocatable runtime with exact NDK r29.
 2. Build repository fixtures with `make android-fixtures`.
-3. Run the development CLI with a requested report and confirm it records the target, `opcode_map_digest`, `runtime_strategy: ndk-r29-et-rel-validated`, and the explicit `Phase 8 rewrite planner required` failure.
+3. Run the development CLI with a requested report and confirm it records the target, `opcode_map_digest`, `runtime_strategy: ndk-r29-et-rel-validated`, `development_strategy: rewrite-plan-ready`, and the explicit `Phase 9 rewrite writer required` failure.
 4. Confirm that no artifact or debug map is published and the input remains byte-for-byte unchanged.
 
 ## Tier 2: native executable device smoke

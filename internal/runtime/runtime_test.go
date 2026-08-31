@@ -111,22 +111,48 @@ func TestGenerateExclusiveThunksIsContinuousContentAddressedAndCFI(t *testing.T)
 	}
 }
 
-func TestGenerateFPSIMDThunksPreservesArchitecturalStateAndFlags(t *testing.T) {
-	header, assembly, got, err := generateFPSIMDThunks([]uint32{0x1e212000, 0x1e202820, 0x1e212000})
+func TestGenerateExclusiveThunksRemapsHighGuestRegisters(t *testing.T) {
+	region := vm.NewExclusiveRegion([]uint32{
+		0xc85ffe34,
+		0x91000694,
+		0xc813fe34,
+	})
+	_, assembly, _, err := generateExclusiveThunks([]vm.ExclusiveRegion{region})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != 0x1e202820 || got[1] != 0x1e212000 {
+	for _, token := range []string{
+		"ldr x0, [x16, #136]", "ldr x1, [x16, #152]", "ldr x2, [x16, #160]",
+		".inst 0xc85ffc02", ".inst 0x91000442", ".inst 0xc801fc02",
+		"str x0, [x16, #136]", "str x1, [x16, #152]", "str x2, [x16, #160]",
+	} {
+		if !strings.Contains(string(assembly), token) {
+			t.Errorf("generated assembly lacks %q", token)
+		}
+	}
+}
+
+func TestGenerateFPSIMDThunksPreservesArchitecturalStateAndFlags(t *testing.T) {
+	header, assembly, got, err := generateFPSIMDThunks([]uint32{0x1e212000, 0x1e202820, 0x1e2203a0, 0x1e38001e, 0xfd0007e0, 0x1e212000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 5 {
 		t.Fatalf("instructions=%#v", got)
 	}
-	for _, token := range []string{"case 0x1e202820u", "case 0x1e212000u", "VM_FAULT_SYSTEM"} {
+	for _, token := range []string{"case 0x1e202820u", "case 0x1e2203a0u", "case 0x1e38001eu", "case 0xfd0007e0u", "VM_FAULT_SYSTEM", "vm_fpsimd_stack_access_ok"} {
 		if !strings.Contains(string(header), token) {
 			t.Errorf("header lacks %q", token)
 		}
 	}
-	for _, token := range []string{"bti c", ".cfi_startproc", "VM_CTX_FPCR", "VM_CTX_FPSR", "ldp q30, q31", "stp q30, q31", "mov sp, x18", ".inst 0x1e212000", "mrs x17, nzcv", ".note.gnu.property"} {
+	for _, token := range []string{"bti c", ".cfi_startproc", "VM_CTX_FPCR", "VM_CTX_FPSR", "ldp q30, q31", "stp q30, q31", "ldr x9, [x16, #(VM_CTX_R + 29 * 8)]", "str x9, [x16, #(VM_CTX_R + 30 * 8)]", "ldr x9, [x16, #(VM_CTX_R + 31 * 8)]", ".inst 0x1e220120", ".inst 0x1e380009", ".inst 0xfd000520", "mrs x17, nzcv", "msr fpcr, x17", "msr fpsr, x17", ".note.gnu.property"} {
 		if !strings.Contains(string(assembly), token) {
 			t.Errorf("assembly lacks %q", token)
+		}
+	}
+	for _, token := range []string{"mov sp, x", " str x18", " ldr x18", " x19", " x20", " x21", " x22", " x23", " x24", " x25", " x26", " x27", " x28", " x29", " x30"} {
+		if strings.Contains(string(assembly), token) {
+			t.Errorf("assembly unexpectedly uses reserved host register token %q", token)
 		}
 	}
 	if strings.Count(string(assembly), "mrs x17, nzcv") != 1 {
@@ -149,10 +175,11 @@ func TestBuildInstalledExactR29Object(t *testing.T) {
 		NDKDir:        root,
 		Opcodes:       vm.IdentityOpcodeMap(),
 		SVCImmediates: []uint16{0x0000, 0x0001, 0xffff},
-		ExclusiveRegions: []vm.ExclusiveRegion{vm.NewExclusiveRegion([]uint32{
-			0xc85ffc20, 0x91000400, 0xc802fc20,
-		})},
-		FPSIMDInstructions: []uint32{0x1e202820, 0x1e212000, 0x3dc00000},
+		ExclusiveRegions: []vm.ExclusiveRegion{
+			vm.NewExclusiveRegion([]uint32{0xc85ffc20, 0x91000400, 0xc802fc20}),
+			vm.NewExclusiveRegion([]uint32{0xc85ffe34, 0x91000694, 0xc813fe34}),
+		},
+		FPSIMDInstructions: []uint32{0x1e202820, 0x1e212000, 0x3dc00000, 0x1e2203a0, 0x1e38001e, 0xfd0007e0},
 	})
 	if err != nil {
 		t.Fatalf("Build with installed r29: %v", err)
@@ -160,7 +187,7 @@ func TestBuildInstalledExactR29Object(t *testing.T) {
 	if len(image.EHFrame) == 0 || len(image.GNUPropertyNote) == 0 || len(image.Relocations) == 0 {
 		t.Fatalf("incomplete r29 image: eh_frame=%d note=%d relocations=%d", len(image.EHFrame), len(image.GNUPropertyNote), len(image.Relocations))
 	}
-	if len(image.ExclusiveRegions) != 1 || len(image.FPSIMDInstructions) != 3 {
+	if len(image.ExclusiveRegions) != 2 || len(image.FPSIMDInstructions) != 6 {
 		t.Fatalf("generated thunks: exclusive=%d fpsimd=%d", len(image.ExclusiveRegions), len(image.FPSIMDInstructions))
 	}
 }

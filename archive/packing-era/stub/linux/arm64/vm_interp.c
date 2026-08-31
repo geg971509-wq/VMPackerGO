@@ -16,7 +16,10 @@
 
 #include "vm_decode.h"
 #include "vm_opcodes.h"
+#include "vm_sys.h"
+#include "vm_token.h"
 #include "vm_types.h"
+#include "vm_call.h"
 
 /* ---- 指令 Handler 模块 ---- */
 #include "vm_handlers/h_alu.h" /* ADD/SUB/MUL/XOR/AND/OR/SHL/SHR/ASR/NOT/ROR + _IMM */
@@ -28,39 +31,10 @@
 #include "vm_handlers/h_stack_ops.h" /* 栈机器操作 handler (VLOAD/VSTORE/VADD...) */
 #include "vm_handlers/h_system.h" /* NOP, CALL_NAT, BR_REG, VLD16, VST16 */
 
-
 /* ---- 间接 Dispatch 跳转表 (条件编译) ---- */
 #ifdef VM_INDIRECT_DISPATCH
 #include "vm_dispatch.h"
 #endif
-
-/* ---- Token 化入口 (条件编译) ---- */
-/* TOKEN_ONLY: Token 入口始终编译 */
-#include "vm_token.h"
-
-/* ---- syscall: mmap (无 libc 依赖) ---- */
-static inline void *sys_mmap(unsigned long size) {
-  register long x8 __asm__("x8") = 222; /* __NR_mmap */
-  register long x0 __asm__("x0") = 0;   /* addr = NULL */
-  register long x1 __asm__("x1") = (long)size;
-  register long x2 __asm__("x2") = 3;    /* PROT_READ | PROT_WRITE */
-  register long x3 __asm__("x3") = 0x22; /* MAP_PRIVATE | MAP_ANONYMOUS */
-  register long x4 __asm__("x4") = -1;   /* fd = -1 */
-  register long x5 __asm__("x5") = 0;    /* offset = 0 */
-  __asm__ volatile("svc #0"
-                   : "+r"(x0)
-                   : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
-                   : "memory");
-  return (void *)x0;
-}
-
-/* ---- syscall: munmap ---- */
-static inline void sys_munmap(void *addr, unsigned long size) {
-  register long x8 __asm__("x8") = 215; /* __NR_munmap */
-  register long x0 __asm__("x0") = (long)addr;
-  register long x1 __asm__("x1") = (long)size;
-  __asm__ volatile("svc #0" : "+r"(x0) : "r"(x8), "r"(x1) : "memory");
-}
 
 /*
  * vm_entry — VM 解释器入口
@@ -94,11 +68,11 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
 __attribute__((section(".data.entry"), used)) volatile u64 _token_table_va = 0;
 /* Packer 写入 _token_table_va 的 ELF file VA，运行时 ADR 减它得到 load_bias */
 __attribute__((section(".data.entry"), used)) volatile u64 _image_file_va = 0;
+__attribute__((section(".data.entry"), used)) volatile u32 _token_count = 0;
 
 /* 内部 C 函数: 解码 token 并调用 vm_entry */
 __attribute__((noinline, section(".text.entry"))) u64
 vm_entry_token_inner(u64 *args, u32 token) {
-  u8 xor_key = (u8)TOKEN_XOR_KEY(token);
   u32 func_id = TOKEN_FUNC_ID(token);
 
   /* PIE 兼容: _token_table_va 存储的是相对于自身地址的偏移
@@ -107,13 +81,17 @@ vm_entry_token_inner(u64 *args, u32 token) {
   u64 self_va;
   __asm__ volatile("adr %0, _token_table_va" : "=r"(self_va));
   u64 tbl_off = *(volatile u64 *)&_token_table_va;
+  u32 n = *(volatile u32 *)&_token_count;
   if (__builtin_expect(tbl_off == 0, 0))
     return 0; /* 表未初始化, 安全退出 */
+  if (__builtin_expect(n == 0 || func_id >= n || n > TOKEN_MAX_FUNCS, 0))
+    return 0;
 
   token_desc_t *table = (token_desc_t *)(self_va + tbl_off);
   /* bc_off 也是相对于 _token_table_va 的偏移 */
   u8 *enc_bc = (u8 *)(self_va + table[func_id].bc_off);
   u32 bc_len = table[func_id].bc_len;
+  u8 xor_key = table[func_id].xor_key;
   u64 file_va = *(volatile u64 *)&_image_file_va;
   u64 load_bias = (file_va == 0) ? 0 : (self_va - file_va);
 
@@ -183,57 +161,8 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
   }
   vm_ctx_init(vm, args, bc_buf, bc_len);
   vm->load_bias = load_bias;
-
-  /* ---- 2c. 解析字节码尾部 trailer ---- */
-  /* 尾部格式 (从末尾向前剥离):
-   *   [...bytecode...][BR map entries][reverse(1B)][oc_key(4B)]
-   *                    [map_count:u32][func_addr:u64][func_size:u32]
-   *
-   * 剥离顺序: func_size(4B) → func_addr(8B) → map_count(4B)
-   *           → oc_key(4B) → reverse(1B) → BR map entries
-   * 固定 trailer 大小: 4+8+4+4+1 = 21B
-   */
-  if (bc_len >= 21) { /* 最小 trailer: 21B */
-    u32 trail_func_size = rd32(&bc_buf[bc_len - 4]);
-    u64 trail_func_addr = rd64(&bc_buf[bc_len - 12]);
-    u32 trail_map_count = rd32(&bc_buf[bc_len - 16]);
-    u32 trail_oc_key = rd32(&bc_buf[bc_len - 20]);
-    u8 trail_reverse = bc_buf[bc_len - 21];
-    u32 map_data_size =
-        trail_map_count * 8 +
-        21; /* +21 for reverse+oc_key+map_count+func_addr+func_size */
-
-    /* 设置 OpcodeCryptor 密钥 + reverse 标志 */
-    vm->oc_key = trail_oc_key;
-    vm->reverse = trail_reverse;
-
-    if (trail_func_addr != 0 && trail_map_count > 0 &&
-        map_data_size <= bc_len) {
-      vm->func_addr = trail_func_addr + load_bias;
-      vm->func_size = trail_func_size;
-      vm->map_count = trail_map_count;
-      vm->addr_map = (addr_map_entry_t *)&bc_buf[bc_len - map_data_size];
-      vm->bc_len = bc_len - map_data_size; /* 实际字节码不含 trailer */
-
-      /* 插入排序 addr_map (按 arm64_off 升序, 为二分查找准备) */
-      /* 注: 使用字段级拷贝避免编译器生成隐式 memcpy (-nostdlib) */
-      for (u32 j = 1; j < vm->map_count; j++) {
-        u32 t_arm = vm->addr_map[j].arm64_off;
-        u32 t_vm = vm->addr_map[j].vm_off;
-        int k = (int)j - 1;
-        while (k >= 0 && vm->addr_map[k].arm64_off > t_arm) {
-          vm->addr_map[k + 1].arm64_off = vm->addr_map[k].arm64_off;
-          vm->addr_map[k + 1].vm_off = vm->addr_map[k].vm_off;
-          k--;
-        }
-        vm->addr_map[k + 1].arm64_off = t_arm;
-        vm->addr_map[k + 1].vm_off = t_vm;
-      }
-    } else {
-      /* 无 BR map: 只剥离 21B 固定 trailer */
-      vm->bc_len = bc_len - 21;
-    }
-  }
+  vm->bc_alloc = alloc_size;
+  vm_apply_trailer(vm, bc_buf, bc_len, load_bias);
 
 /* ---- OpcodeCryptor 解密宏 (两种模式共用) ---- */
 #define OC_DECRYPT(pc, key) ((u8)((key) ^ ((pc) * 0x9E3779B9u)))
@@ -285,11 +214,20 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
     /* -- 特殊处理: HALT / RET (不经过跳转表) -- */
     if (_dec_op == OP_HALT) {
       ret = vm->R[0];
+      if (vm->depth > 0) {
+        vm_pop_frame(vm);
+        continue;
+      }
       goto cleanup;
     }
     if (_dec_op == OP_RET) {
       u8 _r = vm->bc[vm->pc + 1];
       ret = vm->R[_r & 31];
+      if (vm->depth > 0) {
+        vm->R[0] = ret;
+        vm_pop_frame(vm);
+        continue;
+      }
       goto cleanup;
     }
 
@@ -323,8 +261,12 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
     u32 _step = _handler(vm);
 
     /* -- 检查 HALT 哨兵 (wrap_unknown 等返回) -- */
-    if (__builtin_expect(_step == VM_STEP_HALT, 0)) {
+    if (__builtin_expect(_step == VM_STEP_HALT || _step == VM_STEP_RET, 0)) {
       ret = vm->R[0];
+      if (vm->depth > 0) {
+        vm_pop_frame(vm);
+        continue;
+      }
       goto cleanup;
     }
 
@@ -481,10 +423,19 @@ L_NOP:
   NEXT(h_nop(vm));
 L_HALT:
   ret = vm->R[0];
+  if (vm->depth > 0) {
+    vm_pop_frame(vm);
+    NEXT0();
+  }
   goto cleanup;
 L_RET: {
   u8 r = vm->bc[vm->pc + 1];
   ret = vm->R[r & 31];
+  if (vm->depth > 0) {
+    vm->R[0] = ret;
+    vm_pop_frame(vm);
+    NEXT0();
+  }
   goto cleanup;
 }
 
@@ -610,12 +561,27 @@ L_POP:
   NEXT(h_pop(vm));
 
 /* ---- 原生调用 ---- */
-L_CALL_NAT:
-  NEXT(h_call_nat(vm));
-L_CALL_IMAGE:
-  NEXT(h_call_image(vm));
-L_CALL_REG:
-  NEXT(h_call_reg(vm));
+L_CALL_NAT: {
+  u32 a = h_call_nat(vm);
+  if (a)
+    NEXT(a);
+  else
+    NEXT0();
+}
+L_CALL_IMAGE: {
+  u32 a = h_call_image(vm);
+  if (a)
+    NEXT(a);
+  else
+    NEXT0();
+}
+L_CALL_REG: {
+  u32 a = h_call_reg(vm);
+  if (a)
+    NEXT(a);
+  else
+    NEXT0();
+}
 L_BR_REG: {
   u32 a = h_br_reg(vm);
   if (a)
@@ -674,6 +640,7 @@ L_UNKNOWN:
 
   /* ---- 统一退出: 释放 mmap 防止泄漏 ---- */
 cleanup:
+  vm_unwind_frames(vm);
   sys_munmap(vm, ctx_alloc);
   sys_munmap(bc_buf, alloc_size);
   return ret;

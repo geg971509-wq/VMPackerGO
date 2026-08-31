@@ -142,17 +142,27 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 				} else {
 					digest, _ := opcodes.Digest()
 					result.OpcodeMapDigest = hex.EncodeToString(digest[:])
-					builder := cfg.BuildRuntime
-					if builder == nil {
-						builder = vmruntime.Build
-					}
-					image, buildErr := builder(ctx, vmruntime.BuildConfig{NDKDir: opts.NDK, Opcodes: opcodes})
-					if buildErr != nil {
-						transformErr = buildErr
+					request.Opcodes = opcodes
+					preparation, prepareErr := elfpacker.PrepareTranslations(request, analysis)
+					if prepareErr != nil {
+						transformErr = prepareErr
 					} else {
-						request.Opcodes = opcodes
-						request.RuntimeImage = image
-						result, transformErr = elfpacker.ProcessAnalyzed(request, analysis)
+						builder := cfg.BuildRuntime
+						if builder == nil {
+							builder = vmruntime.Build
+						}
+						image, buildErr := builder(ctx, vmruntime.BuildConfig{
+							NDKDir: opts.NDK, Opcodes: opcodes,
+							SVCImmediates: preparation.SVCImmediates, ExclusiveRegions: preparation.ExclusiveRegions,
+							FPSIMDInstructions: preparation.FPSIMDInstructions,
+						})
+						if buildErr != nil {
+							transformErr = buildErr
+						} else {
+							request.Preparation = preparation
+							request.RuntimeImage = image
+							result, transformErr = elfpacker.ProcessAnalyzed(request, analysis)
+						}
 					}
 				}
 			}

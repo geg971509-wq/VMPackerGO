@@ -17,7 +17,7 @@ func TestSuccessGolden(t *testing.T) {
 	artifact := []byte("artifact")
 	r.Success(elfpacker.Result{
 		Artifact: artifact, TargetKind: elfpacker.TargetKindAndroidSO,
-		DevelopmentStrategy: "rewrite-plan-required", RuntimeStrategy: "ndk-r29-et-rel-validated",
+		DevelopmentStrategy: "rewrite-plan-ready", RuntimeStrategy: "ndk-r29-et-rel-validated",
 		OpcodeMapDigest: strings.Repeat("a", 64),
 		Functions:       []elfpacker.FunctionFact{{Name: "foo", Address: 16, Size: 8, Section: ".text", Instructions: 2, Translated: 2, Bytecode: 7}},
 	})

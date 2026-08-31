@@ -31,7 +31,7 @@ type opcodeGolden struct {
 	branchTargetOffset int
 }
 
-var opcodeGoldenTable = [131]opcodeGolden{
+var opcodeGoldenTable = [132]opcodeGolden{
 	{0, 0xC3, "NOP", 1, "OP_NOP", -1},
 	{1, 0x5A, "MOV_IMM64", 10, "OP_MOV_IMM", -1},
 	{2, 0x49, "MOV_IMM32", 6, "OP_MOV_IMM32", -1},
@@ -163,11 +163,12 @@ var opcodeGoldenTable = [131]opcodeGolden{
 	{128, 0x41, "ATOMIC", 7, "OP_ATOMIC", -1},
 	{129, 0x42, "EXCLUSIVE", 5, "OP_EXCLUSIVE", -1},
 	{130, 0x43, "FPSIMD", 5, "OP_FPSIMD", -1},
+	{131, 0x45, "MSR", 4, "OP_MSR", -1},
 }
 
 func TestOpcodeMetadataMatchesLegacyGoldenTable(t *testing.T) {
-	if len(opcodeGoldenTable) != 131 {
-		t.Fatalf("golden table has %d entries, want 131", len(opcodeGoldenTable))
+	if len(opcodeGoldenTable) != 132 {
+		t.Fatalf("golden table has %d entries, want 132", len(opcodeGoldenTable))
 	}
 	if OpcodeCount != Opcode(len(opcodeGoldenTable)) {
 		t.Fatalf("OpcodeCount = %d, want %d golden entries", OpcodeCount, len(opcodeGoldenTable))
@@ -243,8 +244,8 @@ func TestOpcodeMetadataMatchesLegacyGoldenTable(t *testing.T) {
 }
 
 func TestOpcodeDefinitions(t *testing.T) {
-	if OpcodeCount != 131 || len(opcodeDefinitions) != 131 {
-		t.Fatalf("got %d constants and %d definitions, want 131", OpcodeCount, len(opcodeDefinitions))
+	if OpcodeCount != 132 || len(opcodeDefinitions) != 132 {
+		t.Fatalf("got %d constants and %d definitions, want 132", OpcodeCount, len(opcodeDefinitions))
 	}
 
 	semantics := map[Opcode]bool{}
@@ -409,8 +410,8 @@ func TestOpcodeMapCHeader(t *testing.T) {
 		}
 		defines[fields[1]] = true
 	}
-	if len(defines) != 131 {
-		t.Fatalf("got %d OP_* defines, want 131", len(defines))
+	if len(defines) != 132 {
+		t.Fatalf("got %d OP_* defines, want 132", len(defines))
 	}
 	for _, def := range opcodeDefinitions {
 		if !defines[def.CMacro] {

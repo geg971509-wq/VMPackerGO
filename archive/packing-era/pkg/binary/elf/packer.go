@@ -154,7 +154,7 @@ func (p *Packer) FindFunction(f *elf.File, name string) (*vm.FuncInfo, error) {
 			return info, nil
 		}
 	}
-	return nil, fmt.Errorf("function '%s' not found", name)
+	return nil, missingFunctionError(name, funcNamesFromSyms(syms))
 }
 
 // FindFunctionByAddr 通过地址查找函数
@@ -372,20 +372,36 @@ func (p *Packer) Process() (retErr error) {
 		}})
 	}
 
+	type packReject struct {
+		name   string
+		reason string
+		detail []string
+	}
 	var funcs []FuncBytecode
+	var rejects []packReject
 	for _, entry := range entries {
 		fmt.Printf("\n[*] Processing: %s\n", entry.name)
 
 		fi, err := entry.finder()
 		if err != nil {
-			return err
+			rejects = append(rejects, packReject{name: entry.name, reason: err.Error()})
+			fmt.Printf("    [!] cannot VMP: %v\n", err)
+			continue
 		}
 		fmt.Printf("    Addr: 0x%X, Size: %d bytes, Section: %s\n",
 			fi.Addr, fi.Size, fi.Section)
+		if fi.Size < 12 {
+			reason := fmt.Sprintf("token trampoline (12 bytes) exceeds function size (%d bytes)", fi.Size)
+			rejects = append(rejects, packReject{name: entry.name, reason: reason})
+			fmt.Printf("    [!] cannot VMP: %s\n", reason)
+			continue
+		}
 
 		code, err := p.ExtractFuncCode(f, fi)
 		if err != nil {
-			return err
+			rejects = append(rejects, packReject{name: entry.name, reason: err.Error()})
+			fmt.Printf("    [!] cannot VMP: %v\n", err)
+			continue
 		}
 
 		insts := p.DecodeFunction(code)
@@ -406,7 +422,10 @@ func (p *Packer) Process() (retErr error) {
 		}
 		result, err := trans.Translate(insts)
 		if err != nil {
-			return fmt.Errorf("translation failed: %v", err)
+			reason := fmt.Sprintf("translation failed: %v", err)
+			rejects = append(rejects, packReject{name: entry.name, reason: reason})
+			fmt.Printf("    [!] cannot VMP: %s\n", reason)
+			continue
 		}
 
 		fmt.Printf("    Translated: %d/%d\n", result.TransInsts, result.TotalInsts)
@@ -428,55 +447,10 @@ func (p *Packer) Process() (retErr error) {
 			for _, u := range result.Unsupported {
 				fmt.Printf("        %s\n", u)
 			}
-
-			// 生成翻译失败 debug 文件
-			debugPath := p.outputPath + ".debug.txt"
-			df, derr := os.Create(debugPath)
-			if derr != nil {
-				fmt.Printf("    [!] debug 文件创建失败: %v\n", derr)
-			} else {
-				fmt.Fprintf(df, "================================================================\n")
-				fmt.Fprintf(df, "翻译失败报告 — %s @ 0x%X\n", entry.name, fi.Addr)
-				fmt.Fprintf(df, "函数大小: %d bytes, 总指令数: %d, 已翻译: %d\n",
-					fi.Size, result.TotalInsts, result.TransInsts)
-				fmt.Fprintf(df, "================================================================\n\n")
-				fmt.Fprintf(df, "不支持的指令 (%d):\n\n", len(result.Unsupported))
-
-				// 构建 offset→Instruction 索引，用于提取原始字节
-				instMap := make(map[int]vm.Instruction)
-				for _, inst := range insts {
-					instMap[inst.Offset] = inst
-				}
-
-				for idx, u := range result.Unsupported {
-					fmt.Fprintf(df, "[%d] %s\n", idx+1, u)
-
-					// 尝试从 unsupported 字符串解析偏移 (格式: "偏移 0xNNNN: ...")
-					var off int
-					if _, err := fmt.Sscanf(u, "偏移 0x%X:", &off); err == nil {
-						if inst, ok := instMap[off]; ok {
-							raw := inst.Raw
-							fmt.Fprintf(df, "    原始字节: %02X %02X %02X %02X\n",
-								byte(raw), byte(raw>>8), byte(raw>>16), byte(raw>>24))
-							fmt.Fprintf(df, "    绝对地址: 0x%X\n", fi.Addr+uint64(off))
-						}
-					}
-					fmt.Fprintln(df)
-				}
-
-				fmt.Fprintf(df, "================================================================\n")
-				fmt.Fprintf(df, "修复建议:\n")
-				fmt.Fprintf(df, "- 为每条不支持的指令编写 demo 测试用例 (参考 demo/ 目录)\n")
-				fmt.Fprintf(df, "- 在 pkg/arch/arm64/translator.go translateOne() 中添加对应 case\n")
-				fmt.Fprintf(df, "- 使用 -v 标志查看完整反汇编上下文\n")
-				fmt.Fprintf(df, "================================================================\n")
-
-				df.Close()
-				fmt.Printf("    [+] 翻译失败 debug 文件: %s\n", debugPath)
-			}
-
-			return fmt.Errorf("translation aborted: %d unsupported instruction(s) in %s — cannot produce safe output",
-				len(result.Unsupported), entry.name)
+			reason := summarizeUnsupported(result.Unsupported)
+			rejects = append(rejects, packReject{name: entry.name, reason: reason, detail: append([]string(nil), result.Unsupported...)})
+			fmt.Printf("    [!] cannot VMP: %s\n", reason)
+			continue
 		}
 
 		// debug: 生成对照文件 (必须在反转/加密之前, 使用原始正向字节码)
@@ -572,6 +546,29 @@ func (p *Packer) Process() (retErr error) {
 		}
 
 		funcs = append(funcs, FuncBytecode{FI: fi, Encrypted: encrypted, XorKey: xorKey})
+	}
+
+	if len(rejects) > 0 {
+		debugPath := p.outputPath + ".debug.txt"
+		if df, derr := os.Create(debugPath); derr != nil {
+			fmt.Printf("    [!] debug 文件创建失败: %v\n", derr)
+		} else {
+			fmt.Fprintf(df, "cannot VMP %d function(s)\n\n", len(rejects))
+			for _, r := range rejects {
+				fmt.Fprintf(df, "%s: %s\n", r.name, r.reason)
+				for _, d := range r.detail {
+					fmt.Fprintf(df, "  %s\n", d)
+				}
+			}
+			df.Close()
+			fmt.Printf("\n[!] cannot-VMP report: %s\n", debugPath)
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "cannot VMP %d function(s):", len(rejects))
+		for _, r := range rejects {
+			fmt.Fprintf(&b, "\n  %s: %s", r.name, r.reason)
+		}
+		return fmt.Errorf("%s", b.String())
 	}
 
 	// 第二阶段: 批量注入 (一次 PT_NOTE 劫持)
@@ -711,19 +708,20 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 		return fmt.Errorf("interp blob too small: %d bytes", len(p.interpBlob))
 	}
 
-	var entryOff, tokenEntryOff, tokenTableVAOff, imageFileVAOff uint64
+	var entryOff, tokenEntryOff, tokenTableVAOff, imageFileVAOff, tokenCountOff uint64
 	var interpCode []byte
 
 	// Token 模式是唯一入口: blob 头为
-	// [vm_entry_off:u64][vm_entry_token_off:u64][_token_table_va_off:u64][_image_file_va_off:u64].
-	if len(p.interpBlob) < 32 {
-		return fmt.Errorf("token mode requires extended blob header (32 bytes), got %d", len(p.interpBlob))
+	// [vm_entry_off][vm_entry_token_off][_token_table_va_off][_image_file_va_off][_token_count_off].
+	if len(p.interpBlob) < 40 {
+		return fmt.Errorf("token mode requires extended blob header (40 bytes), got %d", len(p.interpBlob))
 	}
 	entryOff = binary.LittleEndian.Uint64(p.interpBlob[:8])
 	tokenEntryOff = binary.LittleEndian.Uint64(p.interpBlob[8:16])
 	tokenTableVAOff = binary.LittleEndian.Uint64(p.interpBlob[16:24])
 	imageFileVAOff = binary.LittleEndian.Uint64(p.interpBlob[24:32])
-	interpCode = p.interpBlob[32:]
+	tokenCountOff = binary.LittleEndian.Uint64(p.interpBlob[32:40])
+	interpCode = p.interpBlob[40:]
 	if tokenEntryOff == 0 {
 		return fmt.Errorf("vm_entry_token not found in blob (compile with -DVM_TOKEN_ENTRY)")
 	}
@@ -732,6 +730,9 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 	}
 	if imageFileVAOff == 0 {
 		return fmt.Errorf("_image_file_va not found in blob")
+	}
+	if tokenCountOff == 0 {
+		return fmt.Errorf("_token_count not found in blob")
 	}
 
 	// 1. 构造 payload: [interpCode][bc0][pad][bc1][pad][...]
@@ -896,17 +897,19 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 	tokenTableOff := len(payload)
 	tokenTableVA := payloadVA + uint64(tokenTableOff)
 
-	// 每个函数一个 token_desc_t (16 bytes): bc_off(u64) + bc_len(u32) + reserved(u32)
-	// bc_off = 相对于 _token_table_va 自身地址的偏移 (PIE 兼容)
+	// 每个函数一个 token_desc_t (32 bytes):
+	// bc_off(u64) + bc_len(u32) + xor_key(u8)+pad3 + func_file_va(u64) + func_size(u32)+pad4
 	selfVA := payloadVA + tokenTableVAOff // _token_table_va 的 VA
 	for i := range funcs {
 		bcVA := payloadVA + uint64(records[i].payloadOff)
 		bcLen := uint32(records[i].bcLen)
 
-		var desc [16]byte
-		binary.LittleEndian.PutUint64(desc[0:], bcVA-selfVA) // 相对偏移
+		var desc [32]byte
+		binary.LittleEndian.PutUint64(desc[0:], bcVA-selfVA)
 		binary.LittleEndian.PutUint32(desc[8:], bcLen)
-		binary.LittleEndian.PutUint32(desc[12:], 0) // reserved
+		desc[12] = funcs[i].XorKey
+		binary.LittleEndian.PutUint64(desc[16:], funcs[i].FI.Addr)
+		binary.LittleEndian.PutUint32(desc[24:], uint32(funcs[i].FI.Size))
 		payload = append(payload, desc[:]...)
 	}
 
@@ -924,10 +927,12 @@ func (p *Packer) injectVMPBatch(funcs []FuncBytecode) error {
 	tblRelOff := tokenTableVA - selfVA
 	binary.LittleEndian.PutUint64(p.data[payloadFileOff+tokenTableVAOff:], tblRelOff)
 	binary.LittleEndian.PutUint64(p.data[payloadFileOff+imageFileVAOff:], selfVA)
+	binary.LittleEndian.PutUint32(p.data[payloadFileOff+tokenCountOff:], uint32(len(funcs)))
 
 	fmt.Printf("    [TOKEN] descriptor table VA: 0x%X, entries: %d\n", tokenTableVA, len(funcs))
 	fmt.Printf("    [TOKEN] _token_table_va patched at blob offset 0x%X → relative offset 0x%X (PIE)\n", tokenTableVAOff, tblRelOff)
 	fmt.Printf("    [TOKEN] _image_file_va patched at blob offset 0x%X → file VA 0x%X\n", imageFileVAOff, selfVA)
+	fmt.Printf("    [TOKEN] _token_count patched at blob offset 0x%X → %d\n", tokenCountOff, len(funcs))
 
 	// 5c. 为每个函数生成 Token trampoline
 	vmEntryTokenVA := payloadVA + tokenEntryOff
@@ -1152,4 +1157,146 @@ func encryptOpcodes(bytecode []byte, codeLen int, ocKey uint32, reversed bool) {
 			pc += size
 		}
 	}
+}
+
+func funcNamesFromSyms(syms []elf.Symbol) []string {
+	var names []string
+	seen := make(map[string]bool)
+	for _, sym := range syms {
+		if elf.ST_TYPE(sym.Info) != elf.STT_FUNC || sym.Name == "" || seen[sym.Name] {
+			continue
+		}
+		seen[sym.Name] = true
+		names = append(names, sym.Name)
+	}
+	return names
+}
+
+func missingFunctionError(name string, names []string) error {
+	suggest := closestNames(name, names, 3)
+	if len(suggest) == 0 {
+		return fmt.Errorf("function '%s' not found", name)
+	}
+	return fmt.Errorf("function '%s' not found; did you mean: %s", name, strings.Join(suggest, ", "))
+}
+
+func closestNames(want string, names []string, n int) []string {
+	type hit struct {
+		name string
+		dist int
+	}
+	var hits []hit
+	for _, name := range names {
+		d, ok := nameMatch(want, name)
+		if !ok {
+			continue
+		}
+		hits = append(hits, hit{name: name, dist: d})
+	}
+	sort.Slice(hits, func(i, j int) bool {
+		if hits[i].dist != hits[j].dist {
+			return hits[i].dist < hits[j].dist
+		}
+		return hits[i].name < hits[j].name
+	})
+	if n > len(hits) {
+		n = len(hits)
+	}
+	out := make([]string, n)
+	for i := 0; i < n; i++ {
+		out[i] = hits[i].name
+	}
+	return out
+}
+
+func nameMatch(a, b string) (int, bool) {
+	a = strings.ToLower(a)
+	b = strings.ToLower(b)
+	if a == b {
+		return 0, true
+	}
+	if strings.Contains(b, a) || strings.Contains(a, b) {
+		d := len(a) - len(b)
+		if d < 0 {
+			d = -d
+		}
+		return d, true
+	}
+	d := editDistance(a, b)
+	if d <= 3 {
+		return d, true
+	}
+	return d, false
+}
+
+func editDistance(a, b string) int {
+	if a == b {
+		return 0
+	}
+	if a == "" {
+		return len(b)
+	}
+	if b == "" {
+		return len(a)
+	}
+	prev := make([]int, len(b)+1)
+	cur := make([]int, len(b)+1)
+	for j := 0; j <= len(b); j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			ins := cur[j-1] + 1
+			del := prev[j] + 1
+			sub := prev[j-1] + cost
+			if del < ins {
+				ins = del
+			}
+
+			if sub < ins {
+				ins = sub
+			}
+			cur[j] = ins
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(b)]
+}
+
+func summarizeUnsupported(items []string) string {
+	counts := map[string]int{}
+	order := []string{}
+	for _, item := range items {
+		kind := "unsupported"
+		if i := strings.Index(item, " 偏移 "); i > 0 {
+			kind = item[:i]
+		}
+		if counts[kind] == 0 {
+			order = append(order, kind)
+		}
+		counts[kind]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, kind := range order {
+		n := counts[kind]
+		switch kind {
+		case "SIMD/FP":
+			parts = append(parts, fmt.Sprintf("%d SIMD/FP instruction(s)", n))
+		case "out-of-range branch":
+			parts = append(parts, fmt.Sprintf("%d out-of-range branch(es)", n))
+		case "undecoded":
+			parts = append(parts, fmt.Sprintf("%d undecoded instruction(s)", n))
+		default:
+			parts = append(parts, fmt.Sprintf("%d %s instruction(s)", n, kind))
+		}
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("%d unsupported instruction(s)", len(items))
+	}
+	return strings.Join(parts, "; ")
 }

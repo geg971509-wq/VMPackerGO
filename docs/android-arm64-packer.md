@@ -31,7 +31,7 @@ make mac-cli
 
 For a native PIE or `ET_EXEC` input, use `-mode native`. Use `-addr 0xSTART-0xEND:name -abi 'result(params)'` when symbols are unavailable. A single address uses conservative CFG inference and fails with an explicit-range request when control flow is ambiguous. Named selection merges `.symtab` and `.dynsym`. Multiple functions require a manifest-v1 JSON file.
 
-The current development pipeline performs bounded analysis, creates a per-pack opcode map, builds and validates an exact-r29 `ET_REL` runtime image, and then fails closed before translation with `Phase 8 rewrite planner required`. The removed legacy note-hijack/add-segment writer is not a fallback.
+The current development pipeline performs bounded analysis, creates a per-pack opcode map, translates selected functions once, builds and validates an exact-r29 `ET_REL` runtime image, produces a complete immutable 0x4000-aligned W^X rewrite plan, and then fails closed before mutation with `Phase 9 rewrite writer required`. The removed legacy note-hijack/add-segment writer is not a fallback.
 
 ## Active checks
 

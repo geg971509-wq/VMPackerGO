@@ -149,13 +149,59 @@ func TestClosedExclusiveRegionBecomesOneContinuousThunkOperation(t *testing.T) {
 	}
 }
 
+func TestClosedExclusiveRegionSupportsHighGuestRegisters(t *testing.T) {
+	decoder := NewDecoder()
+	raws := []uint32{
+		0xc85ffe34,
+		0x91000694,
+		0xc813fe34,
+	}
+	instructions := make([]vm.Instruction, len(raws))
+	for i, raw := range raws {
+		instructions[i] = decoder.Decode(raw, i*4)
+	}
+	result := translateForPhase5(t, instructions)
+	if len(result.Unsupported) != 0 || len(result.ExclusiveRegions) != 1 {
+		t.Fatalf("unsupported=%v regions=%v", result.Unsupported, result.ExclusiveRegions)
+	}
+	patched, registers, err := PlanExclusiveThunk(result.ExclusiveRegions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantInstructions := []uint32{0xc85ffc02, 0x91000442, 0xc801fc02}
+	if !sameInstructionWords(patched, wantInstructions) {
+		t.Fatalf("instructions=%#x want=%#x", patched, wantInstructions)
+	}
+	wantRegisters := []int{17, 19, 20}
+	if len(registers) != len(wantRegisters) {
+		t.Fatalf("registers=%v", registers)
+	}
+	for i, want := range wantRegisters {
+		if registers[i] != want {
+			t.Fatalf("register[%d]=%v want=%v", i, registers[i], want)
+		}
+	}
+}
+
+func TestExclusiveThunkRejectsMoreThanSixteenGuestRegisters(t *testing.T) {
+	raws := []uint32{0xc85ffe00}
+	for reg := uint32(1); reg <= 15; reg++ {
+		raws = append(raws, 0x91000000|(reg<<5)|reg)
+	}
+	raws = append(raws, 0xc801fe00)
+	region := vm.NewExclusiveRegion(raws)
+	if _, _, err := PlanExclusiveThunk(region); err == nil {
+		t.Fatal("exclusive thunk accepted more than sixteen distinct guest registers")
+	}
+}
+
 func TestExclusiveRegionsFailClosedWhenUnclosedOrUnsafe(t *testing.T) {
 	decoder := NewDecoder()
 	for name, raws := range map[string][]uint32{
-		"unclosed":          {0xc85ffc20},
-		"standalone-store":  {0xc802fc20},
-		"branch-inside":     {0xc85ffc20, 0x14000000, 0xc802fc20},
-		"reserved-register": {0xc85ffe20, 0xc802fe20}, // address X17
+		"unclosed":         {0xc85ffc20},
+		"standalone-store": {0xc802fc20},
+		"branch-inside":    {0xc85ffc20, 0x14000000, 0xc802fc20},
+		"sp-address":       {0xc85fffe0, 0xc802ffe0},
 	} {
 		var instructions []vm.Instruction
 		for i, raw := range raws {

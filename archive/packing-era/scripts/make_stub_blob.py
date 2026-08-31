@@ -27,13 +27,17 @@ def main() -> None:
     token_entry = sym("vm_entry_token")
     token_table = sym("_token_table_va")
     image_file = sym("_image_file_va")
+    token_count = sym("_token_count")
     raw = open(args.raw, "rb").read()
-    blob = struct.pack("<QQQQ", entry, token_entry, token_table, image_file) + raw
+    blob = struct.pack(
+        "<QQQQQ", entry, token_entry, token_table, image_file, token_count
+    ) + raw
     open(args.out, "wb").write(blob)
     print(
         f"[+] vm_interp.bin: {len(blob)} bytes "
         f"(vm_entry=0x{entry:X} vm_entry_token=0x{token_entry:X} "
-        f"_token_table_va=0x{token_table:X} _image_file_va=0x{image_file:X})"
+        f"_token_table_va=0x{token_table:X} _image_file_va=0x{image_file:X} "
+        f"_token_count=0x{token_count:X})"
     )
 
 

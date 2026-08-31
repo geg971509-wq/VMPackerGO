@@ -18,7 +18,7 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `output` | string | yes | Requested output path text exactly as supplied by the user, or the documented default. |
 | `mode` | string | yes | `auto`, `so`, or `native`. |
 | `target_kind` | string | on classified runs | `android-so`, `android-pie`, or `android-exec`. |
-| `development_strategy` | string | on classified runs | Accurate current internal boundary, currently `rewrite-plan-required`; this is not a stable product choice. |
+| `development_strategy` | string | on classified runs | Accurate current internal boundary, currently `rewrite-plan-ready`; this is not a stable product choice. |
 | `opcode_map_digest` | string | after map creation | Lower-case SHA-256 of the semantic-to-wire byte sequence. This is the only allowed one-way opcode-map derivative. |
 | `runtime_strategy` | string | after runtime validation | Accurate runtime build/validation strategy, currently `ndk-r29-et-rel-validated`. |
 | `segment_strategy` | string | after Phase 8 planning | Applied segment-layout strategy; omitted until implemented. |
@@ -63,7 +63,7 @@ A failed transform never publishes an artifact or debug map. When `-report` was 
   "output": "libdemo.vmp.so",
   "mode": "so",
   "target_kind": "android-so",
-  "development_strategy": "rewrite-plan-required",
+  "development_strategy": "rewrite-plan-ready",
   "opcode_map_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "runtime_strategy": "ndk-r29-et-rel-validated",
   "functions": [],

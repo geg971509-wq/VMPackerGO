@@ -22,6 +22,8 @@ typedef short i16;
 #define VM_MEM_STACK 16384     /* 内存栈 (SP 指向的空间, 16KB) */
 #define VM_BYTECODE_MAX 65536  /* 最大字节码长度 (64KB, 含映射表) */
 #define VM_SIMD_BUF 64         /* SIMD 临时缓冲大小 */
+#define VM_CALL_DEPTH_MAX 16
+#define VM_PACKED_LR 1ull
 
 /* ---- 标志位 (NZCV 简化) ---- */
 #define FL_ZERO 1  /* Z: 结果为零 */
@@ -37,6 +39,22 @@ typedef struct {
   u32 vm_off;    /* 对应的 VM 字节码偏移 */
 } addr_map_entry_t;
 
+/* ---- VM-to-VM 控制面帧 (不含寄存器/虚拟栈) ---- */
+typedef struct {
+  u8 *bc;
+  u8 *bc_buf;
+  u32 bc_len;
+  u32 bc_alloc;
+  u32 pc;
+  u32 oc_key;
+  u8 reverse;
+  u64 func_addr;
+  u32 func_size;
+  addr_map_entry_t *addr_map;
+  u32 map_count;
+  u64 lr;
+} vm_frame_t;
+
 /* ---- VM CPU 上下文 ---- */
 typedef struct {
   /* 寄存器文件: R[0]-R[30] = X0-X30, R[31] = SP */
@@ -50,7 +68,9 @@ typedef struct {
 
   /* 字节码 (解密后) */
   u8 *bc;
+  u8 *bc_buf;
   u32 bc_len;
+  u32 bc_alloc;
 
   /* PUSH/POP 操作栈 (旧 register-based 兼容) */
   u64 stk[VM_STACK_SIZE];
@@ -78,6 +98,9 @@ typedef struct {
 
   /* PC 反向遍历 */
   u8 reverse; /* 1=反向执行 (pc 递减), 0=正向 */
+
+  u32 depth;
+  vm_frame_t frames[VM_CALL_DEPTH_MAX];
 } vm_ctx_t;
 
 /* ---- SP 栈边界检查 ---- */
@@ -103,7 +126,10 @@ static inline void vm_ctx_init(vm_ctx_t *vm, u64 *args, u8 *bytecode, u32 len) {
 
   /* 字节码 */
   vm->bc = bytecode;
+  vm->bc_buf = bytecode;
   vm->bc_len = len;
+  vm->bc_alloc = 0;
+  vm->depth = 0;
 
   /* 状态初始化 */
   vm->FL = 0;

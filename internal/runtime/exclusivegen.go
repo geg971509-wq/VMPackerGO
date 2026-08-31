@@ -11,8 +11,11 @@ import (
 
 func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []byte, normalized []vm.ExclusiveRegion, err error) {
 	byID := make(map[uint32]vm.ExclusiveRegion, len(regions))
+	patchedByID := make(map[uint32][]uint32, len(regions))
+	registersByID := make(map[uint32][]int, len(regions))
 	for _, region := range regions {
-		if err := arm64.ValidateExclusiveRegion(region); err != nil {
+		patched, registers, err := arm64.PlanExclusiveThunk(region)
+		if err != nil {
 			return nil, nil, nil, fmt.Errorf("validate exclusive region 0x%08x: %w", region.ID, err)
 		}
 		if previous, ok := byID[region.ID]; ok {
@@ -22,6 +25,8 @@ func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []b
 			continue
 		}
 		byID[region.ID] = region
+		patchedByID[region.ID] = patched
+		registersByID[region.ID] = registers
 	}
 	for _, region := range byID {
 		normalized = append(normalized, region)
@@ -46,14 +51,14 @@ func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []b
 		fmt.Fprintf(&s, ".global vm_exclusive_%08x\n.hidden vm_exclusive_%08x\n.type vm_exclusive_%08x, %%function\n", region.ID, region.ID, region.ID)
 		fmt.Fprintf(&s, "vm_exclusive_%08x:\n", region.ID)
 		s.WriteString("  .cfi_startproc\n  bti c\n  mov x16, x0\n")
-		for reg := 0; reg < 16; reg += 2 {
-			fmt.Fprintf(&s, "  ldp x%d, x%d, [x16, #%d]\n", reg, reg+1, reg*8)
+		for host, guest := range registersByID[region.ID] {
+			fmt.Fprintf(&s, "  ldr x%d, [x16, #%d]\n", host, guest*8)
 		}
-		for _, raw := range region.Instructions {
+		for _, raw := range patchedByID[region.ID] {
 			fmt.Fprintf(&s, "  .inst 0x%08x\n", raw)
 		}
-		for reg := 0; reg < 16; reg += 2 {
-			fmt.Fprintf(&s, "  stp x%d, x%d, [x16, #%d]\n", reg, reg+1, reg*8)
+		for host, guest := range registersByID[region.ID] {
+			fmt.Fprintf(&s, "  str x%d, [x16, #%d]\n", host, guest*8)
 		}
 		s.WriteString("  ret\n  .cfi_endproc\n")
 		fmt.Fprintf(&s, ".size vm_exclusive_%08x, .-vm_exclusive_%08x\n\n", region.ID, region.ID)

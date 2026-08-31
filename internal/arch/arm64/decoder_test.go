@@ -381,6 +381,23 @@ func TestDecode_STUR_32(t *testing.T) {
 	expect(t, "STUR_32 Imm", int64(-4), inst.Imm)
 }
 
+func TestDecodeSystemRegisterXZR(t *testing.T) {
+	d := NewDecoder()
+	for _, tc := range []struct {
+		name string
+		raw  uint32
+		op   Op
+	}{
+		{"MRS", 0xD5300000 | uint32(0x5A20)<<5 | 31, MRS},
+		{"MSR", 0xD5100000 | uint32(0x5A20)<<5 | 31, MSR_WRITE},
+	} {
+		inst := d.Decode(tc.raw, 0)
+		expect(t, tc.name+" Op", int(tc.op), inst.Op)
+		expect(t, tc.name+" Rt", vm.REG_XZR, inst.Rd)
+		expect(t, tc.name+" sysreg", int64(0x5A20), inst.Imm)
+	}
+}
+
 // ---- 辅助 ----
 
 func expect[T comparable](t *testing.T, name string, want, got T) {

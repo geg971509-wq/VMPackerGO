@@ -37,6 +37,7 @@ type Request struct {
 	Strip        bool
 	Debug        bool
 	Opcodes      vm.OpcodeMap
+	Preparation  *TranslationPreparation
 	RuntimeImage *vmruntime.Image
 	Log          io.Writer
 }
@@ -65,9 +66,11 @@ type Result struct {
 	Functions           []FunctionFact
 	AnalysisLimitations []string
 	Warnings            []string
+
+	rewritePlan *RewritePlan
 }
 
-var ErrRewritePlannerRequired = errors.New("Phase 8 rewrite planner required")
+var ErrRewriteWriterRequired = errors.New("Phase 9 rewrite writer required")
 
 func Process(req Request) (Result, error) {
 	if req.Context != nil {
@@ -107,14 +110,40 @@ func ProcessAnalyzed(req Request, analysis Analysis) (Result, error) {
 			return result, err
 		}
 	}
+	if err := analysis.ValidateInput(req.Input); err != nil {
+		return result, err
+	}
 	if req.RuntimeImage == nil {
 		return result, fmt.Errorf("validated runtime image is required")
 	}
 	if err := req.RuntimeImage.ValidateOpcodeMap(req.Opcodes); err != nil {
 		return result, err
 	}
+	preparation := req.Preparation
+	if preparation == nil {
+		var err error
+		preparation, err = PrepareTranslations(req, analysis)
+		if err != nil {
+			return result, err
+		}
+	}
+	if err := preparation.ValidateOpcodeMap(req.Opcodes); err != nil {
+		return result, err
+	}
+	if err := preparation.ValidateAnalysis(analysis); err != nil {
+		return result, err
+	}
+	if err := preparation.ValidateRuntimeImage(req.RuntimeImage); err != nil {
+		return result, err
+	}
+	plan, err := buildRewritePlan(req, analysis, preparation)
+	if err != nil {
+		return result, err
+	}
+	result.Functions = preparation.FunctionFacts()
 	result.OpcodeMapDigest = req.RuntimeImage.OpcodeMapDigest
 	result.RuntimeStrategy = "ndk-r29-et-rel-validated"
-	result.DevelopmentStrategy = "rewrite-plan-required"
-	return result, ErrRewritePlannerRequired
+	result.DevelopmentStrategy = "rewrite-plan-ready"
+	result.rewritePlan = plan
+	return result, ErrRewriteWriterRequired
 }

@@ -389,3 +389,26 @@ func expect[T comparable](t *testing.T, name string, want, got T) {
 		t.Errorf("%s: want %v, got %v", name, want, got)
 	}
 }
+
+func TestOpName_UNSUPPORTED(t *testing.T) {
+	if got := OpName(UNSUPPORTED); got != "UNSUPPORTED" {
+		t.Fatalf("OpName(UNSUPPORTED)=%q", got)
+	}
+}
+
+func TestClassifyEncoding_SIMDFP(t *testing.T) {
+	cases := []struct {
+		raw  uint32
+		want string
+	}{
+		{0x6F00E400, "SIMD/FP"}, // MOVI-like
+		{0x3DC007E0, "SIMD/FP"}, // SIMD LDR Qt
+		{0x1E260009, "SIMD/FP"}, // FMOV
+		{0xD503201F, "undecoded"},
+	}
+	for _, tc := range cases {
+		if got := ClassifyEncoding(tc.raw); got != tc.want {
+			t.Fatalf("ClassifyEncoding(0x%08X)=%q want %q", tc.raw, got, tc.want)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package arm64
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 
 	"github.com/vmpacker/pkg/vm"
 )
@@ -180,9 +181,11 @@ func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult,
 		}
 
 		if err != nil {
+			inst := instructions[i]
+			kind := classifyUnsupported(inst, err)
 			t.unsupported = append(t.unsupported, fmt.Sprintf(
-				"偏移 0x%04X: %s (raw=0x%08X) - %v",
-				instructions[i].Offset, OpName(Op(instructions[i].Op)), instructions[i].Raw, err))
+				"%s 偏移 0x%04X: %s (raw=0x%08X) - %v",
+				kind, inst.Offset, OpName(Op(inst.Op)), inst.Raw, err))
 			t.emit(vm.OpHalt)
 		} else {
 			result.TransInsts++
@@ -613,4 +616,15 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	default:
 		return 0, fmt.Errorf("不支持的指令类型")
 	}
+}
+
+func classifyUnsupported(inst vm.Instruction, err error) string {
+	if err != nil && strings.Contains(err.Error(), "超出函数范围") {
+		return "out-of-range branch"
+	}
+	op := Op(inst.Op)
+	if op != UNKNOWN && op != UNSUPPORTED {
+		return OpName(op)
+	}
+	return ClassifyEncoding(inst.Raw)
 }

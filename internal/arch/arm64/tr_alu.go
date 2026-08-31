@@ -65,9 +65,15 @@ func (t *Translator) trMRS(inst vm.Instruction) error {
 		0x5F00, // CNTFRQ_EL0
 		0x5E82, // TPIDR_EL0
 		0x5E83, // TPIDRRO_EL0
-		0x5A10: // NZCV
+		0x5A10, // NZCV
+		0x5A20,
+		0x5A21:
 	default:
 		return fmt.Errorf("unsupported system register encoding 0x%X", inst.Imm)
+	}
+	if inst.Rd == vm.REG_XZR {
+		t.emitOp(vm.OpNop)
+		return nil
 	}
 	rd, err := t.mapReg(inst.Rd)
 	if err != nil {
@@ -75,5 +81,15 @@ func (t *Translator) trMRS(inst vm.Instruction) error {
 	}
 	sysreg := uint16(inst.Imm & 0x7FFF)
 	t.emitOp(vm.OpMrs, rd, byte(sysreg&0xFF), byte(sysreg>>8))
+	return nil
+}
+
+func (t *Translator) trMSR(inst vm.Instruction) error {
+	src := byte(0xff)
+	if inst.Rd != vm.REG_XZR {
+		src = byte(inst.Rd)
+	}
+	sysreg := uint16(inst.Imm & 0x7FFF)
+	t.emitOp(vm.OpMsr, src, byte(sysreg), byte(sysreg>>8))
 	return nil
 }

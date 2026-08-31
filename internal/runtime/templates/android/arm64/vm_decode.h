@@ -72,6 +72,7 @@ static inline u8 vm_insn_size(u8 op) {
   case OP_UDIV:
   case OP_SDIV:
   case OP_MRS:
+  case OP_MSR:
   case OP_SMULH:
   case OP_ADC:
   case OP_SBC:

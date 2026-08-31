@@ -15,8 +15,7 @@ import (
 // 不支持的指令返回错误（不会静默跳过）。
 //
 // 寄存器映射:
-//   ARM64 X0-X15 → VM R0-R15 (直接映射)
-//   ARM64 X16-X28 → 不支持 (trap)
+//   ARM64 X0-X28 → VM R0-R28（具体指令仍受各自语义/桥接约束）
 //   ARM64 X29(FP) → 函数内不翻译
 //   ARM64 X30(LR) → 特殊处理
 //   ARM64 XZR/SP  → 看上下文
@@ -602,11 +601,13 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 		option := byte((inst.Raw >> 8) & 0xf)
 		t.emitOp(vm.OpBarrier, kind, option)
 		return 0, nil
-	case WFE, WFI, YIELD_ARM, CLREX, MSR_WRITE, PRFM:
-		return 0, fmt.Errorf("native system semantics require a validated thunk")
-	case HLT, BRK:
-		t.emitOp(vm.OpHalt)
+	case YIELD_ARM, CLREX, PRFM:
+		t.emitOp(vm.OpNop)
 		return 0, nil
+	case MSR_WRITE:
+		return 0, t.trMSR(inst)
+	case WFE, WFI:
+		return 0, fmt.Errorf("native system semantics require a validated thunk")
 
 	// ========== Acquire/Release (Batch 5) ==========
 	case LDAXR, STLXR:
@@ -618,15 +619,17 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	case LDPSW:
 		return 0, t.trStackLdpsw(inst)
 
-	// ========== PAC/BTI NOP化 ==========
+	// ========== PAC 语义 / BTI VM 内 NOP ==========
 	case PACIASP, AUTIASP, PACIAZ, AUTIAZ, PACIBSP, AUTIBSP, XPACLRI:
 		kind := map[Op]byte{PACIASP: 0, AUTIASP: 1, PACIAZ: 2, AUTIAZ: 3,
 			PACIBSP: 4, AUTIBSP: 5, XPACLRI: 6}[op]
 		t.emitOp(vm.OpPAuth, kind)
 		return 0, nil
 	case BTI_C, BTI_J, BTI_JC, BTI:
-		t.entryBTI = op
-		t.hasEntryBTI = true
+		if inst.Offset == 0 {
+			t.entryBTI = op
+			t.hasEntryBTI = true
+		}
 		t.emitOp(vm.OpNop)
 		return 0, nil
 

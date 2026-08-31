@@ -1,3 +1,3 @@
-module github.com/vmpacker/archive/packing-era
+module github.com/vmpacker
 
 go 1.21

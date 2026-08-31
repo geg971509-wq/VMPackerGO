@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"debug/elf"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"math"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	vmruntime "github.com/vmpacker/internal/runtime"
 	"github.com/vmpacker/internal/vm"
 )
 
@@ -988,25 +986,21 @@ func TestMissingRuntimeImageFailsBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestValidatedRuntimeStopsAtRewritePlannerBoundary(t *testing.T) {
+func TestValidatedRuntimeStopsAtRewriteWriterBoundary(t *testing.T) {
 	fixture := buildELFFixture(fixtureOptions{dynamic: true})
 	input := append([]byte(nil), fixture.data...)
 	before := append([]byte(nil), input...)
 	opcodes := vm.IdentityOpcodeMap()
-	digest, err := opcodes.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
 	result, err := Process(Request{
 		Input: input, Selections: []SelectionRequest{addressSelection(0x1200, 0x120c)},
-		Opcodes: opcodes, RuntimeImage: &vmruntime.Image{OpcodeMapDigest: hex.EncodeToString(digest[:])},
+		Opcodes: opcodes, RuntimeImage: rewritePlanRuntimeImage(t, opcodes),
 	})
-	if !errors.Is(err, ErrRewritePlannerRequired) || result.DevelopmentStrategy != "rewrite-plan-required" ||
+	if !errors.Is(err, ErrRewriteWriterRequired) || result.DevelopmentStrategy != "rewrite-plan-ready" || result.rewritePlan == nil ||
 		result.RuntimeStrategy != "ndk-r29-et-rel-validated" || result.OpcodeMapDigest == "" || len(result.Artifact) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if !bytes.Equal(input, before) {
-		t.Fatal("planner boundary mutated input")
+		t.Fatal("writer boundary mutated input")
 	}
 }
 

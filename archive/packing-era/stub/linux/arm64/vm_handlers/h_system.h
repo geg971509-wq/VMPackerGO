@@ -6,6 +6,7 @@
 #ifndef H_SYSTEM_H
 #define H_SYSTEM_H
 
+#include "../vm_call.h"
 #include "../vm_decode.h"
 #include "../vm_types.h"
 
@@ -18,6 +19,8 @@ static inline u32 h_nop(vm_ctx_t *vm) {
 /* CALL_NAT: BLR 绝对地址调用  [9B: op | addr64] */
 static inline u32 h_call_nat(vm_ctx_t *vm) {
   u64 addr = rd64(&vm->bc[vm->pc + 1]);
+  if (vm_try_packed_call(vm, addr, vm->pc + 9))
+    return 0;
   native_fn_t fn = (native_fn_t)addr;
   vm->R[0] = fn(vm->R[0], vm->R[1], vm->R[2], vm->R[3], vm->R[4], vm->R[5],
                 vm->R[6], vm->R[7]);
@@ -27,6 +30,8 @@ static inline u32 h_call_nat(vm_ctx_t *vm) {
 /* CALL_IMAGE: BLR load_bias+#imm64  [9B: op | addr64] */
 static inline u32 h_call_image(vm_ctx_t *vm) {
   u64 addr = vm->load_bias + rd64(&vm->bc[vm->pc + 1]);
+  if (vm_try_packed_call(vm, addr, vm->pc + 9))
+    return 0;
   native_fn_t fn = (native_fn_t)addr;
   vm->R[0] = fn(vm->R[0], vm->R[1], vm->R[2], vm->R[3], vm->R[4], vm->R[5],
                 vm->R[6], vm->R[7]);
@@ -37,6 +42,8 @@ static inline u32 h_call_image(vm_ctx_t *vm) {
 static inline u32 h_call_reg(vm_ctx_t *vm) {
   u8 rn = vm->bc[vm->pc + 1];
   u64 addr = vm->R[rn & 31];
+  if (vm_try_packed_call(vm, addr, vm->pc + 2))
+    return 0;
   native_fn_t fn = (native_fn_t)addr;
   vm->R[0] = fn(vm->R[0], vm->R[1], vm->R[2], vm->R[3], vm->R[4], vm->R[5],
                 vm->R[6], vm->R[7]);
@@ -73,6 +80,15 @@ static inline u32 h_br_reg(vm_ctx_t *vm) {
     /* 未找到映射 */
     return 2; /* skip, 继续 */
   }
+
+  if (addr == VM_PACKED_LR) {
+    if (vm_pop_frame(vm))
+      return 0;
+    vm->pc = vm->bc_len;
+    return 0;
+  }
+  if (vm_try_packed_call(vm, addr, vm->pc + 2))
+    return 0;
 
   /* 外部尾调用 → native call */
   native_fn_t fn = (native_fn_t)addr;

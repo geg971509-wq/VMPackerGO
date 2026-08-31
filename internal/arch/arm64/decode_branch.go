@@ -122,6 +122,7 @@ var branchPatterns = []InstrPattern{
 		},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["sysreg"]
+			xzrReplace(&inst.Rd)
 			inst.SF = true // MRS always 64-bit
 		},
 	},
@@ -136,6 +137,7 @@ var branchPatterns = []InstrPattern{
 		},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["sysreg"]
+			xzrReplace(&inst.Rd)
 			inst.SF = true
 		},
 	},

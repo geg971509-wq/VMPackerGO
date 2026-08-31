@@ -149,6 +149,7 @@ const (
 	OpAtomic
 	OpExclusive
 	OpFPSIMD
+	OpMsr
 	OpcodeCount
 )
 
@@ -293,6 +294,7 @@ var opcodeDefinitions = [OpcodeCount]OpcodeDefinition{
 	{OpAtomic, "ATOMIC", 7, "OP_ATOMIC", 0x41, -1},
 	{OpExclusive, "EXCLUSIVE", 5, "OP_EXCLUSIVE", 0x42, -1},
 	{OpFPSIMD, "FPSIMD", 5, "OP_FPSIMD", 0x43, -1},
+	{OpMsr, "MSR", 4, "OP_MSR", 0x45, -1},
 }
 
 func OpcodeDefinitionFor(op Opcode) (OpcodeDefinition, bool) {

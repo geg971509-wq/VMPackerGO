@@ -331,9 +331,22 @@ func OpName(op Op) string {
 		LDPSW: "LDPSW", LDADD: "LDADD", CAS: "CAS",
 		PACIASP: "PACIASP", AUTIASP: "AUTIASP", PACIAZ: "PACIAZ", AUTIAZ: "AUTIAZ", PACIBSP: "PACIBSP", AUTIBSP: "AUTIBSP", XPACLRI: "XPACLRI",
 		BTI_C: "BTI c", BTI_J: "BTI j", BTI_JC: "BTI jc", BTI: "BTI",
+		UNSUPPORTED: "UNSUPPORTED",
 	}
 	if n, ok := names[op]; ok {
 		return n
 	}
 	return fmt.Sprintf("UNKNOWN(0x%X)", int(op))
+}
+
+// ClassifyEncoding 把未解码编码归到 SIMD/FP 或 undecoded。
+func ClassifyEncoding(raw uint32) string {
+	op0 := (raw >> 25) & 0xF
+	if op0 == 0x7 || op0 == 0xF {
+		return "SIMD/FP"
+	}
+	if (raw>>26)&1 == 1 && (op0 == 0x4 || op0 == 0x6 || op0 == 0xC || op0 == 0xE) {
+		return "SIMD/FP"
+	}
+	return "undecoded"
 }

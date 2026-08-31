@@ -317,6 +317,9 @@ __attribute__((noinline)) VM_SECTION_ALU static u32 hw_sdiv(vm_ctx_t *vm) {
 __attribute__((noinline)) VM_SECTION_SYSTEM static u32 hw_mrs(vm_ctx_t *vm) {
   return h_mrs(vm);
 }
+__attribute__((noinline)) VM_SECTION_SYSTEM static u32 hw_msr(vm_ctx_t *vm) {
+  return h_msr(vm);
+}
 
 /* ---- SMULH/CLZ/CLS/RBIT/REV ---- */
 __attribute__((noinline)) VM_SECTION_ALU static u32 hw_smulh(vm_ctx_t *vm) {
@@ -630,6 +633,7 @@ __attribute__((noinline)) static void vm_init_jump_table(vm_handler_fn *tbl) {
 
   /* MRS */
   tbl[OP_MRS] = hw_mrs;
+  tbl[OP_MSR] = hw_msr;
 
   /* SMULH/CLZ/CLS/RBIT/REV */
   tbl[OP_SMULH] = hw_smulh;

@@ -1,6 +1,7 @@
 package elf
 
 import (
+	"crypto/sha256"
 	"debug/elf"
 	"encoding/binary"
 	"fmt"
@@ -17,8 +18,8 @@ const (
 var phase3AnalysisLimitations = []string{
 	"CFG inference is conservative and does not recover arbitrary hand-written or obfuscated functions",
 	"indirect and dynamically resolved setjmp/longjmp or signal-recovery usage cannot be proven absent",
-	"external unconditional branches and tail calls require a later native-call bridge",
-	"the current entry patch requires at least 12 contiguous bytes; later BTI entry support may require more",
+	"external native tail branches remain fail-closed until the non-returning native-tail ABI bridge is proven; packed tail support is handled separately",
+	"the entry patch requires at least 12 contiguous bytes, or 16 bytes when preserving an entry BTI",
 }
 
 type SelectionRequest struct {
@@ -49,7 +50,8 @@ type Analysis struct {
 	Limitations []string
 	Selections  []Selection
 
-	hasNote bool
+	hasNote     bool
+	inputDigest [sha256.Size]byte
 }
 
 func Analyze(req Request) (Analysis, error) {
@@ -78,6 +80,7 @@ func Analyze(req Request) (Analysis, error) {
 	analysis := Analysis{
 		TargetKind: meta.kind, Warnings: append([]string(nil), meta.warnings...),
 		Limitations: append([]string(nil), phase3AnalysisLimitations...), hasNote: meta.hasNote,
+		inputDigest: sha256.Sum256(req.Input),
 	}
 	for _, request := range requests {
 		selection, err := resolveSelection(req.Input, meta, symbols, request)
@@ -102,6 +105,13 @@ func Analyze(req Request) (Analysis, error) {
 		}
 	}
 	return analysis, nil
+}
+
+func (analysis Analysis) ValidateInput(input []byte) error {
+	if analysis.inputDigest != sha256.Sum256(input) {
+		return fmt.Errorf("analysis input provenance mismatch")
+	}
+	return nil
 }
 
 func resolveSelection(input []byte, meta *elfMetadata, symbols *symbolIndex, request SelectionRequest) (Selection, error) {

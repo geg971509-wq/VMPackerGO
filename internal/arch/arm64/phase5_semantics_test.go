@@ -96,9 +96,12 @@ func TestCBZDoesNotModifyNZCVAndCarriesWidth(t *testing.T) {
 func TestSystemSemanticsFailClosed(t *testing.T) {
 	tests := []vm.Instruction{
 		{Op: int(MRS), Rd: 0, Imm: 0x1234, SF: true},
-		{Op: int(MSR_WRITE), Rd: 0, Imm: 0x5A10, SF: true},
+		{Op: int(MRS), Rd: 31, Imm: 0x5A20, SF: true},
+		{Op: int(MSR_WRITE), Rd: 0, Imm: 0x1234, SF: true},
+		{Op: int(MSR_WRITE), Rd: 31, Imm: 0x5A20, SF: true},
 		{Op: int(DMB)},
-		{Op: int(PRFM)},
+		{Op: int(WFE)},
+		{Op: int(WFI)},
 	}
 	for _, inst := range tests {
 		result := translateForPhase5(t, []vm.Instruction{inst})
@@ -108,6 +111,66 @@ func TestSystemSemanticsFailClosed(t *testing.T) {
 		if !strings.Contains(result.Unsupported[0], "offset") {
 			t.Fatalf("path lacks diagnostic: %q", result.Unsupported[0])
 		}
+	}
+}
+
+func TestVMBackedSystemRegisterWritesTranslate(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sysreg int64
+		src    int
+		want   byte
+	}{
+		{"NZCV", 0x5A10, 3, 3},
+		{"FPCR", 0x5A20, 7, 7},
+		{"FPSR_XZR", 0x5A21, vm.REG_XZR, 0xff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := translateForPhase5(t, []vm.Instruction{{Op: int(MSR_WRITE), Rd: tc.src, Imm: tc.sysreg, SF: true}})
+			if len(result.Unsupported) != 0 {
+				t.Fatalf("unsupported=%v", result.Unsupported)
+			}
+			ops, operands := translatedOps(t, result)
+			if len(ops) == 0 || vm.OpcodeName(ops[0]) != "MSR" || len(operands[0]) != 3 {
+				t.Fatalf("ops=%v operands=%v", ops, operands)
+			}
+			want := []byte{tc.want, byte(tc.sysreg), byte(tc.sysreg >> 8)}
+			if string(operands[0]) != string(want) {
+				t.Fatalf("operands=%v want=%v", operands[0], want)
+			}
+		})
+	}
+}
+
+func TestTrapAndUndecodedInstructionsStayFailClosed(t *testing.T) {
+	for _, op := range []Op{HLT, BRK, UNKNOWN, UNSUPPORTED} {
+		result := translateForPhase5(t, []vm.Instruction{{Op: int(op)}})
+		if len(result.Unsupported) != 1 {
+			t.Fatalf("%s unsupported=%v", OpName(op), result.Unsupported)
+		}
+	}
+}
+
+func TestSystemHintsAndVMBackedSystemReadsTranslate(t *testing.T) {
+	for _, op := range []Op{PRFM, YIELD_ARM, CLREX} {
+		result := translateForPhase5(t, []vm.Instruction{{Op: int(op)}})
+		if len(result.Unsupported) != 0 {
+			t.Fatalf("%s unsupported=%v", OpName(op), result.Unsupported)
+		}
+	}
+	for _, sysreg := range []int64{0x5A20, 0x5A21} {
+		result := translateForPhase5(t, []vm.Instruction{{Op: int(MRS), Rd: 0, Imm: sysreg, SF: true}})
+		if len(result.Unsupported) != 0 {
+			t.Fatalf("MRS 0x%X unsupported=%v", sysreg, result.Unsupported)
+		}
+	}
+	result := translateForPhase5(t, []vm.Instruction{{Op: int(MRS), Rd: vm.REG_XZR, Imm: 0x5A20, SF: true}})
+	if len(result.Unsupported) != 0 {
+		t.Fatalf("MRS FPCR, XZR unsupported=%v", result.Unsupported)
+	}
+	ops, _ := translatedOps(t, result)
+	if len(ops) == 0 || ops[0] != vm.OpNop || opcodeIndex(ops, vm.OpMrs) >= 0 || opcodeIndex(ops, vm.OpSVstore) >= 0 {
+		t.Fatalf("MRS FPCR, XZR ops=%v, want discarded read", ops)
 	}
 }
 
@@ -131,8 +194,8 @@ func TestBTIIsPreservedAsEntryMetadataOnly(t *testing.T) {
 		t.Fatalf("entry BTI result=%+v", result)
 	}
 	result = translateForPhase5(t, []vm.Instruction{{Op: int(NOP)}, {Op: int(BTI_J)}})
-	if len(result.Unsupported) != 1 {
-		t.Fatalf("non-entry BTI unsupported=%v", result.Unsupported)
+	if len(result.Unsupported) != 0 || result.HasEntryBTI {
+		t.Fatalf("non-entry BTI result=%+v", result)
 	}
 }
 

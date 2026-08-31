@@ -6,6 +6,7 @@
 #ifndef H_SYSTEM_H
 #define H_SYSTEM_H
 
+#include "../vm_call.h"
 #include "../vm_decode.h"
 #include "../vm_types.h"
 
@@ -156,6 +157,8 @@ static inline int vm_prepare_native_call(vm_ctx_t *vm, u64 target,
 /* CALL_NAT: BLR 绝对地址调用  [9B: op | addr64] */
 static inline u32 h_call_nat(vm_ctx_t *vm) {
   u64 addr = rd64(&vm->bc[vm->pc + 1]);
+  if (vm_try_packed_call(vm, addr, vm->pc + 9))
+    return 0;
   if (vm_prepare_native_call(vm, addr, 0))
     vm_native_call(vm, addr);
   return 9;
@@ -164,6 +167,8 @@ static inline u32 h_call_nat(vm_ctx_t *vm) {
 static inline u32 h_call_image(vm_ctx_t *vm) {
   i64 delta = (i64)rd64(&vm->bc[vm->pc + 1]);
   u64 addr = vm->image_anchor + (u64)delta;
+  if (vm_try_packed_call(vm, addr, vm->pc + 9))
+    return 0;
   if (vm_prepare_native_call(vm, addr, 0))
     vm_native_call(vm, addr);
   return 9;
@@ -173,13 +178,15 @@ static inline u32 h_call_image(vm_ctx_t *vm) {
 static inline u32 h_call_reg(vm_ctx_t *vm) {
   u8 rn = vm->bc[vm->pc + 1];
   u64 addr = vm->R[rn & 31];
+  if (vm_try_packed_call(vm, addr, vm->pc + 2))
+    return 0;
   if (vm_prepare_native_call(vm, addr, 0))
     vm_native_call(vm, addr);
   return 2;
 }
 
 /* BR_REG: BR Xn (寄存器间接跳转) [2B: op | rn]
- * 内部目标查映射表并设置 vm->pc，外部目标按 native 尾调用处理。
+ * 内部目标查映射表；packed 外部目标原位 tail，native 外部目标失败关闭。
  * 返回 0 表示已直接设置 vm->pc (内部跳转) */
 static inline u32 h_br_reg(vm_ctx_t *vm) {
   u8 rn = vm->bc[vm->pc + 1];
@@ -207,10 +214,17 @@ static inline u32 h_br_reg(vm_ctx_t *vm) {
     return 2; /* skip, 继续 */
   }
 
-  /* 外部尾调用 → native call */
-  if (vm_prepare_native_call(vm, addr, 1))
-    vm_native_call(vm, addr);
-  return 2;
+  if (addr == VM_PACKED_LR) {
+    if (vm_pop_frame(vm))
+      return 0;
+    vm->pc = vm->bc_len;
+    return 0;
+  }
+  if (vm_try_packed_tail(vm, addr))
+    return 0;
+
+  vm->fault |= VM_FAULT_SYSTEM;
+  return 0;
 }
 
 /* VLD16: LD1 {Vn.16B}, [Xn]  [3B: op | rn | len] */
@@ -244,6 +258,8 @@ static inline u32 h_vst16(vm_ctx_t *vm) {
  *   0x5E82 = TPIDR_EL0   (Software Thread ID)
  *   0x5E83 = TPIDRRO_EL0 (Read-only Software Thread ID)
  *   0x5A10 = NZCV        (标志位寄存器)
+ *   0x5A20 = FPCR
+ *   0x5A21 = FPSR
  */
 static inline u32 h_mrs(vm_ctx_t *vm) {
   u8 d = vm->bc[vm->pc + 1];
@@ -263,13 +279,40 @@ static inline u32 h_mrs(vm_ctx_t *vm) {
     __asm__ volatile("mrs %0, tpidrro_el0" : "=r"(val));
     break;
   case 0x5A10: /* NZCV - flags */
-      val = (u64)(vm->FL & 0xFu) << 28;
+    val = (u64)(vm->FL & 0xFu) << 28;
+    break;
+  case 0x5A20:
+    val = vm->FPCR;
+    break;
+  case 0x5A21:
+    val = vm->FPSR;
     break;
   default:
     vm->fault |= VM_FAULT_SYSTEM;
     break;
   }
   vm->R[d & 31] = val;
+  return 4;
+}
+
+static inline u32 h_msr(vm_ctx_t *vm) {
+  u8 s = vm->bc[vm->pc + 1];
+  u16 sysreg = (u16)vm->bc[vm->pc + 2] | ((u16)vm->bc[vm->pc + 3] << 8);
+  u64 val = s == 0xff ? 0 : vm->R[s & 31];
+  switch (sysreg) {
+  case 0x5A10:
+    vm->FL = (u32)((val >> 28) & 0xFu);
+    break;
+  case 0x5A20:
+    vm->FPCR = (u32)val;
+    break;
+  case 0x5A21:
+    vm->FPSR = (u32)val;
+    break;
+  default:
+    vm->fault |= VM_FAULT_SYSTEM;
+    break;
+  }
   return 4;
 }
 

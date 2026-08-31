@@ -2,11 +2,15 @@ package arm64
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/vmpacker/internal/vm"
 )
 
-const maxExclusiveRegionInstructions = 32
+const (
+	maxExclusiveRegionInstructions = 32
+	maxExclusiveThunkRegisters     = 16
+)
 
 // trExclusiveRegion lowers one complete LDAXR...STLXR sequence to a single
 // bytecode operation. The generated runtime executes the exact instruction
@@ -67,6 +71,9 @@ func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int)
 		words[i] = instructions[start+i].Raw
 	}
 	region := vm.NewExclusiveRegion(words)
+	if err := ValidateExclusiveRegion(region); err != nil {
+		return 0, err
+	}
 	if previous, ok := t.exclusiveRegions[region.ID]; ok {
 		if !sameInstructionWords(previous.Instructions, region.Instructions) {
 			return 0, fmt.Errorf("exclusive region identifier collision 0x%08x", region.ID)
@@ -113,12 +120,12 @@ func validateExclusiveBodyInstruction(decoder *Decoder, inst vm.Instruction, add
 	return nil
 }
 
-// X16/X17 are reserved by generated thunks, X18 is platform state, and
-// callee-saved registers would require a larger host ABI frame. Restricting the
-// closed region to caller-saved X0-X15 makes that invariant machine-checkable.
 func validateExclusiveRegister(reg int) error {
-	if reg < 0 || reg > 15 {
-		return fmt.Errorf("register X%d is outside the exclusive-thunk bank X0-X15", reg)
+	if reg == vm.REG_XZR {
+		return nil
+	}
+	if reg < 0 || reg > 30 {
+		return fmt.Errorf("register %d is not a remappable X0-X30/XZR operand", reg)
 	}
 	return nil
 }
@@ -135,15 +142,12 @@ func sameInstructionWords(a, b []uint32) bool {
 	return true
 }
 
-// ValidateExclusiveRegion independently validates a content-addressed region
-// before runtime code generation. This keeps Build fail-closed even if its
-// caller did not obtain the region from Translator.
-func ValidateExclusiveRegion(region vm.ExclusiveRegion) error {
+func validateExclusiveRegion(region vm.ExclusiveRegion) ([]vm.Instruction, error) {
 	if !region.Valid() {
-		return fmt.Errorf("exclusive region has an invalid content identifier")
+		return nil, fmt.Errorf("exclusive region has an invalid content identifier")
 	}
 	if len(region.Instructions) < 2 || len(region.Instructions) > maxExclusiveRegionInstructions {
-		return fmt.Errorf("exclusive region length %d is outside [2,%d]", len(region.Instructions), maxExclusiveRegionInstructions)
+		return nil, fmt.Errorf("exclusive region length %d is outside [2,%d]", len(region.Instructions), maxExclusiveRegionInstructions)
 	}
 	decoder := NewDecoder()
 	decoded := make([]vm.Instruction, len(region.Instructions))
@@ -153,23 +157,92 @@ func ValidateExclusiveRegion(region vm.ExclusiveRegion) error {
 	first := decoded[0]
 	last := decoded[len(decoded)-1]
 	if Op(first.Op) != LDAXR || Op(last.Op) != STLXR {
-		return fmt.Errorf("exclusive region must be bounded by LDAXR and STLXR")
+		return nil, fmt.Errorf("exclusive region must be bounded by LDAXR and STLXR")
 	}
 	if first.Rn != last.Rn || first.Shift != last.Shift {
-		return fmt.Errorf("exclusive region address/width mismatch")
+		return nil, fmt.Errorf("exclusive region address/width mismatch")
 	}
 	for name, reg := range map[string]int{
 		"address": first.Rn, "load result": first.Rd,
 		"store value": last.Rd, "status": last.Rm,
 	} {
 		if err := validateExclusiveRegister(reg); err != nil {
-			return fmt.Errorf("exclusive %s: %w", name, err)
+			return nil, fmt.Errorf("exclusive %s: %w", name, err)
 		}
 	}
 	for i := 1; i < len(decoded)-1; i++ {
 		if err := validateExclusiveBodyInstruction(decoder, decoded[i], first.Rn); err != nil {
-			return fmt.Errorf("exclusive region instruction %d: %w", i, err)
+			return nil, fmt.Errorf("exclusive region instruction %d: %w", i, err)
 		}
 	}
-	return nil
+	return decoded, nil
+}
+
+type exclusiveRegisterField struct {
+	register int
+	shift    uint
+}
+
+func exclusiveRegisterFields(inst vm.Instruction) []exclusiveRegisterField {
+	switch Op(inst.Op) {
+	case LDAXR:
+		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
+	case STLXR:
+		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
+	case ADD_IMM, SUB_IMM:
+		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
+	case ADD_REG, SUB_REG, AND_REG, ORR_REG, EOR_REG, MUL:
+		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
+	default:
+		return nil
+	}
+}
+
+// PlanExclusiveThunk rewrites guest register fields into the generated thunk's X0-X15 bank.
+func PlanExclusiveThunk(region vm.ExclusiveRegion) ([]uint32, []int, error) {
+	decoded, err := validateExclusiveRegion(region)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	seen := make(map[int]struct{})
+	for _, inst := range decoded {
+		for _, field := range exclusiveRegisterFields(inst) {
+			if field.register != vm.REG_XZR {
+				seen[field.register] = struct{}{}
+			}
+		}
+	}
+	registers := make([]int, 0, len(seen))
+	for reg := range seen {
+		registers = append(registers, reg)
+	}
+	sort.Ints(registers)
+	if len(registers) > maxExclusiveThunkRegisters {
+		return nil, nil, fmt.Errorf("exclusive region uses %d guest registers; thunk remap bank holds %d", len(registers), maxExclusiveThunkRegisters)
+	}
+
+	hostByGuest := make(map[int]uint32, len(registers))
+	for host, guest := range registers {
+		hostByGuest[guest] = uint32(host)
+	}
+	patched := append([]uint32(nil), region.Instructions...)
+	for i, inst := range decoded {
+		raw := patched[i]
+		for _, field := range exclusiveRegisterFields(inst) {
+			if field.register == vm.REG_XZR {
+				continue
+			}
+			host := hostByGuest[field.register]
+			raw = (raw &^ (uint32(0x1f) << field.shift)) | (host << field.shift)
+		}
+		patched[i] = raw
+	}
+	return patched, registers, nil
+}
+
+// ValidateExclusiveRegion validates both semantics and thunk-remap capacity.
+func ValidateExclusiveRegion(region vm.ExclusiveRegion) error {
+	_, _, err := PlanExclusiveThunk(region)
+	return err
 }

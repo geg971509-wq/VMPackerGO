@@ -22,7 +22,7 @@ Phases 0-3 remain implemented and verified. The interrupted Phase 4 work has bee
 - the output is validated as little-endian AArch64 ELF64 `ET_REL`, retaining sections, `SHT_NOBITS`, symbols, relocations, GNU BTI/PAC properties, and `.eh_frame`;
 - `vm_entry_token` is explicit assembly with BTI, PAC/AUT, and CFI;
 - the fixed interpreter blob and legacy direct-mutation/note-hijack writer are removed;
-- after analysis and runtime validation, the CLI returns `Phase 8 rewrite planner required` before translation or mutation;
+- after analysis, translation, runtime validation, and immutable rewrite planning, the CLI returns `Phase 9 rewrite writer required` before mutation;
 - no artifact or debug map is published at that boundary; an explicitly requested sanitized failure report may be published.
 
 This is not a packed-artifact implementation and is not release-ready. Phases 5-11 remain open.
@@ -108,7 +108,7 @@ Schema v1 now permits optional:
 - `runtime_strategy`;
 - future `segment_strategy`, `veneer_strategy`, and `unwind_strategy`.
 
-Current validated strategy is `ndk-r29-et-rel-validated`; the development boundary is `rewrite-plan-required`. Build errors omit NDK roots, tool paths, extraction paths, compiler stderr, and compiler temp paths.
+Current validated strategy is `ndk-r29-et-rel-validated`; the development boundary is `rewrite-plan-ready`. Build errors omit NDK roots, tool paths, extraction paths, compiler stderr, and compiler temp paths.
 
 ## 4. Verification evidence
 

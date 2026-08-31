@@ -18,7 +18,7 @@ func TestParseImageRetainsValidatedObjectState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseImage: %v", err)
 	}
-	if len(image.Object) != len(object) || len(image.Sections) != 10 || len(image.Symbols) != 5 || len(image.Relocations) != 3 {
+	if len(image.Object) != len(object) || len(image.Sections) != 10 || len(image.Symbols) != 7 || len(image.Relocations) != 3 {
 		t.Fatalf("incomplete image: sections=%d symbols=%d relocations=%d object=%d", len(image.Sections), len(image.Symbols), len(image.Relocations), len(image.Object))
 	}
 	if !image.Sections[3].NOBITS || image.Sections[3].Size != 16 || len(image.EHFrame) == 0 || len(image.GNUPropertyNote) == 0 {
@@ -38,19 +38,74 @@ func TestParseImageRetainsValidatedObjectState(t *testing.T) {
 
 func TestParseImageFailsClosed(t *testing.T) {
 	tests := []struct {
-		name string
-		cfg  fixtureConfig
-		want string
+		name   string
+		cfg    fixtureConfig
+		mutate func(*testing.T, []byte) []byte
+		want   string
 	}{
 		{name: "unknown-relocation", cfg: fixtureConfig{relocationType: elf.R_AARCH64(0xffff), features: 3}, want: "unsupported relocation"},
 		{name: "relocation-out-of-range", cfg: fixtureConfig{relocationType: elf.R_AARCH64_PREL32, relocationOffset: 9, features: 3}, want: "exceeds target"},
 		{name: "missing-symbol", cfg: fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3, omitTokenSymbol: true}, want: "vm_entry_token"},
 		{name: "missing-eh-frame", cfg: fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3, emptyEHFrame: true}, want: ".eh_frame"},
 		{name: "bti-only", cfg: fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 1}, want: "both BTI and PAC"},
+		{
+			name: "missing-image-file-va",
+			cfg:  fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3},
+			mutate: func(t *testing.T, object []byte) []byte {
+				return patchRuntimeSymbol(t, object, "_image_file_va", func(entry []byte, _ elf.Symbol, _ *elf.File) {
+					binary.LittleEndian.PutUint32(entry[0:], 0)
+				})
+			},
+			want: "runtime is missing required symbol \"_image_file_va\"",
+		},
+		{
+			name: "missing-token-count",
+			cfg:  fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3},
+			mutate: func(t *testing.T, object []byte) []byte {
+				return patchRuntimeSymbol(t, object, "_token_count", func(entry []byte, _ elf.Symbol, _ *elf.File) {
+					binary.LittleEndian.PutUint32(entry[0:], 0)
+				})
+			},
+			want: "runtime is missing required symbol \"_token_count\"",
+		},
+		{
+			name: "token-table-wrong-type",
+			cfg:  fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3},
+			mutate: func(t *testing.T, object []byte) []byte {
+				return patchRuntimeSymbol(t, object, "_token_table_va", func(entry []byte, _ elf.Symbol, _ *elf.File) {
+					entry[4] = byte(elf.STB_GLOBAL)<<4 | byte(elf.STT_FUNC)
+				})
+			},
+			want: "runtime symbol \"_token_table_va\" is not a defined 8-byte object",
+		},
+		{
+			name: "image-file-readonly",
+			cfg:  fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3},
+			mutate: func(t *testing.T, object []byte) []byte {
+				return patchRuntimeSymbol(t, object, "_image_file_va", func(entry []byte, _ elf.Symbol, file *elf.File) {
+					binary.LittleEndian.PutUint16(entry[6:], uint16(runtimeSectionIndex(t, file, ".eh_frame")))
+				})
+			},
+			want: "runtime symbol \"_image_file_va\" is not in writable non-executable allocatable storage",
+		},
+		{
+			name: "token-count-too-small",
+			cfg:  fixtureConfig{relocationType: elf.R_AARCH64_PREL32, features: 3},
+			mutate: func(t *testing.T, object []byte) []byte {
+				return patchRuntimeSymbol(t, object, "_token_count", func(entry []byte, _ elf.Symbol, _ *elf.File) {
+					binary.LittleEndian.PutUint64(entry[16:], 4)
+				})
+			},
+			want: "runtime symbol \"_token_count\" is not a defined 8-byte object",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := ParseImage(buildRuntimeFixture(t, test.cfg), vm.IdentityOpcodeMap())
+			object := buildRuntimeFixture(t, test.cfg)
+			if test.mutate != nil {
+				object = test.mutate(t, object)
+			}
+			_, err := ParseImage(object, vm.IdentityOpcodeMap())
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("err=%v, want %q", err, test.want)
 			}
@@ -77,7 +132,7 @@ func buildRuntimeFixture(t *testing.T, cfg fixtureConfig) []byte {
 		}
 		return uint32(index)
 	}
-	strtab := []byte("\x00vm_entry\x00vm_entry_token\x00_token_table_va\x00vm_native_call\x00vm_atomic_native\x00")
+	strtab := []byte("\x00vm_entry\x00vm_entry_token\x00_token_table_va\x00_image_file_va\x00_token_count\x00vm_native_call\x00vm_atomic_native\x00")
 	symbolName := func(name string) uint32 { return uint32(strings.Index(string(strtab), name+"\x00")) }
 
 	note := make([]byte, 32)
@@ -97,11 +152,11 @@ func buildRuntimeFixture(t *testing.T, cfg fixtureConfig) []byte {
 	binary.LittleEndian.PutUint64(rela[0:], cfg.relocationOffset)
 	binary.LittleEndian.PutUint64(rela[8:], uint64(2)<<32|uint64(uint32(cfg.relocationType)))
 	binary.LittleEndian.PutUint64(rela[24:], 4)
-	binary.LittleEndian.PutUint64(rela[32:], uint64(4)<<32|uint64(uint32(elf.R_AARCH64_PREL32)))
+	binary.LittleEndian.PutUint64(rela[32:], uint64(6)<<32|uint64(uint32(elf.R_AARCH64_PREL32)))
 	binary.LittleEndian.PutUint64(rela[48:], 8)
-	binary.LittleEndian.PutUint64(rela[56:], uint64(5)<<32|uint64(uint32(elf.R_AARCH64_PREL32)))
+	binary.LittleEndian.PutUint64(rela[56:], uint64(7)<<32|uint64(uint32(elf.R_AARCH64_PREL32)))
 
-	symtab := make([]byte, 6*24)
+	symtab := make([]byte, 8*24)
 	putSymbol := func(index int, name uint32, info byte, section uint16, value, size uint64) {
 		offset := index * 24
 		binary.LittleEndian.PutUint32(symtab[offset:], name)
@@ -115,8 +170,10 @@ func buildRuntimeFixture(t *testing.T, cfg fixtureConfig) []byte {
 		putSymbol(2, symbolName("vm_entry_token"), 0x12, 1, 0, 4)
 	}
 	putSymbol(3, symbolName("_token_table_va"), 0x11, 2, 0, 8)
-	putSymbol(4, symbolName("vm_native_call"), 0x12, 1, 0, 4)
-	putSymbol(5, symbolName("vm_atomic_native"), 0x12, 1, 0, 4)
+	putSymbol(4, symbolName("_image_file_va"), 0x11, 2, 0, 8)
+	putSymbol(5, symbolName("_token_count"), 0x11, 2, 0, 8)
+	putSymbol(6, symbolName("vm_native_call"), 0x12, 1, 0, 4)
+	putSymbol(7, symbolName("vm_atomic_native"), 0x12, 1, 0, 4)
 
 	type sectionData struct {
 		name      string
@@ -191,4 +248,43 @@ func buildRuntimeFixture(t *testing.T, cfg fixtureConfig) []byte {
 		binary.LittleEndian.PutUint64(header[56:], section.entrySize)
 	}
 	return object
+}
+
+func patchRuntimeSymbol(t *testing.T, object []byte, name string, mutate func(entry []byte, symbol elf.Symbol, file *elf.File)) []byte {
+	t.Helper()
+	file, err := elf.NewFile(bytes.NewReader(object))
+	if err != nil {
+		t.Fatalf("parse ELF: %v", err)
+	}
+	defer file.Close()
+	symbols, err := file.Symbols()
+	if err != nil {
+		t.Fatalf("read symbols: %v", err)
+	}
+	symtab := file.Section(".symtab")
+	if symtab == nil || symtab.Entsize == 0 {
+		t.Fatal("runtime fixture has no symbol table")
+	}
+	for index, symbol := range symbols {
+		if symbol.Name != name {
+			continue
+		}
+		offset := symtab.Offset + uint64(index+1)*symtab.Entsize
+		patched := append([]byte(nil), object...)
+		mutate(patched[offset:offset+symtab.Entsize], symbol, file)
+		return patched
+	}
+	t.Fatalf("missing symbol %q", name)
+	return nil
+}
+
+func runtimeSectionIndex(t *testing.T, file *elf.File, name string) elf.SectionIndex {
+	t.Helper()
+	for index, section := range file.Sections {
+		if section.Name == name {
+			return elf.SectionIndex(index)
+		}
+	}
+	t.Fatalf("missing section %q", name)
+	return 0
 }

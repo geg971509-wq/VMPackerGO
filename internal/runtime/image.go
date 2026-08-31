@@ -80,7 +80,7 @@ func ParseImage(object []byte, opcodes vm.OpcodeMap) (*Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read runtime symbols: %w", err)
 	}
-	required := map[string]*Symbol{"vm_entry": nil, "vm_entry_token": nil, "vm_native_call": nil, "vm_atomic_native": nil, "_token_table_va": nil}
+	required := map[string]*Symbol{"vm_entry": nil, "vm_entry_token": nil, "vm_native_call": nil, "vm_atomic_native": nil, "_token_table_va": nil, "_image_file_va": nil, "_token_count": nil}
 	for index, symbol := range symbols {
 		item := Symbol{
 			Index: uint32(index + 1), Name: symbol.Name, Info: symbol.Info, Other: symbol.Other,
@@ -112,13 +112,15 @@ func ParseImage(object []byte, opcodes vm.OpcodeMap) (*Image, error) {
 			return nil, fmt.Errorf("runtime symbol %q is not in executable allocatable storage", name)
 		}
 	}
-	tokenTable := required["_token_table_va"]
-	if elf.ST_TYPE(tokenTable.Info) != elf.STT_OBJECT || int(tokenTable.Section) <= 0 || int(tokenTable.Section) >= len(image.Sections) || tokenTable.Size < 8 {
-		return nil, fmt.Errorf("runtime symbol %q is not a defined 8-byte object", "_token_table_va")
-	}
-	tokenSection := image.Sections[tokenTable.Section]
-	if tokenSection.Flags&(elf.SHF_ALLOC|elf.SHF_WRITE) != elf.SHF_ALLOC|elf.SHF_WRITE || tokenSection.Flags&elf.SHF_EXECINSTR != 0 {
-		return nil, fmt.Errorf("runtime symbol %q is not in writable non-executable allocatable storage", "_token_table_va")
+	for _, name := range []string{"_token_table_va", "_image_file_va", "_token_count"} {
+		symbol := required[name]
+		if elf.ST_TYPE(symbol.Info) != elf.STT_OBJECT || int(symbol.Section) <= 0 || int(symbol.Section) >= len(image.Sections) || symbol.Size < 8 {
+			return nil, fmt.Errorf("runtime symbol %q is not a defined 8-byte object", name)
+		}
+		section := image.Sections[symbol.Section]
+		if section.Flags&(elf.SHF_ALLOC|elf.SHF_WRITE) != elf.SHF_ALLOC|elf.SHF_WRITE || section.Flags&elf.SHF_EXECINSTR != 0 {
+			return nil, fmt.Errorf("runtime symbol %q is not in writable non-executable allocatable storage", name)
+		}
 	}
 
 	for index, section := range file.Sections {

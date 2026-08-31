@@ -56,15 +56,19 @@ func buildInstructionRules() map[Op]instructionRule {
 	allow([]Op{LD1_16B, ST1_16B}, validateSIMDStructureTransfer)
 	allow([]Op{ADR, ADRP, LDR_LIT}, nil)
 	allow([]Op{MRS}, validateSystemRead)
+	allow([]Op{MSR_WRITE}, validateSystemWrite)
 	allow([]Op{SVC}, nil)
 	allow([]Op{PACIASP, AUTIASP, PACIAZ, AUTIAZ, PACIBSP, AUTIBSP, XPACLRI}, nil)
-	allow([]Op{BTI_C, BTI_J, BTI_JC, BTI}, validateEntryBTI)
+	allow([]Op{BTI_C, BTI_J, BTI_JC, BTI}, nil)
 	allow([]Op{DMB, DSB, ISB}, validateBarrier)
+	// PRFM/YIELD are architectural hints. CLREX is also state-free at the VM
+	// boundary because every supported exclusive monitor is contained inside a
+	// single generated LDAXR...STLXR thunk.
+	allow([]Op{PRFM, YIELD_ARM, CLREX}, nil)
 	allow([]Op{LDAR, STLR, LDADD, CAS}, validateAtomicNative)
 	allow([]Op{FPSIMD_NATIVE}, func(inst vm.Instruction) error { return ValidateFPSIMDInstruction(inst.Raw) })
 
-	classify(dispositionNativeThunk, WFE, WFI, YIELD_ARM, CLREX,
-		MSR_WRITE, PRFM, LDAXR, STLXR)
+	classify(dispositionNativeThunk, WFE, WFI, LDAXR, STLXR)
 	classify(dispositionReject, HLT, BRK, UNKNOWN, UNSUPPORTED)
 	return rules
 }
@@ -232,17 +236,25 @@ func validateConditional(inst vm.Instruction) error {
 }
 
 func validateSystemRead(inst vm.Instruction) error {
+	if inst.Rd != vm.REG_XZR && (inst.Rd < 0 || inst.Rd > 30) {
+		return fmt.Errorf("system register destination %d is invalid", inst.Rd)
+	}
 	switch inst.Imm {
-	case 0x5F02, 0x5F00, 0x5E82, 0x5E83, 0x5A10:
+	case 0x5F02, 0x5F00, 0x5E82, 0x5E83, 0x5A10, 0x5A20, 0x5A21:
 		return nil
 	default:
 		return fmt.Errorf("unsupported system register encoding 0x%X", inst.Imm)
 	}
 }
 
-func validateEntryBTI(inst vm.Instruction) error {
-	if inst.Offset != 0 {
-		return fmt.Errorf("BTI at non-entry offset 0x%X requires an indirect-target wrapper", inst.Offset)
+func validateSystemWrite(inst vm.Instruction) error {
+	if inst.Rd != vm.REG_XZR && (inst.Rd < 0 || inst.Rd > 30) {
+		return fmt.Errorf("system register source %d is invalid", inst.Rd)
 	}
-	return nil
+	switch inst.Imm {
+	case 0x5A10, 0x5A20, 0x5A21:
+		return nil
+	default:
+		return fmt.Errorf("unsupported system register encoding 0x%X", inst.Imm)
+	}
 }

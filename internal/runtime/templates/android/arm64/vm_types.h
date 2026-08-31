@@ -25,6 +25,8 @@ typedef short i16;
 #define VM_BYTECODE_MAX 65536  /* 最大字节码长度 (64KB, 含映射表) */
 #define VM_VECTOR_COUNT 32     /* V0-V31 */
 #define VM_VECTOR_BYTES 16     /* architectural 128-bit vector width */
+#define VM_CALL_DEPTH_MAX 16
+#define VM_PACKED_LR 1ull
 
 /* ---- AArch64 architectural NZCV bits (same order as the NZCV nibble) ---- */
 #define FL_V 0x1u
@@ -41,6 +43,22 @@ typedef struct {
   u32 arm64_off; /* ARM64 函数内偏移 */
   u32 vm_off;    /* 对应的 VM 字节码偏移 */
 } addr_map_entry_t;
+
+/* ---- VM-to-VM 控制面帧 (不含寄存器/虚拟栈) ---- */
+typedef struct {
+  u8 *bc;
+  u8 *bc_buf;
+  u32 bc_len;
+  u32 bc_alloc;
+  u32 pc;
+  u32 oc_key;
+  u8 reverse;
+  u64 func_addr;
+  u32 func_size;
+  addr_map_entry_t *addr_map;
+  u32 map_count;
+  u64 lr;
+} vm_frame_t;
 
 /* ---- VM CPU 上下文 ---- */
 typedef struct {
@@ -98,6 +116,12 @@ typedef struct {
 
   /* PC 反向遍历 */
   u8 reverse; /* 1=反向执行 (pc 递减), 0=正向 */
+
+  u8 *bc_buf;
+  u8 *root_bc_buf;
+  u32 bc_alloc;
+  u32 depth;
+  vm_frame_t frames[VM_CALL_DEPTH_MAX];
 } vm_ctx_t;
 
 _Static_assert(__builtin_offsetof(vm_ctx_t, R) == VM_CTX_R,
@@ -140,7 +164,11 @@ static inline void vm_ctx_init(vm_ctx_t *vm, u64 *args, u8 *bytecode, u32 len,
 
   /* 字节码 */
   vm->bc = bytecode;
+  vm->bc_buf = bytecode;
+  vm->root_bc_buf = bytecode;
   vm->bc_len = len;
+  vm->bc_alloc = 0;
+  vm->depth = 0;
 
   /* 状态初始化 */
   vm->FL = 0;

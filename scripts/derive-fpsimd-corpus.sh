@@ -46,7 +46,7 @@ for optimization in O0 O2 Oz; do
       if (raw !~ /^[[:xdigit:]]{8}$/ || mnemonic == "") next
       operands=""
       for (i=4; i<=NF; i++) operands=operands (i == 4 ? "" : " ") $i
-      if (mnemonic ~ /^(f(add|sub|mul|div|neg|abs|cmp|cvt|mov)|scvtf|ucvtf|fcvt[azmnpu]?s|add|sub|mul|and|orr|eor|mvn|not|ldr|str)$/ &&
+      if (mnemonic ~ /^(f(add|sub|mul|div|neg|abs|cmp|cvt|mov)|movi|scvtf|ucvtf|fcvt[azmnpu]?s|add|sub|mul|and|orr|eor|mvn|not|ldr|str)$/ &&
           (mnemonic ~ /^f/ || mnemonic ~ /cvtf$/ || operands ~ /(^|[,{[:space:]])[bhsdqv][0-9]/)) {
         print opt "\t" raw "\t" mnemonic "\t" operands
       }
