@@ -17,7 +17,7 @@ func TestSuccessGolden(t *testing.T) {
 	artifact := []byte("artifact")
 	r.Success(elfpacker.Result{
 		Artifact: artifact, TargetKind: elfpacker.TargetKindAndroidSO,
-		DevelopmentStrategy: "rewrite-plan-ready", RuntimeStrategy: "ndk-r29-et-rel-validated",
+		DevelopmentStrategy: "rewrite-artifact-ready", RuntimeStrategy: "ndk-r29-et-rel-validated",
 		OpcodeMapDigest: strings.Repeat("a", 64),
 		Functions:       []elfpacker.FunctionFact{{Name: "foo", Address: 16, Size: 8, Section: ".text", Instructions: 2, Translated: 2, Bytecode: 7}},
 	})
@@ -29,7 +29,8 @@ func TestSuccessGolden(t *testing.T) {
 	wantHash := hex.EncodeToString(sum[:])
 	text := string(data)
 	for _, want := range []string{`"schema_version": 1`, `"input": "raw/../input.so"`, `"functions": [`, `"status": "ok"`,
-		`"opcode_map_digest": "` + strings.Repeat("a", 64) + `"`, `"runtime_strategy": "ndk-r29-et-rel-validated"`, wantHash, `"release_ready": false`} {
+		`"development_strategy": "rewrite-artifact-ready"`, `"opcode_map_digest": "` + strings.Repeat("a", 64) + `"`,
+		`"runtime_strategy": "ndk-r29-et-rel-validated"`, wantHash, `"release_ready": false`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in %s", want, text)
 		}
@@ -83,5 +84,28 @@ func TestFailureGoldenAndNonNullArrays(t *testing.T) {
 	}
 	if strings.Contains(text, "output_sha256") {
 		t.Fatalf("failure has output hash: %s", text)
+	}
+}
+
+func TestFailurePreservesCompletedFunctionFacts(t *testing.T) {
+	sig, _ := abi.Parse("void()")
+	r := New("dev", "unknown", "in", "out", "auto", []Selection{{
+		Source: "direct", Selector: "0x10", Name: "entry", Address: "0x10", ABI: sig,
+	}})
+	r.Fail(errors.New("writer failed"), elfpacker.Result{
+		TargetKind:          elfpacker.TargetKindAndroidSO,
+		DevelopmentStrategy: "rewrite-plan-ready",
+		RuntimeStrategy:     "ndk-r29-et-rel-validated",
+		Functions: []elfpacker.FunctionFact{{
+			Source: "direct", Name: "resolved", Address: 0x10, End: 0x1c, Size: 12, Section: ".text",
+			SymbolSource: "dynsym", Instructions: 3, Translated: 3, Bytecode: 19,
+		}},
+	})
+	if r.Status != "failed" || r.DevelopmentStrategy != "rewrite-plan-ready" || r.RuntimeStrategy != "ndk-r29-et-rel-validated" {
+		t.Fatalf("unexpected failure metadata: %#v", r)
+	}
+	if len(r.Functions) != 1 || r.Functions[0].Name != "resolved" || r.Functions[0].Range != "0x10-0x1c" ||
+		r.Functions[0].Instructions != 3 || r.Functions[0].Translated != 3 || r.Functions[0].Bytecode != 19 {
+		t.Fatalf("failure dropped completed function facts: %#v", r.Functions)
 	}
 }

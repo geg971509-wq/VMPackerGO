@@ -12,7 +12,7 @@
 
 ## 1. Truthful status
 
-Phases 0-3 remain implemented and verified. The interrupted Phase 4 work has been repaired and advanced to the honest pre-Phase-8 boundary:
+Phases 0-3 remain implemented and verified. The interrupted Phase 4 work has been repaired and advanced through the host-side Phase 8 writer boundary:
 
 - semantic opcode maps propagate through VM, ARM64 translation, and ELF bytecode helpers;
 - runtime source templates are embedded under `internal/runtime/templates/android/arm64`;
@@ -22,14 +22,14 @@ Phases 0-3 remain implemented and verified. The interrupted Phase 4 work has bee
 - the output is validated as little-endian AArch64 ELF64 `ET_REL`, retaining sections, `SHT_NOBITS`, symbols, relocations, GNU BTI/PAC properties, and `.eh_frame`;
 - `vm_entry_token` is explicit assembly with BTI, PAC/AUT, and CFI;
 - the fixed interpreter blob and legacy direct-mutation/note-hijack writer are removed;
-- after analysis, translation, runtime validation, and immutable rewrite planning, the CLI returns `Phase 9 rewrite writer required` before mutation;
-- no artifact or debug map is published at that boundary; an explicitly requested sanitized failure report may be published.
+- after analysis, translation, runtime validation, and immutable rewrite planning, the CLI applies the validated plan to a fresh in-memory ELF image and reparses it before publication;
+- successful host transformations publish an artifact through the existing artifact-last transaction and report `rewrite-artifact-ready`; writer/reparse failures retain `rewrite-plan-ready` and publish no artifact.
 
-This is not a packed-artifact implementation and is not release-ready. Phases 5-11 remain open.
+This is a host-side structurally rewritten-artifact implementation, but it is not release-ready. Physical-device, final-unwind, full-matrix, signing, and independent-verification gates remain open.
 
 ### Continuation status after the original snapshot
 
-The product remains fail-closed at the Phase 8 boundary, but the following bounded slices have now been implemented and verified after the original handoff snapshot:
+The product now closes the host-side Phase 8 plan-first rewrite boundary, and the following bounded slices have been implemented and verified after the original handoff snapshot:
 
 - Phase 5 host semantics: table-driven tri-state ARM64 policy, binary `UMULH`, architectural width-aware NZCV and all conditions, typed ASLR image references, entry BTI metadata, native PAC/AUT/XPAC helpers, and one exact-immediate BTI/CFI SVC thunk per observed immediate. Real-r29 verification passed in workflow runs `33175725869`, `33176634999`, and `33177595969`.
 - Phase 6 host implementation: V0-V31, FPCR, FPSR, native-call metadata, an explicit PAC/BTI/CFI AAPCS64 bridge for X0-X8, shadow-stack arguments, V0-V7, and integer/vector returns; native domain-preserving DMB/DSB/ISB; native 1/2/4/8-byte LDAR/STLR/LSE LDADD/CAS helpers; an exact-r29 `-O0/-O2/-Oz` FP/SIMD corpus gate with a mask-based whitelist and per-observed-encoding state-preserving native thunks; and content-addressed continuous closed `LDAXR...STLXR` thunks. Unknown FP/SIMD encodings and unclosed, nested, branching, mismatched, or reserved-register exclusive regions fail closed. Every generated thunk carries BTI/CFI and is required to have an FDE. Real-r29 verification passed most recently in workflow run `33182811799`. The physical-device ABI/contention gate remains open.
@@ -37,7 +37,7 @@ The product remains fail-closed at the Phase 8 boundary, but the following bound
 - Phase 9 manifest slice: `demo/manifest.json` is the exact machine-readable inventory of 83 C, one Go, and one Rust source, with schema, path, uniqueness, count, and existence validation.
 - Host build entry point: root `build.sh` builds the current Git checkout through the canonical `make mac-cli` target, verifies an executable macOS ARM64 Mach-O, and confirms `dist/vmpacker-darwin-arm64` and `dist/vmpacker` are identical.
 
-Still open locally: the Android C++ personality/landing-pad bridge, the complete plan-first writer, actual packing of all 85 demos, and adversarial release rehearsal. The Phase 5/6 physical-device semantic, ABI, and multithreaded-contention gates, plus the canonical-module, Apple signing/notary, and independent-verifier gates in section 11, also remain open. No release-ready claim is permitted.
+Still open locally: the Android C++ personality/landing-pad bridge, actual packing and execution of all 85 demos, and adversarial release rehearsal. The Phase 5/6 physical-device semantic, ABI, and multithreaded-contention gates, plus the canonical-module, Apple signing/notary, and independent-verifier gates in section 11, also remain open. No release-ready claim is permitted.
 
 ## 2. Non-negotiable product contract
 
@@ -108,7 +108,7 @@ Schema v1 now permits optional:
 - `runtime_strategy`;
 - future `segment_strategy`, `veneer_strategy`, and `unwind_strategy`.
 
-Current validated strategy is `ndk-r29-et-rel-validated`; the development boundary is `rewrite-plan-ready`. Build errors omit NDK roots, tool paths, extraction paths, compiler stderr, and compiler temp paths.
+Current validated runtime strategy is `ndk-r29-et-rel-validated`; successful host transformations use `rewrite-artifact-ready`, while final application/reparse failures after planning retain `rewrite-plan-ready`. Build errors omit NDK roots, tool paths, extraction paths, compiler stderr, and compiler temp paths.
 
 ## 4. Verification evidence
 
@@ -190,7 +190,7 @@ Gate: host differential vectors plus repeated physical-device ASLR, BTI/PAC, and
 - Relocate complete closed exclusive regions as continuous native thunks; reject unclosed regions.
 - Emit and validate CFI for every bridge and thunk.
 
-Host status: all items above are implemented and exact-r29 green in workflow run `33182811799`. Closed exclusive regions are intentionally restricted to a proven branch-free X0-X15 body; other shapes fail closed rather than being approximated. Runtime integration with transformed artifacts still depends on the Phase 8 plan-first writer.
+Host status: all items above are implemented and exact-r29 green in workflow run `33182811799`. Closed exclusive regions are intentionally restricted to a proven branch-free X0-X15 body; other shapes fail closed rather than being approximated. The current runtime is integrated into structurally rewritten host artifacts through the Phase 8 plan-first writer; physical-device ABI and contention evidence remains open.
 
 Remaining gate: physical-device ABI differential and multithreaded contention evidence.
 
@@ -201,21 +201,20 @@ Remaining gate: physical-device ABI differential and multithreaded contention ev
 - Generate unique call-thunk FDE/LSDA ranges, reuse the Android C++ personality, and build landing-pad/wrapper bridges.
 - Preserve runtime unwind metadata and do not use Apple-only registration APIs.
 
-Hard gate: prove Android loader/unwinder discovery in a standalone physical-device shared-library test before writer integration.
+Hard gate: prove Android loader/unwinder discovery in a standalone physical-device shared-library test before final unwind integration is considered complete.
 
-## 9. Remaining Phase 8 - plan-first ELF writer
+## 9. Phase 8 - host writer implemented; completion gates open
 
-Implement:
+Implemented host slice:
 
-```go
-type RewritePlan struct { /* complete validated layout */ }
-func PlanRewrite(...) (*RewritePlan, error)
-func ApplyPlan(original []byte, plan *RewritePlan) ([]byte, error)
-```
+- `RewritePlan` is the sole authority for the current runtime segments, runtime relocations, encrypted bytecode/token data, function-entry patches, and final program-header table.
+- The planner emits `0x4000`-aligned W^X RX/RW/R loads, reuses only safe trailing `PT_NULL` slots, grows the table in place only when proven safe, and otherwise relocates the full table while updating a valid `PT_PHDR` entry.
+- `applyRewritePlan` validates the original header and immutable plan, materializes into a fresh buffer, preserves the caller input and existing section-header table, and returns no partial artifact on failure.
+- `ProcessAnalyzed` reparses the transformed ELF and exposes `rewrite-artifact-ready` only after target-kind validation; filesystem publication remains owned by `internal/publish` and keeps the artifact last.
 
-The plan must complete every section/segment/symbol/relocation/unwind/trampoline/PHDR decision before mutation. Preserve notes, GNU properties, build ID, dynamic symbols/strings/relocations, and original unwind metadata. New LOAD alignment/congruence is `0x4000`. Reuse only genuinely safe PT_NULL entries or relocate the full PHDR table. Apply only validated runtime relocations. Cluster functions by B-imm26 reach and add 16 KiB veneer islands. Never truncate branch immediates. Merge FDE/LSDA and update `.eh_frame_hdr`/`PT_GNU_EH_FRAME`. Apply to a clone and publish only after all invariants pass.
+Host verification covers focused and full Go tests, race detection, vet, build/contract checks, PHDR reuse/growth/relocation including `PT_PHDR`, failure atomicity, and one real Android AArch64 shared-object CLI transformation with matching report hash and unchanged input.
 
-Gate: readelf/objdump, malformed and failure injection, far veneers, PHDR relocation, unwind, and physical 4 KiB/16 KiB load/run tests for SO, PIE, and ET_EXEC.
+Remaining completion work: cluster functions by B-imm26 reach and add 16 KiB veneer islands without truncation; merge final FDE/LSDA data and update `.eh_frame_hdr`/`PT_GNU_EH_FRAME`; then run readelf/objdump, malformed/failure injection, far-veneer, unwind, and physical 4 KiB/16 KiB load/run gates for SO, PIE, and ET_EXEC.
 
 ## 10. Remaining Phases 9-11
 
@@ -261,9 +260,9 @@ Never store those credentials in the repository or logs.
 - Semantic opcode map and ARM64/ELF propagation: implemented and locally green.
 - Dynamic exact-r29 runtime build/Image and explicit assembly entry: implemented with simulated-tool tests; real-r29 and independent PASS still required.
 - Fixed blob and legacy writer: removed.
-- Phase 8 fail-closed boundary: implemented.
+- Phase 8 immutable planning, in-memory application, structural reparse, and artifact-last publication: implemented for the current runtime-segment and entry-patch scope.
 - Core ISA/AAPCS64/FP-SIMD/atomic/exclusive host semantics: implemented and real-r29 green; physical-device semantic, ABI, and multithreaded-contention gates remain open.
 - C++ unwind metadata and relocation-safe invoke/LSDA planning: implemented and host-tested; the Android personality/invoke/landing assembly bridge, final FDE merge, and physical-device unwinder proof remain open.
 - Exact 85-demo manifest: implemented and validated; cross-build, packing, and physical-device differential execution remain open.
-- Final writer, signing/notarization, and release rehearsal: not implemented.
+- Final veneer/unwind integration, signing/notarization, physical-device validation, and release rehearsal: not implemented.
 - Release readiness: false.

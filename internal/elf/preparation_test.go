@@ -3,7 +3,6 @@ package elf
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"testing"
 
@@ -114,7 +113,7 @@ func TestProcessRejectsRuntimeRequirementsMismatchBeforePlannerBoundary(t *testi
 
 	// Then: the exact runtime/preparation mismatch is rejected before the
 	// rewrite planner and the original ELF remains untouched.
-	if err == nil || errors.Is(err, ErrRewriteWriterRequired) || !strings.Contains(err.Error(), "runtime image") || len(result.Artifact) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "runtime image") || len(result.Artifact) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if !bytes.Equal(input, before) {
@@ -159,7 +158,7 @@ func TestProcessRejectsPreparationForDifferentAnalysis(t *testing.T) {
 	result, err := ProcessAnalyzed(secondRequest, secondAnalysis)
 
 	// Then: provenance mismatch fails before the rewrite planner can consume it.
-	if err == nil || errors.Is(err, ErrRewriteWriterRequired) || !strings.Contains(err.Error(), "preparation") || len(result.Artifact) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "preparation") || len(result.Artifact) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
@@ -187,7 +186,7 @@ func TestProcessRejectsPreparationForDifferentOpcodeMap(t *testing.T) {
 	request.RuntimeImage = rewritePlanRuntimeImage(t, other)
 
 	result, err := ProcessAnalyzed(request, analysis)
-	if err == nil || errors.Is(err, ErrRewriteWriterRequired) || !strings.Contains(err.Error(), "opcode-map provenance") || len(result.Artifact) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "opcode-map provenance") || len(result.Artifact) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

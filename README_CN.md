@@ -35,7 +35,7 @@ bash scripts/check-contract.sh
   -o libdemo.vmp.so libdemo.so
 ```
 
-固定解释器 blob 已移除。每次打包尝试都会创建本次运行专用的 opcode map，只翻译每个选中函数一次，使用准确版本的 NDK r29 从内嵌源码重新构建并验证可重定位 runtime，并在修改输入前生成完整的不可变 rewrite plan，随后以 `Phase 9 rewrite writer required` 明确失败关闭。该计划覆盖 0x4000 对齐且遵守 W^X 的 runtime load、runtime 符号重定位、加密字节码与 token 描述符、保留 BTI 的入口 trampoline，以及经过验证的 program-header 变更。开发运行时还包含 Phase 5 核心语义修复，以及通过真实 r29 验证的 Phase 6 宿主实现：AAPCS64/原生原子操作、由 exact-r29 `-O0/-O2/-Oz` 语料约束并以原生 thunk 保存完整状态的 FP/SIMD 白名单、连续闭合独占区 thunk，以及 ASLR 正确的 packed 间接跳转地址重定位。展开信息解析和精确的 85-demo 清单也已加入。writer/apply、最终 unwind 集成、真机证据和发布门仍未关闭；此边界不会产生制品或 debug map。
+固定解释器 blob 已移除。每次打包尝试都会创建本次运行专用的 opcode map，只翻译每个选中函数一次，使用准确版本的 NDK r29 从内嵌源码重新构建并验证可重定位 runtime，为当前主机端支持的布局生成不可变 rewrite plan，将计划应用到新的内存 ELF 映像，并在发布前重新解析验证结果。该计划覆盖 0x4000 对齐且遵守 W^X 的 runtime load、runtime 符号重定位、加密字节码与 token 描述符、保留 BTI 的入口 trampoline，以及经过验证的 program-header 变更，同时保持调用方输入和原有 section-header 表不变。主机端转换成功时报告 `rewrite-artifact-ready`；计划完成后的 writer 或最终重解析失败仍保留 `rewrite-plan-ready`，且不发布制品。开发运行时还包含 Phase 5 核心语义修复，以及通过真实 r29 验证的 Phase 6 宿主实现：AAPCS64/原生原子操作、由 exact-r29 `-O0/-O2/-Oz` 语料约束并以原生 thunk 保存完整状态的 FP/SIMD 白名单、连续闭合独占区 thunk，以及 ASLR 正确的 packed 间接跳转地址重定位。展开信息解析和精确的 85-demo 清单也已加入。最终 veneer/unwind 集成、真机证据、完整 demo/设备矩阵和发布门仍未关闭。
 
 ## 许可证与使用
 

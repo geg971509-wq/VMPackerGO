@@ -31,7 +31,7 @@ make mac-cli
 
 For a native PIE or `ET_EXEC` input, use `-mode native`. Use `-addr 0xSTART-0xEND:name -abi 'result(params)'` when symbols are unavailable. A single address uses conservative CFG inference and fails with an explicit-range request when control flow is ambiguous. Named selection merges `.symtab` and `.dynsym`. Multiple functions require a manifest-v1 JSON file.
 
-The current development pipeline performs bounded analysis, creates a per-pack opcode map, translates selected functions once, builds and validates an exact-r29 `ET_REL` runtime image, produces a complete immutable 0x4000-aligned W^X rewrite plan, and then fails closed before mutation with `Phase 9 rewrite writer required`. The removed legacy note-hijack/add-segment writer is not a fallback.
+The current development pipeline performs bounded analysis, creates a per-pack opcode map, translates selected functions once, builds and validates an exact-r29 `ET_REL` runtime image, produces an immutable 0x4000-aligned W^X rewrite plan for the current host-supported layout, applies the planned bytes to a fresh buffer, and reparses the transformed ELF before the existing publication layer writes it. The caller input and existing section-header table remain unchanged. The removed legacy note-hijack/add-segment writer is not a fallback.
 
 ## Active checks
 
@@ -41,7 +41,7 @@ make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 make android-fixtures ANDROID_NDK=/path/to/android-ndk-r29
 ```
 
-Fixture sources remain under `testdata/android/`. Transformation and device-differential smoke tests stay gated until the Phase 8 writer can produce metadata-preserving artifacts.
+Fixture sources remain under `testdata/android/`. The host transformation gate now produces structurally validated artifacts; device-differential smoke tests remain gated on physical-device execution and the outstanding unwind/runtime integration work.
 
 ## Release gates
 

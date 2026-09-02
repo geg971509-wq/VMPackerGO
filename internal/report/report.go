@@ -101,8 +101,16 @@ func (r *Report) Success(result elfpacker.Result) {
 	r.RuntimeStrategy = result.RuntimeStrategy
 	r.Limitations = append(r.Limitations, result.AnalysisLimitations...)
 	r.Warnings = append([]string(nil), result.Warnings...)
+	r.mergeFunctions(result.Functions)
+	sum := sha256.Sum256(result.Artifact)
+	r.OutputSHA256 = hex.EncodeToString(sum[:])
+	r.Status = "ok"
+	r.Error = ""
+}
+
+func (r *Report) mergeFunctions(facts []elfpacker.FunctionFact) {
 	for i := range r.Functions {
-		fact := findFact(r.Functions[i], result.Functions)
+		fact := findFact(r.Functions[i], facts)
 		if fact == nil {
 			continue
 		}
@@ -123,10 +131,6 @@ func (r *Report) Success(result elfpacker.Result) {
 		r.Functions[i].Translated = fact.Translated
 		r.Functions[i].Bytecode = fact.Bytecode
 	}
-	sum := sha256.Sum256(result.Artifact)
-	r.OutputSHA256 = hex.EncodeToString(sum[:])
-	r.Status = "ok"
-	r.Error = ""
 }
 
 func (r *Report) Fail(err error, result elfpacker.Result) {
@@ -146,6 +150,7 @@ func (r *Report) Fail(err error, result elfpacker.Result) {
 		r.Limitations = append(r.Limitations, result.AnalysisLimitations...)
 	}
 	r.Warnings = append([]string(nil), result.Warnings...)
+	r.mergeFunctions(result.Functions)
 	r.Status = "failed"
 	r.Error = err.Error()
 	r.OutputSHA256 = ""

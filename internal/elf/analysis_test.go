@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"debug/elf"
 	"encoding/binary"
-	"errors"
 	"math"
 	"os"
 	"os/exec"
@@ -986,7 +985,7 @@ func TestMissingRuntimeImageFailsBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestValidatedRuntimeStopsAtRewriteWriterBoundary(t *testing.T) {
+func TestValidatedRuntimeProducesRewrittenArtifact(t *testing.T) {
 	fixture := buildELFFixture(fixtureOptions{dynamic: true})
 	input := append([]byte(nil), fixture.data...)
 	before := append([]byte(nil), input...)
@@ -995,13 +994,14 @@ func TestValidatedRuntimeStopsAtRewriteWriterBoundary(t *testing.T) {
 		Input: input, Selections: []SelectionRequest{addressSelection(0x1200, 0x120c)},
 		Opcodes: opcodes, RuntimeImage: rewritePlanRuntimeImage(t, opcodes),
 	})
-	if !errors.Is(err, ErrRewriteWriterRequired) || result.DevelopmentStrategy != "rewrite-plan-ready" || result.rewritePlan == nil ||
-		result.RuntimeStrategy != "ndk-r29-et-rel-validated" || result.OpcodeMapDigest == "" || len(result.Artifact) != 0 {
+	if err != nil || result.DevelopmentStrategy != "rewrite-artifact-ready" ||
+		result.RuntimeStrategy != "ndk-r29-et-rel-validated" || result.OpcodeMapDigest == "" || len(result.Artifact) == 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if !bytes.Equal(input, before) {
-		t.Fatal("writer boundary mutated input")
+		t.Fatal("rewrite writer mutated input")
 	}
+	assertRewrittenArtifactParses(t, result.Artifact, result.TargetKind)
 }
 
 func TestAnalyzeLimitsAndMaliciousSymbolArithmetic(t *testing.T) {

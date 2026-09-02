@@ -20,12 +20,12 @@ Phase 3 adds generated ELF fixtures for malformed tables/ranges, symtab/dynsym m
 
 1. Build the macOS ARM64 CLI and validate the Android API 23 relocatable runtime with exact NDK r29.
 2. Build repository fixtures with `make android-fixtures`.
-3. Run the development CLI with a requested report and confirm it records the target, `opcode_map_digest`, `runtime_strategy: ndk-r29-et-rel-validated`, `development_strategy: rewrite-plan-ready`, and the explicit `Phase 9 rewrite writer required` failure.
-4. Confirm that no artifact or debug map is published and the input remains byte-for-byte unchanged.
+3. Run the development CLI with a requested report and confirm it records the target, `opcode_map_digest`, `runtime_strategy: ndk-r29-et-rel-validated`, `development_strategy: rewrite-artifact-ready`, `status: ok`, and the exact output SHA-256.
+4. Confirm that the output reparses as the expected AArch64 ELF target, publication uses the existing artifact-last transaction, and the input remains byte-for-byte unchanged.
 
 ## Tier 2: native executable device smoke
 
-This tier resumes only after the Phase 8 writer is implemented and independently verified. Then connect authorized physical `arm64-v8a` devices, compare baseline and transformed behavior, and capture linker, signal, unwind, and SELinux diagnostics.
+This tier resumes after the plan-first writer is implemented and Tier 1 host validation passes. Connect authorized physical `arm64-v8a` devices, compare baseline and transformed behavior, and capture linker, signal, unwind, and SELinux diagnostics.
 
 Root access is optional diagnostic tooling and must not become a runtime requirement.
 

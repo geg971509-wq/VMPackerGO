@@ -4,7 +4,7 @@
 
 ## Status
 
-This document defines the stable Phase 2 report emitted by the development CLI. A report accurately describes the current transformation, but it is not release evidence. `release_ready` remains `false` while later runtime, CFG, ASLR, ELF-writer, and physical-device gates are incomplete.
+This document defines the stable Phase 2 report emitted by the development CLI. A report accurately describes the current transformation, but it is not release evidence. `release_ready` remains `false` while final unwind/runtime, broader semantic, physical-device, and release gates are incomplete.
 
 A report is one JSON object with `schema_version: 1`. Consumers must reject unsupported schema versions while tolerating additional fields.
 
@@ -18,12 +18,12 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `output` | string | yes | Requested output path text exactly as supplied by the user, or the documented default. |
 | `mode` | string | yes | `auto`, `so`, or `native`. |
 | `target_kind` | string | on classified runs | `android-so`, `android-pie`, or `android-exec`. |
-| `development_strategy` | string | on classified runs | Accurate current internal boundary, currently `rewrite-plan-ready`; this is not a stable product choice. |
+| `development_strategy` | string | on classified runs | Last completed internal boundary: `rewrite-artifact-ready` on success, or `rewrite-plan-ready` when final application/reparse fails after planning. |
 | `opcode_map_digest` | string | after map creation | Lower-case SHA-256 of the semantic-to-wire byte sequence. This is the only allowed one-way opcode-map derivative. |
 | `runtime_strategy` | string | after runtime validation | Accurate runtime build/validation strategy, currently `ndk-r29-et-rel-validated`. |
-| `segment_strategy` | string | after Phase 8 planning | Applied segment-layout strategy; omitted until implemented. |
-| `veneer_strategy` | string | after Phase 8 planning | Applied far-branch veneer strategy; omitted until implemented. |
-| `unwind_strategy` | string | after Phase 8 planning | Applied unwind integration strategy; omitted until implemented. |
+| `segment_strategy` | string | reserved | Reserved for a stable final segment-layout reporting contract; intentionally omitted by the current host writer. |
+| `veneer_strategy` | string | reserved | Reserved for the final far-branch veneer contract; intentionally omitted until veneer-island integration exists. |
+| `unwind_strategy` | string | reserved | Reserved for the final unwind integration contract; intentionally omitted until FDE/LSDA publication exists. |
 | `functions` | array | yes | Per-function selection, ABI, and transformation facts; never `null`. |
 | `output_sha256` | string | on success | Lower-case SHA-256 of the exact artifact bytes. |
 | `status` | string | yes | `ok` or `failed`. |
@@ -32,6 +32,8 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `limitations` | array | yes | Current development limitations; never `null`. |
 
 Reports never contain seed values, the raw opcode map, NDK paths, home-directory paths added by the tool, temporary paths, encryption keys, signing credentials, or secret configuration. The one-way `opcode_map_digest` is explicitly allowed. Raw input/output path text is preserved even when it contains relative components.
+
+The current host writer validates PHDR placement internally but does not promote that implementation detail into `segment_strategy`. The three reserved strategy fields stay absent rather than publishing unstable values that consumers could mistake for a finalized contract.
 
 ## Function object
 
@@ -63,7 +65,7 @@ A failed transform never publishes an artifact or debug map. When `-report` was 
   "output": "libdemo.vmp.so",
   "mode": "so",
   "target_kind": "android-so",
-  "development_strategy": "rewrite-plan-ready",
+  "development_strategy": "rewrite-artifact-ready",
   "opcode_map_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "runtime_strategy": "ndk-r29-et-rel-validated",
   "functions": [],

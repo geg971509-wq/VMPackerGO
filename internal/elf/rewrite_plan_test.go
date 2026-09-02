@@ -6,7 +6,6 @@ import (
 	"debug/elf"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -409,18 +408,6 @@ func TestProgramHeaderPlanRejectsUnsortedExistingLoadsWithoutMutation(t *testing
 	}
 }
 
-func TestProcessAnalyzedProducesRewritePlanBeforeWriterBoundary(t *testing.T) {
-	fixture := buildELFFixture(fixtureOptions{dynamic: true})
-	request, analysis, preparation := rewritePlanPreparation(t, fixture, false)
-	request.RuntimeImage = rewritePlanRuntimeImage(t, request.Opcodes)
-	request.Preparation = preparation
-
-	result, err := ProcessAnalyzed(request, analysis)
-	if !errors.Is(err, ErrRewriteWriterRequired) || result.DevelopmentStrategy != "rewrite-plan-ready" || len(result.Artifact) != 0 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
-}
-
 func TestProcessAnalyzedRejectsAnalysisForDifferentInput(t *testing.T) {
 	first := buildELFFixture(fixtureOptions{dynamic: true, code: []uint32{0xD503201F, 0xD503201F, 0xD65F03C0}})
 	second := buildELFFixture(fixtureOptions{dynamic: true, code: []uint32{0x91000400, 0xD503201F, 0xD65F03C0}})
@@ -431,7 +418,7 @@ func TestProcessAnalyzedRejectsAnalysisForDifferentInput(t *testing.T) {
 	before := append([]byte(nil), request.Input...)
 
 	result, err := ProcessAnalyzed(request, analysis)
-	if err == nil || errors.Is(err, ErrRewriteWriterRequired) || !strings.Contains(err.Error(), "input provenance") || len(result.Artifact) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "input provenance") || len(result.Artifact) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if !bytes.Equal(request.Input, before) {

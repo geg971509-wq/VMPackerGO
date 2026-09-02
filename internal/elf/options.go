@@ -2,7 +2,6 @@ package elf
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -66,11 +65,7 @@ type Result struct {
 	Functions           []FunctionFact
 	AnalysisLimitations []string
 	Warnings            []string
-
-	rewritePlan *RewritePlan
 }
-
-var ErrRewriteWriterRequired = errors.New("Phase 9 rewrite writer required")
 
 func Process(req Request) (Result, error) {
 	if req.Context != nil {
@@ -144,6 +139,28 @@ func ProcessAnalyzed(req Request, analysis Analysis) (Result, error) {
 	result.OpcodeMapDigest = req.RuntimeImage.OpcodeMapDigest
 	result.RuntimeStrategy = "ndk-r29-et-rel-validated"
 	result.DevelopmentStrategy = "rewrite-plan-ready"
-	result.rewritePlan = plan
-	return result, ErrRewriteWriterRequired
+	if req.Context != nil {
+		if err := req.Context.Err(); err != nil {
+			return result, err
+		}
+	}
+	artifact, err := applyRewritePlan(req.Input, plan)
+	if err != nil {
+		return result, fmt.Errorf("apply rewrite plan: %w", err)
+	}
+	mode := AndroidMode(strings.ToLower(req.Mode))
+	if mode == "" {
+		mode = AndroidModeAuto
+	}
+	meta, err := parseELFMetadata(artifact, mode)
+	if err != nil {
+		return result, fmt.Errorf("validate rewritten ELF: %w", err)
+	}
+	defer meta.file.Close()
+	if meta.kind != analysis.TargetKind {
+		return result, fmt.Errorf("rewritten ELF target kind does not match analysis")
+	}
+	result.DevelopmentStrategy = "rewrite-artifact-ready"
+	result.Artifact = artifact
+	return result, nil
 }
