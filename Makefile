@@ -77,10 +77,13 @@ clean:
 
 help:
 	@printf '%s\n' \
-		"make packer              Build the development CLI" \
-		"make mac-cli             Build the macOS ARM64 CLI" \
-		"make verify              Run Go, race, vet, and contract gates" \
-		"make demo-cases           Validate the exact 85-demo device case specification" \
-		"make evidence-self-test   Test device/release evidence validators" \
-		"make runtime-integration Build and validate the runtime with exact NDK r29" \
-		"make android-fixtures    Cross-compile Android ELF fixtures"
+		"make packer               Build the development CLI" \
+		"make mac-cli              Build the macOS ARM64 CLI" \
+		"make verify               Run Go, race, vet, and contract gates" \
+		"make contract             Run product/evidence contract self-tests" \
+		"make release-contract     Validate final external release evidence" \
+		"make demo-cases            Validate the exact 85-demo device case specification" \
+		"make evidence-self-test    Test device/release evidence validators" \
+		"make runtime-integration  Build and validate the runtime with exact NDK r29" \
+		"make android-device-check Attest the connected physical Android device" \
+		"make android-fixtures     Cross-compile Android ELF fixtures"
