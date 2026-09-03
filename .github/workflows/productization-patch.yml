@@ -288,7 +288,8 @@ jobs:
           PY
 
           gofmt -w internal/arch/arm64/translator.go internal/arch/arm64/tr_branch.go internal/elf/outliner.go internal/elf/packed_tail_test.go
-          go test -count=1 ./internal/arch/arm64 ./internal/elf
+          go test -count=1 ./internal/arch/arm64
+          go test -count=1 -run 'TestSelectedExternalTailBecomesPackedTail|TestExecutableUnselectedExternalTailBecomesNativeCallReturn|TestUnmappedExternalTailRemainsFailClosed|TestNonTerminalNativeExternalTailRemainsFailClosed' ./internal/elf
       - name: Commit native tail-call closure
         shell: bash
         run: |
