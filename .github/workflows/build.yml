@@ -89,6 +89,11 @@ jobs:
           corpus="$RUNNER_TEMP/fpsimd-r29.tsv"
           bash scripts/derive-fpsimd-corpus.sh "$ANDROID_NDK" > "$corpus"
           VMPACKER_FPSIMD_CORPUS="$corpus" go test -count=1 -run TestExactR29FPSIMDCorpusClosesWhitelist ./internal/arch/arm64
+      - name: Derive exact-r29 compiler coverage corpus
+        run: |
+          corpus="$RUNNER_TEMP/compiler-r29.tsv"
+          bash scripts/derive-compiler-corpus.sh "$ANDROID_NDK" > "$corpus"
+          VMPACKER_COMPILER_CORPUS="$corpus" go test -count=1 -run TestExactR29CompilerCorpusCoverage ./internal/arch/arm64
       - name: Build and validate exact-r29 runtime
         run: go test -count=1 -run TestBuildInstalledExactR29Object ./internal/runtime
       - name: Go vet
