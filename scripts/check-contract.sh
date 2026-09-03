@@ -67,6 +67,23 @@ if (( ${#active_files[@]} == 0 || ${#text_files[@]} == 0 )); then
 fi
 
 failures=0
+check_executable_entries() {
+  local file
+  local required=("$ROOT/build.sh")
+  for file in "$ROOT"/scripts/*.sh; do
+    [[ -e "$file" ]] && required+=("$file")
+  done
+  for file in "${required[@]}"; do
+    if [[ ! -f "$file" || ! -x "$file" ]]; then
+      echo "[contract] non-executable product shell entry point" >&2
+      echo "  ${file#"$ROOT"/}" >&2
+      failures=$((failures + 1))
+    fi
+  done
+}
+
+check_executable_entries
+
 check() {
   local label="$1"
   local pattern="$2"
