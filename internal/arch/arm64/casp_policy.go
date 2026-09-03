@@ -24,10 +24,10 @@ func validateCASOrPair(inst vm.Instruction) error {
 		return fmt.Errorf("CASP address register X%d is invalid", inst.Rn)
 	}
 	validPairLow := func(reg int) bool {
-		// Exact NDK r29 compiler output uses even low registers in X0-X28. Keep
-		// register 30 fail-closed because its implicit high member encodes 31;
-		// the VM must not guess whether that architectural encoding denotes ZR.
-		return reg >= 0 && reg <= 28 && reg&1 == 0
+		// Architectural CASP requires even pair lows. Low register 30 is valid;
+		// its implicit high member is encoding 31 (ZR), which the runtime pair
+		// transport handles explicitly rather than aliasing VM R31/SP.
+		return reg >= 0 && reg <= 30 && reg&1 == 0
 	}
 	if !validPairLow(inst.Rm) {
 		return fmt.Errorf("CASP expected/result pair low register %d is invalid", inst.Rm)
