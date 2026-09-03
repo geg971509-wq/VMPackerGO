@@ -220,6 +220,9 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("validate linked runtime object: %w", err)
 	}
+	if err := validateExceptionInvokeImage(image, exceptionInvokes); err != nil {
+		return nil, fmt.Errorf("validate linked exception invoke artifacts: %w", err)
+	}
 	image.SVCImmediates = append([]uint16(nil), svcImmediates...)
 	image.ExclusiveRegions = append([]vm.ExclusiveRegion(nil), exclusiveRegions...)
 	image.FPSIMDInstructions = append([]uint32(nil), fpSIMDInstructions...)
