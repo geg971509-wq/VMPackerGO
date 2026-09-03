@@ -42,6 +42,19 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 	if err != nil {
 		return nil, fmt.Errorf("digest opcode map for translation: %w", err)
 	}
+	mode := AndroidMode(strings.ToLower(req.Mode))
+	if mode == "" {
+		mode = AndroidModeAuto
+	}
+	meta, err := parseELFMetadata(req.Input, mode)
+	if err != nil {
+		return nil, fmt.Errorf("parse ELF for translation preparation: %w", err)
+	}
+	defer meta.file.Close()
+	symbols, err := readFunctionSymbols(meta)
+	if err != nil {
+		return nil, fmt.Errorf("read symbols for translation preparation: %w", err)
+	}
 
 	preparation := &TranslationPreparation{Functions: make([]PreparedFunction, 0, len(analysis.Selections)), opcodeMapDigest: opcodeMapDigest}
 	svc := make(map[uint16]struct{})
@@ -68,6 +81,9 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 			return nil, fmt.Errorf("function %q: create translator: %w", selection.Name, err)
 		}
 		translator.SetDebug(req.Debug)
+		if err := configureOutlinedTailInlines(req.Input, meta, symbols, selection, instructions, translator); err != nil {
+			return nil, fmt.Errorf("function %q outlined-tail preparation: %w", selection.Name, err)
+		}
 		translation, err := translator.Translate(instructions)
 		if err != nil {
 			return nil, fmt.Errorf("function %q: translate: %w", selection.Name, err)

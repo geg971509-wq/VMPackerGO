@@ -18,7 +18,7 @@ const (
 var phase3AnalysisLimitations = []string{
 	"CFG inference is conservative and does not recover arbitrary hand-written or obfuscated functions",
 	"indirect and dynamically resolved setjmp/longjmp or signal-recovery usage cannot be proven absent",
-	"external native tail branches remain fail-closed until the non-returning native-tail ABI bridge is proven; packed tail support is handled separately",
+	"generic external native tail branches remain fail-closed; exact compiler-generated outlined-helper tails may be inlined only after symbol and body validation",
 	"the entry patch requires at least 12 contiguous bytes, or 16 bytes when preserving an entry BTI",
 }
 
@@ -162,7 +162,7 @@ func resolveSelection(input []byte, meta *elfMetadata, symbols *symbolIndex, req
 	if err := validateSelectionRange(meta, &selection); err != nil {
 		return Selection{}, err
 	}
-	if err := rejectUnsupportedDirectTransfers(input, symbols, selection); err != nil {
+	if err := rejectUnsupportedDirectTransfers(input, meta, symbols, selection); err != nil {
 		return Selection{}, err
 	}
 	return selection, nil
@@ -209,7 +209,7 @@ func sectionNameForRange(meta *elfMetadata, start, end uint64) string {
 	return "__LOAD_X"
 }
 
-func rejectUnsupportedDirectTransfers(input []byte, symbols *symbolIndex, selection Selection) error {
+func rejectUnsupportedDirectTransfers(input []byte, meta *elfMetadata, symbols *symbolIndex, selection Selection) error {
 	decoder := arm64.NewDecoder()
 	for address, off := selection.Address, selection.Offset; address < selection.End; address, off = address+4, off+4 {
 		raw := binary.LittleEndian.Uint32(input[off : off+4])
@@ -226,7 +226,18 @@ func rejectUnsupportedDirectTransfers(input []byte, symbols *symbolIndex, select
 		if err != nil {
 			return fmt.Errorf("function %q: %w", selection.Name, err)
 		}
-		if op == arm64.B && (target < selection.Address || target >= selection.End || len(symbols.relocatedAt[address]) != 0 || target != selection.Address && len(names) != 0) {
+		if op == arm64.B {
+			disallowed := target < selection.Address || target >= selection.End || len(symbols.relocatedAt[address]) != 0 || target != selection.Address && len(names) != 0
+			if !disallowed {
+				continue
+			}
+			if target < selection.Address || target >= selection.End {
+				if _, matched, helperErr := resolveOutlinedTailHelper(input, meta, symbols, selection, address, target, names); helperErr != nil {
+					return fmt.Errorf("function %q outlined tail at 0x%X: %w", selection.Name, address, helperErr)
+				} else if matched {
+					continue
+				}
+			}
 			return fmt.Errorf("function %q has unsupported external unconditional branch at 0x%X to 0x%X; explicit range cannot make this tail call translatable", selection.Name, address, target)
 		}
 		if op != arm64.BL {
