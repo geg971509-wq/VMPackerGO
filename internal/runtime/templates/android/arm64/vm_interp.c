@@ -97,8 +97,10 @@ vm_entry_token_inner(u64 *args, u32 token) {
   u32 bc_len = table[func_id].bc_len;
   u8 xor_key = table[func_id].xor_key;
 
-  if (__builtin_expect(enc_bc == (u8 *)self_va || bc_len == 0, 0))
-    return 0; /* 无效条目, 安全退出 */
+  if (__builtin_expect(enc_bc == (u8 *)self_va || bc_len == 0 ||
+                           bc_len > VM_BYTECODE_MAX,
+                       0))
+    return 0; /* 无效或越界条目, fail-closed */
 
   return vm_entry(args, enc_bc, bc_len, xor_key, self_va);
 }
@@ -111,9 +113,9 @@ __attribute__((section(".text.entry"))) u64 vm_entry(u64 *args, u8 *enc_bc,
                                                      u64 image_anchor) {
   u64 ret = 0;
 
-  /* ---- 1. 动态分配字节码缓冲区 (mmap, 替代栈上 64KB) ---- */
-  if (bc_len > VM_BYTECODE_MAX)
-    bc_len = VM_BYTECODE_MAX;
+  /* ---- 1. 动态分配有界字节码缓冲区 ---- */
+  if (__builtin_expect(bc_len == 0 || bc_len > VM_BYTECODE_MAX, 0))
+    return 0;
   u32 alloc_size = (bc_len + 4095u) & ~4095u; /* 页对齐向上取整 */
   u8 *bc_buf = (u8 *)sys_mmap(alloc_size);
   if ((long)bc_buf < 0)

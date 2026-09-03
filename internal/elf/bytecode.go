@@ -12,6 +12,8 @@ import (
 	"github.com/vmpacker/internal/vm"
 )
 
+const maxFinalBytecodeSize = 256 * 1024
+
 type AddrSpec struct {
 	Addr uint64
 	End  uint64
@@ -219,8 +221,8 @@ func encryptOpcodes(bytecode []byte, codeLen int, key uint32, reversed bool, opc
 }
 
 func validateFinalBytecodeSize(size int) error {
-	if size > 64*1024 {
-		return fmt.Errorf("generated %d bytes of final bytecode; maximum is 65536", size)
+	if size < 0 || size > maxFinalBytecodeSize {
+		return fmt.Errorf("generated %d bytes of final bytecode; maximum is %d", size, maxFinalBytecodeSize)
 	}
 	return nil
 }

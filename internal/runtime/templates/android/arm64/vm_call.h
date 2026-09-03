@@ -101,10 +101,8 @@ static inline int vm_load_func(vm_ctx_t *vm, u32 func_id) {
   bc_len = table[func_id].bc_len;
   xor_key = table[func_id].xor_key;
   enc_bc = (u8 *)(self_va + table[func_id].bc_off);
-  if (enc_bc == (u8 *)self_va || bc_len == 0)
+  if (enc_bc == (u8 *)self_va || bc_len == 0 || bc_len > VM_BYTECODE_MAX)
     return 0;
-  if (bc_len > VM_BYTECODE_MAX)
-    bc_len = VM_BYTECODE_MAX;
   alloc_size = (bc_len + 4095u) & ~4095u;
   bc_buf = (u8 *)sys_mmap(alloc_size);
   if ((long)bc_buf < 0)
