@@ -24,6 +24,7 @@ type TranslationPreparation struct {
 	SVCImmediates      []uint16
 	ExclusiveRegions   []vm.ExclusiveRegion
 	FPSIMDInstructions []uint32
+	ExceptionBridges   []PreparedExceptionBridge
 
 	opcodeMapDigest [sha256.Size]byte
 }
@@ -108,6 +109,11 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 	sort.Slice(preparation.FPSIMDInstructions, func(i, j int) bool {
 		return preparation.FPSIMDInstructions[i] < preparation.FPSIMDInstructions[j]
 	})
+	exceptionBridges, err := prepareExceptionBridges(req, preparation.Functions)
+	if err != nil {
+		return nil, err
+	}
+	preparation.ExceptionBridges = exceptionBridges
 	return preparation, nil
 }
 
@@ -166,6 +172,9 @@ func (preparation *TranslationPreparation) ValidateAnalysis(analysis Analysis) e
 func (preparation *TranslationPreparation) ValidateRuntimeImage(image *vmruntime.Image) error {
 	if preparation == nil {
 		return fmt.Errorf("translation preparation is required")
+	}
+	if err := preparation.ValidateRuntimeRequirements(); err != nil {
+		return err
 	}
 	if image == nil {
 		return fmt.Errorf("runtime image is required")

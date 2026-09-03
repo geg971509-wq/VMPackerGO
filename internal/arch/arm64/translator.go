@@ -40,6 +40,7 @@ type TranslateResult struct {
 	ExclusiveRegions   []vm.ExclusiveRegion
 	FPSIMDInstructions []uint32
 	NativeCallSites    []NativeCallSite
+	SourceMap          []SourceMapEntry
 	EntryBTI           Op
 	HasEntryBTI        bool
 }
@@ -50,6 +51,11 @@ type BytecodeRelocation struct {
 }
 
 type NativeCallSite struct {
+	ARM64Offset int
+	VMOffset    int
+}
+
+type SourceMapEntry struct {
 	ARM64Offset int
 	VMOffset    int
 }
@@ -259,6 +265,7 @@ func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult,
 	sort.Ints(arm64Offsets)
 	for _, arm64Off := range arm64Offsets {
 		vmOff := t.labels[arm64Off]
+		result.SourceMap = append(result.SourceMap, SourceMapEntry{ARM64Offset: arm64Off, VMOffset: vmOff})
 		t.emitU32(uint32(arm64Off))
 		t.emitU32(uint32(vmOff))
 	}
