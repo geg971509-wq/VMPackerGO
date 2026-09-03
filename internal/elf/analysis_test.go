@@ -1029,11 +1029,11 @@ func TestBytecodeBoundariesAndFailClosedHelpers(t *testing.T) {
 	jmpWire := mustOpcodeWire(t, opcodes, vm.OpJmp)
 	unknownWire := findUnassignedWire(t, opcodes)
 
-	if err := validateFinalBytecodeSize(64 * 1024); err != nil {
+	if err := validateFinalBytecodeSize(maxFinalBytecodeSize); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateFinalBytecodeSize(64*1024 + 1); err == nil {
-		t.Fatal("accepted bytecode over 64 KiB")
+	if err := validateFinalBytecodeSize(maxFinalBytecodeSize + 1); err == nil {
+		t.Fatal("accepted bytecode over configured per-function maximum")
 	}
 	if _, _, err := reverseInstructions([]byte{unknownWire}, 1, opcodes); err == nil {
 		t.Fatal("reverse accepted unknown opcode")
