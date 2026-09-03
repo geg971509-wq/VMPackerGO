@@ -1,0 +1,61 @@
+name: Demo case audit one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/demo-case-audit-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - name: Audit explicit demo function candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+
+          manifest = json.loads(Path('demo/manifest.json').read_text())
+          noinline = re.compile(r'__attribute__\s*\(\([^)]*noinline[^)]*\)\)\s*([_A-Za-z][_A-Za-z0-9\s\*]*?)\s+([_A-Za-z][_A-Za-z0-9]*)\s*\(([^;{}]*)\)\s*\{', re.S)
+          ordinary = re.compile(r'(?:^|\n)\s*(?!if\b|for\b|while\b|switch\b)(?:static\s+)?([_A-Za-z][_A-Za-z0-9\s\*]*?)\s+([_A-Za-z][_A-Za-z0-9]*)\s*\(([^;{}]*)\)\s*\{', re.S)
+          result = {"schema_version": 1, "entries": []}
+          for entry in manifest['entries']:
+              item = {"id": entry['id'], "language": entry['language'], "source": entry['source']}
+              source = Path(entry['source'])
+              if entry['language'] == 'c':
+                  text = source.read_text(errors='replace')
+                  def matches(pattern):
+                      rows = []
+                      seen = set()
+                      for ret, name, params in pattern.findall(text):
+                          if name in seen:
+                              continue
+                          seen.add(name)
+                          rows.append({"name": name, "return": ' '.join(ret.split()), "params": ' '.join(params.split())})
+                      return rows
+                  item['noinline_functions'] = matches(noinline)
+                  item['functions'] = matches(ordinary)
+              result['entries'].append(item)
+          Path('demo/device-case-audit.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          PY
+      - name: Commit audit inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add demo/device-case-audit.json
+          git diff --cached --check
+          git commit -m 'Audit 85-demo device case candidates'
+          git push origin HEAD:codex/productization-closure-20260903
