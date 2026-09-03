@@ -183,96 +183,101 @@ func validateAddSubShifted(inst vm.Instruction) error {
 	if inst.ShiftType < 0 || inst.ShiftType > 2 {
 		return fmt.Errorf("add/sub shifted-register type %d is reserved", inst.ShiftType)
 	}
-	if inst.Shift < 0 || inst.Shift >= registerWidth(inst) {
-		return fmt.Errorf("add/sub shifted-register amount %d is invalid for %d-bit form", inst.Shift, registerWidth(inst))
-	}
-	return nil
+	return validateShiftAmount(inst)
 }
 
 func validateLogicalShifted(inst vm.Instruction) error {
 	if inst.ShiftType < 0 || inst.ShiftType > 3 {
 		return fmt.Errorf("logical shifted-register type %d is invalid", inst.ShiftType)
 	}
+	return validateShiftAmount(inst)
+}
+
+func validateShiftAmount(inst vm.Instruction) error {
 	if inst.Shift < 0 || inst.Shift >= registerWidth(inst) {
-		return fmt.Errorf("logical shifted-register amount %d is invalid for %d-bit form", inst.Shift, registerWidth(inst))
+		return fmt.Errorf("shift %d is invalid for %d-bit form", inst.Shift, registerWidth(inst))
 	}
 	return nil
 }
 
 func validateBitfield(inst vm.Instruction) error {
 	width := registerWidth(inst)
-	if inst.Rn < 0 || inst.Rn > 31 || inst.Rd < 0 || inst.Rd > 31 {
-		return fmt.Errorf("bitfield instruction has an invalid register")
-	}
-	if inst.Imm < 0 || inst.Imm >= int64(width) || inst.ImmR < 0 || inst.ImmR >= int64(width) {
-		return fmt.Errorf("bitfield immediate is invalid for %d-bit form", width)
+	if inst.Imm < 0 || inst.Imm >= int64(width) || inst.Shift < 0 || inst.Shift >= width {
+		return fmt.Errorf("bitfield selectors %d/%d are invalid for %d-bit form", inst.Imm, inst.Shift, width)
 	}
 	return nil
 }
 
 func validateExtendedRegister(inst vm.Instruction) error {
-	if inst.Rn < 0 || inst.Rn > 31 || inst.Rd < 0 || inst.Rd > 31 || inst.Rm < 0 || inst.Rm > 31 {
-		return fmt.Errorf("extended-register instruction has an invalid register")
-	}
-	if inst.Shift < 0 || inst.Shift > 4 {
-		return fmt.Errorf("extended-register shift %d is unsupported", inst.Shift)
+	if inst.ShiftType < 0 || inst.ShiftType > 7 || inst.Shift < 0 || inst.Shift > 4 {
+		return fmt.Errorf("extended-register option/shift %d/%d is invalid", inst.ShiftType, inst.Shift)
 	}
 	return nil
 }
 
 func validateImmediateAddressing(inst vm.Instruction) error {
 	op := Op(inst.Op)
-	if inst.WB != 0 {
-		if inst.WB != 1 && inst.WB != 3 && !(inst.WB == 2 && (op == STP || op == LDP || op == LDPSW)) {
-			return fmt.Errorf("address writeback mode %d is invalid", inst.WB)
+	isPair := op == STP || op == LDP || op == LDPSW
+	switch inst.WB {
+	case 0, 1, 3:
+	case 2:
+		if !isPair {
+			return fmt.Errorf("address mode 2 is only valid for pair signed-offset addressing")
 		}
+	default:
+		return fmt.Errorf("address writeback mode %d is invalid", inst.WB)
 	}
-	if inst.Rn < 0 || inst.Rn > 31 || inst.Rd < 0 || inst.Rd > 31 {
-		return fmt.Errorf("immediate load/store has an invalid register")
+
+	// Pair mode 2 is signed-offset addressing, not writeback. Only pre/post
+	// indexed modes update Rn and therefore carry writeback-overlap rules.
+	writeback := inst.WB == 1 || inst.WB == 3
+	if writeback && inst.Rn == inst.Rd {
+		return fmt.Errorf("writeback base overlaps transfer register")
 	}
-	if op == STP || op == LDP || op == LDPSW {
-		if inst.Rm < 0 || inst.Rm > 31 {
-			return fmt.Errorf("pair load/store has an invalid second register")
-		}
-		// Pair addressing mode 2 is signed offset, not writeback. Only pre/post
-		// indexed modes 1/3 have base/data overlap restrictions.
-		if inst.WB == 1 || inst.WB == 3 {
-			if inst.Rn != 31 && (inst.Rn == inst.Rd || inst.Rn == inst.Rm) {
-				return fmt.Errorf("pair load/store writeback overlaps base register")
-			}
-		}
+	if isPair && writeback && inst.Rn == inst.Rm {
+		return fmt.Errorf("pair writeback base overlaps second transfer register")
 	}
 	return nil
 }
 
 func validateRegisterOffset(inst vm.Instruction) error {
-	if inst.Rn < 0 || inst.Rn > 31 || inst.Rm < 0 || inst.Rm > 31 || inst.Rd < 0 || inst.Rd > 31 {
-		return fmt.Errorf("register-offset load/store has an invalid register")
+	option := (inst.Raw >> 13) & 0x7
+	if option != 2 && option != 3 && option != 6 && option != 7 {
+		return fmt.Errorf("register-offset extend option %d is reserved", option)
 	}
 	return nil
 }
 
 func validateConditional(inst vm.Instruction) error {
-	if inst.Target&3 != 0 {
-		return fmt.Errorf("branch target 0x%x is not 4-byte aligned", inst.Target)
+	switch Op(inst.Op) {
+	case B_COND, CSEL, CSINC, CSINV, CSNEG, CCMP_REG, CCMP_IMM, CCMN_REG, CCMN_IMM:
+		if inst.Cond < 0 || inst.Cond > 0xF {
+			return fmt.Errorf("condition code 0x%X is invalid", inst.Cond)
+		}
 	}
 	return nil
 }
 
 func validateSystemRead(inst vm.Instruction) error {
-	switch inst.SysReg {
+	if inst.Rd != vm.REG_XZR && (inst.Rd < 0 || inst.Rd > 30) {
+		return fmt.Errorf("system register destination %d is invalid", inst.Rd)
+	}
+	switch inst.Imm {
 	case 0x5F02, 0x5F00, 0x5E82, 0x5E83, 0x5A10, 0x5A20, 0x5A21:
 		return nil
 	default:
-		return fmt.Errorf("system register 0x%x read is unsupported", inst.SysReg)
+		return fmt.Errorf("unsupported system register encoding 0x%X", inst.Imm)
 	}
 }
 
 func validateSystemWrite(inst vm.Instruction) error {
-	switch inst.SysReg {
+	if inst.Rd != vm.REG_XZR && (inst.Rd < 0 || inst.Rd > 30) {
+		return fmt.Errorf("system register source %d is invalid", inst.Rd)
+	}
+	switch inst.Imm {
 	case 0x5A10, 0x5A20, 0x5A21:
 		return nil
 	default:
-		return fmt.Errorf("system register 0x%x write is unsupported", inst.SysReg)
+		return fmt.Errorf("unsupported system register encoding 0x%X", inst.Imm)
 	}
 }
