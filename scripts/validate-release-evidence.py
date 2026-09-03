@@ -3,7 +3,6 @@ import argparse
 import hashlib
 import importlib.util
 import json
-import os
 import platform
 import re
 import subprocess
@@ -93,7 +92,8 @@ def validate_document(document, evidence_path: Path, root: Path, *, live_checks=
     require(notarization.get("status") == "Accepted", "notarization.status must be Accepted")
     require(isinstance(notarization.get("submission_id"), str) and notarization["submission_id"].strip(),
             "notarization.submission_id must be non-empty")
-    require(notarization.get("stapled") is True, "notarization.stapled must be true")
+    require(notarization.get("ticket_mode") == "online",
+            "standalone CLI notarization.ticket_mode must be online")
     require(notarization.get("spctl_accepted") is True, "notarization.spctl_accepted must be true")
 
     review = document.get("independent_review")
