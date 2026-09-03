@@ -3,6 +3,8 @@ package unwind
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
+	"sort"
 )
 
 type HeaderEntry struct {
@@ -62,4 +64,67 @@ func ParseEHFrameHeader(data []byte, address uint64, order binary.ByteOrder, poi
 		return nil, fmt.Errorf(".eh_frame_hdr has %d trailing bytes", len(data)-offset)
 	}
 	return header, nil
+}
+
+// BuildEHFrameHeader emits the canonical GNU/AArch64 search header used by the
+// rewrite writer: pcrel+sdata4 .eh_frame pointer, udata4 count, and
+// datarel+sdata4 sorted search-table pairs.
+func BuildEHFrameHeader(address, ehFrameAddress uint64, entries []HeaderEntry) ([]byte, error) {
+	if len(entries) > math.MaxUint32 {
+		return nil, fmt.Errorf(".eh_frame_hdr entry count exceeds u32")
+	}
+	sorted := append([]HeaderEntry(nil), entries...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].InitialLocation != sorted[j].InitialLocation {
+			return sorted[i].InitialLocation < sorted[j].InitialLocation
+		}
+		return sorted[i].FDEAddress < sorted[j].FDEAddress
+	})
+	for i, entry := range sorted {
+		if entry.FDEAddress == 0 {
+			return nil, fmt.Errorf(".eh_frame_hdr entry %d has a zero FDE address", i)
+		}
+		if i > 0 && sorted[i-1].InitialLocation == entry.InitialLocation {
+			return nil, fmt.Errorf(".eh_frame_hdr has duplicate initial location 0x%x", entry.InitialLocation)
+		}
+	}
+
+	result := []byte{1, PEPcrel | PESdata4, PEUdata4, PEDatarel | PESdata4}
+	delta, err := signed32Difference(ehFrameAddress, address+uint64(len(result)))
+	if err != nil {
+		return nil, fmt.Errorf(".eh_frame pointer: %w", err)
+	}
+	result = binary.LittleEndian.AppendUint32(result, uint32(delta))
+	result = binary.LittleEndian.AppendUint32(result, uint32(len(sorted)))
+	for i, entry := range sorted {
+		initialDelta, err := signed32Difference(entry.InitialLocation, address)
+		if err != nil {
+			return nil, fmt.Errorf("table entry %d initial location: %w", i, err)
+		}
+		fdeDelta, err := signed32Difference(entry.FDEAddress, address)
+		if err != nil {
+			return nil, fmt.Errorf("table entry %d FDE address: %w", i, err)
+		}
+		result = binary.LittleEndian.AppendUint32(result, uint32(initialDelta))
+		result = binary.LittleEndian.AppendUint32(result, uint32(fdeDelta))
+	}
+	return result, nil
+}
+
+func signed32Difference(target, base uint64) (int32, error) {
+	if target >= base {
+		delta := target - base
+		if delta > math.MaxInt32 {
+			return 0, fmt.Errorf("positive signed-32 displacement overflows")
+		}
+		return int32(delta), nil
+	}
+	delta := base - target
+	if delta > uint64(1)<<31 {
+		return 0, fmt.Errorf("negative signed-32 displacement overflows")
+	}
+	if delta == uint64(1)<<31 {
+		return math.MinInt32, nil
+	}
+	return -int32(delta), nil
 }

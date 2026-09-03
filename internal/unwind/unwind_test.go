@@ -192,6 +192,51 @@ func TestParseEHFrameHeaderSearchTable(t *testing.T) {
 	}
 }
 
+func TestBuildEHFrameHeaderCanonicalRoundTrip(t *testing.T) {
+	const address = uint64(0x8000)
+	entries := []HeaderEntry{
+		{InitialLocation: 0xa000, FDEAddress: 0x8300},
+		{InitialLocation: 0x9000, FDEAddress: 0x8200},
+	}
+	before := append([]HeaderEntry(nil), entries...)
+	data, err := BuildEHFrameHeader(address, 0x7000, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 12+len(entries)*8 || data[0] != 1 || data[1] != PEPcrel|PESdata4 || data[2] != PEUdata4 || data[3] != PEDatarel|PESdata4 {
+		t.Fatalf("header bytes=%x", data)
+	}
+	parsed, err := ParseEHFrameHeader(data, address, binary.LittleEndian, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.EHFrameAddress != 0x7000 || len(parsed.Entries) != 2 ||
+		parsed.Entries[0].InitialLocation != 0x9000 || parsed.Entries[0].FDEAddress != 0x8200 ||
+		parsed.Entries[1].InitialLocation != 0xa000 || parsed.Entries[1].FDEAddress != 0x8300 {
+		t.Fatalf("parsed=%+v", parsed)
+	}
+	for i := range entries {
+		if entries[i] != before[i] {
+			t.Fatal("BuildEHFrameHeader mutated caller entries")
+		}
+	}
+}
+
+func TestBuildEHFrameHeaderRejectsDuplicateAndOutOfRangeEntries(t *testing.T) {
+	if _, err := BuildEHFrameHeader(0x8000, 0x7000, []HeaderEntry{
+		{InitialLocation: 0x9000, FDEAddress: 0x8200},
+		{InitialLocation: 0x9000, FDEAddress: 0x8300},
+	}); err == nil {
+		t.Fatal("duplicate initial location was accepted")
+	}
+	if _, err := BuildEHFrameHeader(0x1000, 0x100000000, []HeaderEntry{{InitialLocation: 0x2000, FDEAddress: 0x3000}}); err == nil {
+		t.Fatal("out-of-range .eh_frame displacement was accepted")
+	}
+	if _, err := BuildEHFrameHeader(0x1000, 0x2000, []HeaderEntry{{InitialLocation: 0x100000000, FDEAddress: 0x3000}}); err == nil {
+		t.Fatal("out-of-range table displacement was accepted")
+	}
+}
+
 func TestUnwindParsersFailClosedOnMalformedInput(t *testing.T) {
 	if _, err := ParseEHFrame([]byte{8, 0, 0, 0, 0}, 0, binary.LittleEndian, 8); err == nil {
 		t.Fatal("truncated .eh_frame accepted")
