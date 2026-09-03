@@ -64,8 +64,8 @@ def _validate_attempts(attempts, where, *, expect_success):
             _require(result["exit_code"] == 0 and result["signal"] is None,
                      f"{attempt_where} is equivalent but did not complete successfully")
         else:
-            _require(result["exit_code"] != 0 and result["signal"] is None,
-                     f"{attempt_where} malformed-input rejection must be a deterministic non-zero exit")
+            _require(result["exit_code"] > 0 and result["signal"] is None,
+                     f"{attempt_where} malformed-input rejection must be a deterministic positive exit")
 
 def validate_document(document, manifest_ids, manifest_sha256, expected_commit):
     _walk_forbidden(document)
