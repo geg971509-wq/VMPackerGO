@@ -1,0 +1,40 @@
+name: Native tail fail-closed one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/native-tail-failclosed-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: .go-version
+      - name: Apply and verify exact native-tail boundary
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-native-tail-failclosed.py
+          gofmt -w internal/arch/arm64/translator.go internal/arch/arm64/tr_branch.go internal/elf/outliner.go internal/elf/packed_tail_test.go
+          go test -count=1 -run '^(TestSelectedExternalTail|TestExecutableUnselectedExternalTail|TestUnmappedExternalTail|TestNonTerminalNativeExternalTail)' ./internal/elf
+          git diff --check
+      - name: Commit exact native-tail boundary
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm scripts/apply-native-tail-failclosed.py
+          git add internal/arch/arm64/translator.go internal/arch/arm64/tr_branch.go internal/elf/outliner.go internal/elf/packed_tail_test.go scripts/apply-native-tail-failclosed.py
+          git diff --cached --check
+          git commit -m 'Keep generic native tail branches fail closed'
+          git push origin HEAD:codex/productization-closure-20260903
