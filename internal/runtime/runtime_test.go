@@ -94,13 +94,16 @@ func TestGenerateExclusiveThunksIsContinuousContentAddressedAndCFI(t *testing.T)
 			t.Errorf("generated header lacks %q", token)
 		}
 	}
-	for _, token := range []string{name + ":", ".inst 0xc85ffc20", ".inst 0x91000400", ".inst 0xc802fc20", ".cfi_startproc", "bti c", ".note.gnu.property"} {
+	for _, token := range []string{name + ":", "#include \"vm_abi.h\"", ".inst 0xc85ffc20", ".inst 0x91000400", ".inst 0xc802fc20", ".cfi_startproc", "bti c", "ldr w17, [x16, #VM_CTX_FL]", "msr nzcv, x17", "mrs x17, nzcv", "str w17, [x16, #VM_CTX_FL]", ".note.gnu.property"} {
 		if !strings.Contains(string(assembly), token) {
 			t.Errorf("generated assembly lacks %q", token)
 		}
 	}
 	if strings.Index(string(assembly), ".inst 0xc85ffc20") > strings.Index(string(assembly), ".inst 0xc802fc20") {
 		t.Fatal("exclusive instruction order changed")
+	}
+	if strings.Count(string(assembly), "msr nzcv, x17") != 1 || strings.Count(string(assembly), "mrs x17, nzcv") != 1 {
+		t.Fatal("exclusive thunk did not bridge NZCV exactly once")
 	}
 
 	bad := region
@@ -178,6 +181,7 @@ func TestBuildInstalledExactR29Object(t *testing.T) {
 		ExclusiveRegions: []vm.ExclusiveRegion{
 			vm.NewExclusiveRegion([]uint32{0xc85ffc20, 0x91000400, 0xc802fc20}),
 			vm.NewExclusiveRegion([]uint32{0xc85ffe34, 0x91000694, 0xc813fe34}),
+			vm.NewExclusiveRegion([]uint32{0xc87f0440, 0xc8239444}),
 		},
 		FPSIMDInstructions: []uint32{0x1e202820, 0x1e212000, 0x3dc00000, 0x1e2203a0, 0x1e38001e, 0xfd0007e0},
 	})
@@ -187,7 +191,7 @@ func TestBuildInstalledExactR29Object(t *testing.T) {
 	if len(image.EHFrame) == 0 || len(image.GNUPropertyNote) == 0 || len(image.Relocations) == 0 {
 		t.Fatalf("incomplete r29 image: eh_frame=%d note=%d relocations=%d", len(image.EHFrame), len(image.GNUPropertyNote), len(image.Relocations))
 	}
-	if len(image.ExclusiveRegions) != 2 || len(image.FPSIMDInstructions) != 6 {
+	if len(image.ExclusiveRegions) != 3 || len(image.FPSIMDInstructions) != 6 {
 		t.Fatalf("generated thunks: exclusive=%d fpsimd=%d", len(image.ExclusiveRegions), len(image.FPSIMDInstructions))
 	}
 }

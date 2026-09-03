@@ -56,7 +56,7 @@ func extractFields(raw uint32, fields []FieldDef) map[string]int64 {
 
 // applyCommonFields 将常见字段名映射到 vm.Instruction
 //
-// 约定: Rd→inst.Rd, Rn→inst.Rn, Rm→inst.Rm, sf→inst.SF,
+// 约定: Rd→inst.Rd, Rn→inst.Rn, Rm→inst.Rm, Rt2→inst.Rt2, sf→inst.SF,
 //
 //	cond→inst.Cond, wb→inst.WB, shift→inst.Shift
 //
@@ -70,6 +70,9 @@ func applyCommonFields(fields map[string]int64, inst *vm.Instruction) {
 	}
 	if v, ok := fields["Rm"]; ok {
 		inst.Rm = int(v)
+	}
+	if v, ok := fields["Rt2"]; ok {
+		inst.Rt2 = int(v)
 	}
 	if v, ok := fields["sf"]; ok {
 		inst.SF = v != 0

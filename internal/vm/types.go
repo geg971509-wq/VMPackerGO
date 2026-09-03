@@ -16,6 +16,7 @@ type Instruction struct {
 	Rd        int
 	Rn        int
 	Rm        int
+	Rt2       int
 	Imm       int64
 	Shift     int
 	ShiftType int
@@ -25,8 +26,8 @@ type Instruction struct {
 	WB        int
 }
 
-// ExclusiveRegion is a complete, contiguous LDAXR...STLXR sequence that must
-// execute without returning to the interpreter. ID is derived from the exact
+// ExclusiveRegion is a complete, contiguous load-exclusive...store-exclusive
+// sequence that must execute without returning to the interpreter. ID is derived from the exact
 // instruction words so bytecode and generated runtime thunks can be joined
 // without process-local numbering.
 type ExclusiveRegion struct {

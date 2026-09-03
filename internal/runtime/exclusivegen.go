@@ -46,7 +46,7 @@ func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []b
 	h.WriteString("  default: vm->fault |= VM_FAULT_SYSTEM; break;\n  }\n  return 5;\n}\n\n#endif\n")
 
 	var s strings.Builder
-	s.WriteString(".text\n.p2align 2\n")
+	s.WriteString("#include \"vm_abi.h\"\n.text\n.p2align 2\n")
 	for _, region := range normalized {
 		fmt.Fprintf(&s, ".global vm_exclusive_%08x\n.hidden vm_exclusive_%08x\n.type vm_exclusive_%08x, %%function\n", region.ID, region.ID, region.ID)
 		fmt.Fprintf(&s, "vm_exclusive_%08x:\n", region.ID)
@@ -54,9 +54,11 @@ func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []b
 		for host, guest := range registersByID[region.ID] {
 			fmt.Fprintf(&s, "  ldr x%d, [x16, #%d]\n", host, guest*8)
 		}
+		s.WriteString("  ldr w17, [x16, #VM_CTX_FL]\n  and w17, w17, #0xf\n  lsl x17, x17, #28\n  msr nzcv, x17\n")
 		for _, raw := range patchedByID[region.ID] {
 			fmt.Fprintf(&s, "  .inst 0x%08x\n", raw)
 		}
+		s.WriteString("  mrs x17, nzcv\n  lsr x17, x17, #28\n  str w17, [x16, #VM_CTX_FL]\n")
 		for host, guest := range registersByID[region.ID] {
 			fmt.Fprintf(&s, "  str x%d, [x16, #%d]\n", host, guest*8)
 		}
