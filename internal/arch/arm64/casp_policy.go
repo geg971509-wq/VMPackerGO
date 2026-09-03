@@ -6,13 +6,8 @@ import (
 	"github.com/vmpacker/internal/vm"
 )
 
-func init() {
-	// CASP is decoded into the existing CAS semantic family. Override only the
-	// CAS validator so pair encodings can apply their stricter register-pair
-	// rules without widening the scalar atomic policy.
-	instructionRules[CAS] = instructionRule{disposition: dispositionVirtual, validate: validateCASOrPair}
-}
-
+// validateCASOrPair keeps scalar CAS on the existing atomic validator while
+// applying architectural register-pair rules only to the CASP raw encoding.
 func validateCASOrPair(inst vm.Instruction) error {
 	if !isCASPPair(inst) {
 		return validateAtomicNative(inst)
