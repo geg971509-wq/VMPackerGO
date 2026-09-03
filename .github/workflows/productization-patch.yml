@@ -21,79 +21,91 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
-      - name: Repair exception invoke route semantics
+      - name: Align exception route fixtures and regression coverage
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_exact(path: str, old: str, new: str, *, count: int | None = None) -> None:
-              file = Path(path)
-              text = file.read_text()
-              actual = text.count(old)
-              if actual == 0:
-                  raise SystemExit(f"{path}: expected text not found: {old!r}")
-              if count is not None and actual != count:
-                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old!r}")
-              file.write_text(text.replace(old, new))
-
           path = Path("internal/runtime/runtime_test.go")
           text = path.read_text()
-          text = text.replace(
-              "\tassembly, got, err := generateExceptionInvokeThunks(",
-              "\t_, assembly, got, err := generateExceptionInvokeThunks(",
+          old = "\t\tFunctionAddress: 0x1000,\n\t\tPlan: &unwind.ExceptionBridgePlan{"
+          new = (
+              "\t\tFunctionAddress: 0x1000,\n"
+              "\t\tRoutes: []ExceptionRouteConfig{{\n"
+              "\t\t\tThunkID: 0x1234abcd, FinalVMCallOffset: 64, FinalVMLandingOffset: 32,\n"
+              "\t\t}},\n"
+              "\t\tPlan: &unwind.ExceptionBridgePlan{"
           )
-          text = text.replace(
-              "\tif _, _, err := generateExceptionInvokeThunks(",
-              "\tif _, _, _, err := generateExceptionInvokeThunks(",
-          )
-          if "generateExceptionInvokeThunks" in text:
-              for line in text.splitlines():
-                  if "generateExceptionInvokeThunks" in line and line.count(",") < 3:
-                      raise SystemExit(f"runtime_test.go still has a stale result assignment: {line}")
-          path.write_text(text)
-
-          replace_exact(
-              "internal/runtime/invokegen.go",
-              "static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target) {",
-              "static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target,\n"
-              "                                          u32 call_vm_offset) {",
-              count=1,
-          )
-          replace_exact(
-              "internal/runtime/invokegen.go",
-              "  if (!vm->reverse || target == 0) {",
-              "  if (!vm->reverse || target == 0 || call_vm_offset > vm->bc_len) {",
-              count=1,
-          )
-          replace_exact(
-              "internal/runtime/invokegen.go",
-              "    int comparison = vm_invoke_key_compare(route, function_file_va, vm->pc);",
-              "    int comparison = vm_invoke_key_compare(route, function_file_va,\n"
-              "                                                   call_vm_offset);",
-              count=1,
-          )
-          replace_exact(
-              "internal/runtime/templates/android/arm64/vm_handlers/h_system.h",
-              "  int invoke = vm_try_exception_invoke(vm, address);",
-              "  if (!vm->reverse || vm->pc > vm->bc_len ||\n"
-              "      instruction_size + 1u > vm->bc_len - vm->pc) {\n"
-              "    vm_fault_set(vm, VM_FAULT_CONTROL);\n"
-              "    return 0;\n"
-              "  }\n"
-              "  u32 call_vm_offset = vm->pc + instruction_size + 1u;\n"
-              "  int invoke = vm_try_exception_invoke(vm, address, call_vm_offset);",
-              count=1,
-          )
+          if text.count(old) != 1:
+              raise SystemExit("runtime_test.go: exception config insertion point changed")
+          text = text.replace(old, new, 1)
+          old_encoding = "\tcfg.Plan.PersonalityEncoding = unwind.PEAbsptr"
+          new_encoding = "\tcfg.Plan.PersonalityEncoding = unwind.PEDatarel | unwind.PESdata4"
+          if text.count(old_encoding) != 1:
+              raise SystemExit("runtime_test.go: stale personality rejection expectation changed")
+          path.write_text(text.replace(old_encoding, new_encoding, 1))
           PY
-          gofmt -w internal/runtime/runtime_test.go internal/runtime/invokegen.go
-      - name: Commit repaired exception route
+          cat > internal/runtime/invoke_route_boundary_test.go <<'EOF'
+          package runtime
+
+          import (
+          	"strings"
+          	"testing"
+          )
+
+          func TestExceptionInvokeRuntimeUsesFinalReverseInstructionBoundary(t *testing.T) {
+          	cfg := testExceptionInvokeConfig()
+          	header, _, routes, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg})
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	if len(routes) != 1 {
+          		t.Fatalf("routes=%+v", routes)
+          	}
+          	if routes[0].FinalVMCallOffset != cfg.Routes[0].FinalVMCallOffset ||
+          		routes[0].FinalVMLandingOffset != cfg.Routes[0].FinalVMLandingOffset {
+          		t.Fatalf("generated final route=%+v want=%+v", routes[0], cfg.Routes[0])
+          	}
+
+          	headerText := string(header)
+          	for _, token := range []string{
+          		"u32 call_vm_offset) {",
+          		"call_vm_offset > vm->bc_len",
+          		"call_vm_offset);",
+          	} {
+          		if !strings.Contains(headerText, token) {
+          			t.Errorf("generated invoke header lacks %q", token)
+          		}
+          	}
+          	if strings.Contains(headerText, "function_file_va, vm->pc") {
+          		t.Fatal("invoke route lookup regressed to the reverse instruction start")
+          	}
+
+          	handler, err := templates.ReadFile(templateRoot + "/vm_handlers/h_system.h")
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	handlerText := string(handler)
+          	for _, token := range []string{
+          		"instruction_size + 1u > vm->bc_len - vm->pc",
+          		"u32 call_vm_offset = vm->pc + instruction_size + 1u;",
+          		"vm_try_exception_invoke(vm, address, call_vm_offset)",
+          	} {
+          		if !strings.Contains(handlerText, token) {
+          			t.Errorf("runtime native-call handler lacks %q", token)
+          		}
+          	}
+          }
+          EOF
+          gofmt -w internal/runtime/runtime_test.go internal/runtime/invoke_route_boundary_test.go
+      - name: Commit exception route coverage
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add internal/runtime/runtime_test.go internal/runtime/invokegen.go internal/runtime/templates/android/arm64/vm_handlers/h_system.h
-          git commit -m "Use final reverse boundaries for exception invoke routes"
+          git add internal/runtime/runtime_test.go internal/runtime/invoke_route_boundary_test.go
+          git commit -m "Lock exception invoke reverse-boundary routing"
           git push origin HEAD:codex/productization-closure-20260903
