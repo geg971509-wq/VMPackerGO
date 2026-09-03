@@ -1,0 +1,130 @@
+name: Demo case spec one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/demo-case-spec-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - name: Generate auditable draft device cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+
+          manifest = json.loads(Path('demo/manifest.json').read_text())
+          audit = {e['id']: e for e in json.loads(Path('demo/device-case-audit.json').read_text())['entries']}
+
+          signed = {'char':'i8','signed char':'i8','int8_t':'i8','i8':'i8',
+                    'short':'i16','short int':'i16','signed short':'i16','signed short int':'i16','int16_t':'i16','i16':'i16',
+                    'int':'i32','signed':'i32','signed int':'i32','int32_t':'i32','i32':'i32',
+                    'long':'i64','long int':'i64','long long':'i64','long long int':'i64','int64_t':'i64','i64':'i64','ssize_t':'i64'}
+          unsigned = {'unsigned char':'u8','uint8_t':'u8','u8':'u8',
+                      'unsigned short':'u16','unsigned short int':'u16','uint16_t':'u16','u16':'u16',
+                      'unsigned':'u32','unsigned int':'u32','uint32_t':'u32','u32':'u32',
+                      'unsigned long':'u64','unsigned long int':'u64','unsigned long long':'u64','unsigned long long int':'u64',
+                      'uint64_t':'u64','u64':'u64','size_t':'u64','uintptr_t':'u64'}
+
+          def normalize_type(text):
+              text = re.sub(r'\b(const|volatile|restrict|register|static|inline)\b', ' ', text)
+              text = ' '.join(text.replace('\n',' ').split())
+              if '*' in text or '[' in text:
+                  return 'ptr'
+              if text == 'void': return 'void'
+              if text in signed: return signed[text]
+              if text in unsigned: return unsigned[text]
+              return None
+
+          def param_type(param):
+              p = ' '.join(param.split())
+              if p == 'void' or not p: return None
+              if '...' in p: return 'VARIADIC'
+              if '*' in p or '[' in p: return 'ptr'
+              # remove a trailing C identifier used as the parameter name
+              parts = p.split()
+              if len(parts) > 1 and re.fullmatch(r'[_A-Za-z][_A-Za-z0-9]*', parts[-1]):
+                  p = ' '.join(parts[:-1])
+              return normalize_type(p)
+
+          def abi_for(fn):
+              result = normalize_type(fn['return'])
+              if result is None: return None
+              params_text = fn['params'].strip()
+              params = []
+              if params_text and params_text != 'void':
+                  for raw in params_text.split(','):
+                      t = param_type(raw)
+                      if t in (None, 'VARIADIC'): return None
+                      params.append(t)
+              if len(params) > 8: return None
+              return f"{result}({','.join(params)})"
+
+          cases = {"schema_version": 1, "entries": []}
+          summary = []
+          for item in manifest['entries']:
+              entry = {"id": item['id'], "language": item['language'], "source": item['source'],
+                       "outcome": "needs_manual", "selectors": []}
+              a = audit[item['id']]
+              if item['language'] == 'c':
+                  text = Path(item['source']).read_text(errors='replace').lower()
+                  entry['build_profile'] = 'c-freestanding' if any(f['name'] == '_start' for f in a.get('functions', [])) and not any(f['name'] == 'main' for f in a.get('functions', [])) else 'c-pie'
+                  features = []
+                  if re.search(r'\b(ldadd|cas[a-z]*|swp[a-z]*|ldclr|ldeor|ldset|ldsmax|ldsmin|ldumax|ldumin)\b', text): features.append('lse')
+                  if re.search(r'\bcrc32[a-z]*\b', text): features.append('crc')
+                  if re.search(r'\b(aese|aesd|aesmc|aesimc|sha1|sha256)\b', text): features.append('crypto')
+                  entry['features'] = sorted(set(features))
+                  candidates = list(a.get('noinline_functions', []))
+                  main = next((f for f in a.get('functions', []) if f['name'] == 'main'), None)
+                  start = next((f for f in a.get('functions', []) if f['name'] == '_start'), None)
+                  if main and all(f['name'] != 'main' for f in candidates): candidates.append(main)
+                  if not candidates and start: candidates.append(start)
+                  unresolved = []
+                  for fn in candidates:
+                      abi = abi_for(fn)
+                      if abi is None:
+                          unresolved.append(fn['name'])
+                      else:
+                          entry['selectors'].append({"name": fn['name'], "abi": abi})
+                  if entry['selectors'] and not unresolved:
+                      entry['outcome'] = 'equivalent'
+                  if unresolved:
+                      entry['reason'] = 'unmapped ABI for: ' + ', '.join(unresolved)
+              elif item['language'] == 'rust':
+                  entry.update({"build_profile":"rust-pie", "outcome":"equivalent",
+                                "selectors":[{"name":"check_key","abi":"u64(u64)"}]})
+              elif item['language'] == 'go':
+                  entry.update({"build_profile":"go-pie", "outcome":"needs_manual",
+                                "reason":"Go ABIInternal is not the protected-entry AAPCS64 contract"})
+              cases['entries'].append(entry)
+              summary.append(f"{entry['id']}\t{entry['outcome']}\t{','.join(s['name']+':'+s['abi'] for s in entry['selectors'])}\t{entry.get('reason','')}")
+
+          Path('demo/device-cases.json').write_text(json.dumps(cases, indent=2, sort_keys=True) + '\n')
+          unresolved = [e for e in cases['entries'] if e['outcome'] == 'needs_manual']
+          lines = [f"total={len(cases['entries'])}", f"resolved={len(cases['entries'])-len(unresolved)}", f"unresolved={len(unresolved)}", '']
+          lines += [line for line in summary if '\tneeds_manual\t' in line]
+          Path('demo/device-case-summary.txt').write_text('\n'.join(lines) + '\n')
+          PY
+      - name: Commit draft case spec
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add demo/device-cases.json demo/device-case-summary.txt
+          git diff --cached --check
+          git commit -m 'Generate auditable 85-demo device case spec'
+          git push origin HEAD:codex/productization-closure-20260903
