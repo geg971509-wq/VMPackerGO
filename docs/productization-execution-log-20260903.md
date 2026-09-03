@@ -27,21 +27,26 @@ Implemented:
 - arithmetic-sign CLS semantics;
 - template regression tests against silent-degradation patterns.
 
-Verification workflow run `33751638537` passed the exact implementation head through:
-
-- contract and contract self-tests;
-- `go vet ./...`;
-- `go test -race -count=1 ./...`;
-- exact-r29 FP/SIMD corpus derivation and closure;
-- exact-r29 whole-compiler ARM64 corpus derivation and closure;
-- exact-r29 runtime compile/link/validation;
-- macOS ARM64 CLI build.
+Verification workflow run `33751638537` passed the exact implementation head through contract checks, `go vet`, race-enabled full tests, both exact-r29 compiler-derived corpora, exact-r29 runtime build/validation, and macOS ARM64 CLI build.
 
 The first validation attempt correctly failed on an unintended freestanding `memcpy` emitted for frame-structure assignment and on stale source-literal tests. Dynamic frame copying was changed to explicit field transfer and the tests were audited against the new transactional behavior before the successful rerun.
 
+## Selected packed-tail control flow — VERIFIED
+
+Implemented:
+
+- direct terminal `B` targets are classified against the complete immutable selection set during translation preparation;
+- a target selected in the same invocation becomes an explicit protected-to-protected tail switch using image-relative `X16/IP0` materialization followed by `BR_REG`;
+- the packed tail replaces the current bytecode context without growing protected-call depth;
+- an unselected external native tail remains a deterministic pack-time rejection rather than a runtime approximation;
+- exact-r29 machine-outliner inlining remains a narrow, validated optimization rather than the only external-tail product behavior;
+- image-relative VM register materialization now rejects signed-address overflow.
+
+Verification workflow run `33752422371` passed the exact implementation head through every hosted gate, including exact-r29 runtime compilation and whole-compiler coverage.
+
 ## Active next stage
 
-Control-flow closure: first-class external tail transfers and far-entry reachability without writer-time layout recomputation or returning-call approximation.
+Far-entry reachability and exception/unwind execution integration, preserving immutable plan-first layout and fail-closed unsupported boundaries.
 
 ## Verification policy
 
