@@ -149,3 +149,24 @@ func TestValidateAndroidLoadedProgramHeadersRejectsUnmappedPTPHDR(t *testing.T) 
 		t.Fatalf("unmapped PT_PHDR err=%v", err)
 	}
 }
+
+func TestValidateAndroidLoadedProgramHeadersRejectsBionicPreflightLimits(t *testing.T) {
+	input, segments, phdrPlan := relocatedPTPHDRFixture(t)
+	artifact, err := applyRewritePlan(input, &RewritePlan{segments: segments, programHeaders: phdrPlan})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unaligned := append([]byte(nil), artifact...)
+	binary.LittleEndian.PutUint64(unaligned[32:40], phdrPlan.phoffAfter+1)
+	if err := validateAndroidLoadedProgramHeaders(unaligned); err == nil || !strings.Contains(err.Error(), "not Android-compatible") {
+		t.Fatalf("unaligned e_phoff err=%v", err)
+	}
+
+	oversized := append([]byte(nil), artifact...)
+	tooMany := uint16(65536/elf64ProgramSize + 1)
+	binary.LittleEndian.PutUint16(oversized[56:58], tooMany)
+	if err := validateAndroidLoadedProgramHeaders(oversized); err == nil || !strings.Contains(err.Error(), "64KiB") {
+		t.Fatalf("oversized e_phnum err=%v", err)
+	}
+}
