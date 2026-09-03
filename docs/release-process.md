@@ -6,7 +6,7 @@ VMPackerGO remains development-stage until every release gate below has real evi
 
 1. Merge only a fully green reviewed change into `main`.
 2. Run the normal `Verification` workflow on `main`.
-3. Create a clean v-prefixed SemVer tag, for example `v1.2.3`, on the exact verified commit.
+3. Create a clean v-prefixed SemVer tag, for example `v1.2.3`, on the exact verified commit. Schema v1 accepts valid prerelease identifiers but intentionally does not accept SemVer build metadata (`+...`).
 4. Check out that tag with no local modifications.
 5. Use the exact Go compiler from `.go-version` and Android NDK `29.0.14206865`.
 
@@ -28,14 +28,14 @@ python3 scripts/run-device-coverage-matrix.py \
   --out coverage-evidence.json
 ```
 
-Run the matrix on the physical devices needed to satisfy API, 4 KiB/16 KiB, BTI/PAC and CPU-feature coverage. Merge the fragments:
+Run the matrix on the physical devices needed to satisfy API, 4 KiB/16 KiB, BTI/PAC and CPU-feature coverage. The runners may be repeated over their own work directories; they atomically replace only their generated packed outputs rather than requiring manual cleanup. Merge the fragments:
 
 ```sh
 python3 scripts/merge-device-evidence.py --out device-evidence.json *.json
 python3 scripts/validate-device-evidence.py device-evidence.json
 ```
 
-The validator requires all 85 approved demos on both 4 KiB and 16 KiB physical devices, at least three matching baseline/packed executions per demo/device, and the semantic coverage tags defined in `device-evidence-schema-v1.md`.
+The validator requires all 85 approved demos on both 4 KiB and 16 KiB physical devices, at least three successful matching baseline/packed executions per demo/device, and the semantic coverage tags defined in `device-evidence-schema-v1.md`. Ordinary demo/coverage executions must exit `0` without a signal. `malformed_reject` is the isolated inverse case and must be a deterministic non-zero rejection.
 
 ## 3. Sign and notarize the standalone CLI
 
@@ -48,9 +48,11 @@ export ANDROID_NDK_ROOT='/path/to/ndk/29.0.14206865'
 scripts/package-release.sh device-evidence.json dist/release
 ```
 
+The output path must not already exist. The packager never removes or overwrites an existing release directory. It stages the candidate in a private sibling directory and publishes that directory to the requested output path only after all packaging checks succeed.
+
 The packager:
 
-- verifies a clean exact SemVer tag;
+- verifies a clean exact v-prefixed SemVer tag under the schema-v1 tag policy;
 - verifies exact Go and NDK revisions;
 - validates physical-device evidence;
 - builds the macOS ARM64 CLI;
@@ -93,6 +95,6 @@ VMPACKER_RELEASE_EVIDENCE="$PWD/dist/release/release-evidence.json" \
   scripts/check-contract.sh --release
 ```
 
-The release contract recomputes hashes, validates device evidence against the exact checkout, verifies tag/commit/toolchain metadata, and on macOS rechecks the live Mach-O signing and Gatekeeper state. Missing or stale evidence fails closed with a concrete reason.
+The release contract recomputes hashes, validates device evidence against the exact checkout, verifies tag/commit/toolchain metadata, and on macOS rechecks the live Mach-O signing and Gatekeeper state. It also requires the repository's active shell entry points to retain executable Git modes. Missing, stale or structurally unsafe evidence fails closed with a concrete reason.
 
 Publishing is intentionally outside the validator. A release artifact must never be uploaded before the final contract passes.
