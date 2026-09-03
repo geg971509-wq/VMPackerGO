@@ -1,0 +1,75 @@
+name: Canonicalization one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/canonicalize-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - name: Canonicalize active module and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          go_mod = root / 'go.mod'
+          text = go_mod.read_text()
+          lines = text.splitlines()
+          if not lines or not lines[0].startswith('module '):
+              raise SystemExit('go.mod has no module directive')
+          lines[0] = 'module github.com/geg971509-wq/VMPackerGO'
+          lines = [line for line in lines if not line.startswith('toolchain ')]
+          insert = 2 if len(lines) > 1 and lines[1] == '' else 1
+          # Keep the source-language baseline while pinning the release compiler.
+          for i, line in enumerate(lines):
+              if line.startswith('go '):
+                  lines.insert(i + 1, 'toolchain go1.26.0')
+                  break
+          else:
+              raise SystemExit('go.mod has no go directive')
+          go_mod.write_text('\n'.join(lines).rstrip() + '\n')
+
+          old = 'github.com/vmpacker/'
+          new = 'github.com/geg971509-wq/VMPackerGO/'
+          for path in root.rglob('*.go'):
+              if 'archive' in path.parts:
+                  continue
+              data = path.read_text()
+              if old in data:
+                  path.write_text(data.replace(old, new))
+
+          workflow = root / '.github/workflows/build.yml'
+          data = workflow.read_text()
+          marker = '          go-version-file: go.mod\n'
+          if data.count(marker) != 1:
+              raise SystemExit('verification workflow go-version-file marker changed')
+          workflow.write_text(data.replace(marker, '          go-version-file: .go-version\n', 1))
+          PY
+          printf '1.26.0\n' > .go-version
+          mkdir -p archive/handoffs
+          git mv PRODUCTIZATION_HANDOFF.md archive/handoffs/productization-handoff-2026-08-28.md
+          rm .github/workflows/canonicalize-once.yml
+      - name: Commit canonicalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'Canonicalize module toolchain and historical handoff'
+          git push origin HEAD:codex/productization-closure-20260903
