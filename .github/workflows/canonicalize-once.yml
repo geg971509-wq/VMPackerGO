@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: codex/productization-closure-20260903
-      - name: Canonicalize active module and historical handoff
+      - name: Canonicalize active module and imports
         shell: bash
         run: |
           set -euo pipefail
@@ -50,23 +50,20 @@ jobs:
                   path.write_text(data.replace(old, new))
           PY
           printf '1.26.0\n' > .go-version
-          mkdir -p archive/handoffs
-          if [[ -f PRODUCTIZATION_HANDOFF.md ]]; then
-            git mv PRODUCTIZATION_HANDOFF.md archive/handoffs/productization-handoff-2026-08-28.md
-          fi
       - name: Commit canonicalization
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add go.mod .go-version cmd internal archive PRODUCTIZATION_HANDOFF.md 2>/dev/null || true
-          git add -u PRODUCTIZATION_HANDOFF.md 2>/dev/null || true
-          git add archive/handoffs 2>/dev/null || true
+          git add go.mod .go-version
+          while IFS= read -r -d '' path; do
+            git add -- "$path"
+          done < <(git diff --name-only -z -- '*.go')
           git diff --cached --check
           if git diff --cached --quiet; then
             echo 'canonicalization already applied'
             exit 0
           fi
-          git commit -m 'Canonicalize module toolchain and historical handoff'
+          git commit -m 'Canonicalize module path and release toolchain'
           git push origin HEAD:codex/productization-closure-20260903
