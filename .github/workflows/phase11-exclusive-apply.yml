@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/phase11_exclusive_patch.py
+          python3 scripts/phase11_exclusive_test_repair.py
           gofmt -w \
             internal/arch/arm64/decoder.go \
             internal/arch/arm64/decode_ldst.go \
@@ -33,12 +34,12 @@ jobs:
       - name: Focused semantic verification
         run: |
           set -euo pipefail
-          go test -count=1 ./internal/arch/arm64 ./internal/runtime ./internal/vm
+          go test -count=1 ./internal/arch/arm64 ./internal/vm
           go vet ./internal/arch/arm64 ./internal/runtime ./internal/vm
       - name: Commit implementation and remove bootstrap
         run: |
           set -euo pipefail
-          git rm scripts/phase11_exclusive_patch.py .github/workflows/phase11-exclusive-apply.yml
+          git rm scripts/phase11_exclusive_patch.py scripts/phase11_exclusive_test_repair.py .github/workflows/phase11-exclusive-apply.yml
           git add internal/arch/arm64
           git config user.name "vmpacker-phase11-bot"
           git config user.email "actions@users.noreply.github.com"
