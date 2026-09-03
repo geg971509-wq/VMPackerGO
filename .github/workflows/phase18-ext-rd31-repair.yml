@@ -1,0 +1,39 @@
+name: Phase18 extended Rd31 repair
+
+on:
+  push:
+    branches:
+      - fix/compiler-r29-coverage-v2
+    paths:
+      - .github/workflows/phase18-ext-rd31-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/compiler-r29-coverage-v2
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Apply extended-register Rd31 normalization repair
+        run: |
+          set -euo pipefail
+          python3 scripts/phase18_ext_rd31_repair.py
+          gofmt -w internal/arch/arm64/decode_dp_reg.go internal/arch/arm64/exclusive_compiler_r29_test.go
+          go test -count=1 ./internal/arch/arm64
+          go vet ./internal/arch/arm64
+      - name: Commit product-only result
+        run: |
+          set -euo pipefail
+          git config user.name 'vmpacker-phase18-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/phase18-ext-rd31-repair.yml scripts/phase18_ext_rd31_repair.py
+          git add internal/arch/arm64/decode_dp_reg.go internal/arch/arm64/exclusive_compiler_r29_test.go
+          git diff --cached --check
+          git commit -m 'Normalize Rd31 for flag-setting extended arithmetic'
+          git push origin HEAD:fix/compiler-r29-coverage-v2
