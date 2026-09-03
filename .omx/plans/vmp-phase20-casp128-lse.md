@@ -30,11 +30,10 @@ CASP overrides only CAS validation through a small pair-specific validator:
 
 - width must be 4 or 8 bytes per pair member;
 - address register may be X0-X30/SP;
-- expected/result and replacement pair lows must be even;
-- supported pair lows are conservatively bounded to X0-X28 so the implicit high member never becomes encoding 31;
+- expected/result and replacement pair lows must be even, matching the ISA decode rule;
+- valid pair lows span X0-X30;
+- when a pair low is X30/W30, its implicit high member is encoding 31 (XZR/WZR): reads supply zero and result writes are discarded, never aliased to VM R31/SP;
 - scalar CAS continues through the existing generic atomic validator unchanged.
-
-The X30/X31 boundary remains fail-closed until independent architecture/assembler evidence proves the intended register-31 semantics. Exact-r29 compiler evidence does not require that relaxation.
 
 ### 2.3 Wire transport
 
@@ -44,8 +43,8 @@ The X30/X31 boundary remains fail-closed until independent architecture/assemble
 
 Kinds 0-11 remain unchanged. Pair CAS uses kind 12:
 
-- `rm/rm+1` = expected/result pair;
-- `rd/rd+1` = replacement pair;
+- `rm/rm+1` = expected/result pair, with `rm=30` carrying an implicit ZR high member;
+- `rd/rd+1` = replacement pair, with `rd=30` carrying an implicit ZR high member;
 - `rn` = address;
 - width = 4 or 8 bytes per member;
 - order = relaxed/acquire/release/acq_rel.
@@ -58,7 +57,7 @@ A dedicated AAPCS64 helper returns the observed pair in X0/X1:
 
 `vm_atomic_pair_native(order, width, address, expected_lo, expected_hi, new_lo, new_hi)`
 
-The helper uses fixed legal even/odd scratch pairs X8/X9 and X10/X11 and executes only CASP-family instructions under `.arch_extension lse`. The VM handler validates kind/width/register pairs/alignment before the native call and writes only the observed old pair back to `rm/rm+1`; replacement registers remain unchanged.
+The helper uses fixed legal even/odd scratch pairs X8/X9 and X10/X11 and executes only CASP-family instructions under `.arch_extension lse`. The VM handler validates kind/width/register pairs/alignment before the native call, materializes an implicit register-31 high member as zero, and discards its result writeback. Otherwise it writes the observed old pair back to `rm/rm+1`; replacement registers remain unchanged.
 
 ## 3. Repair plan executed
 
@@ -68,10 +67,11 @@ The helper uses fixed legal even/odd scratch pairs X8/X9 and X10/X11 and execute
 4. Select `OpAtomic` kind 12 from `trAtomic` only for CASP raw encodings.
 5. Add pair return ABI and runtime handler branch for kind 12.
 6. Add W/X CASP/CASPA/CASPL/CASPAL native helper forms.
-7. Remove the `casp128` exact-r29 exemption and stale expectation; retain only `machine-outliner`.
-8. Add exact-r29/O0/O2/Oz CASP tests plus W-pair, malformed pair and wire-size tests.
-9. Add regression coverage for real STP/LDP signed-offset raw words that must keep `WB=2` as non-writeback addressing.
-10. Remove all temporary Phase 20 workflows and patch scripts before PR review.
+7. Support the full architectural even pair-low range, including X30/W30 plus implicit ZR high-member semantics.
+8. Remove the `casp128` exact-r29 exemption and stale expectation; retain only `machine-outliner`.
+9. Add exact-r29/O0/O2/Oz CASP tests plus W-pair, X30/ZR, malformed pair and wire-size tests.
+10. Add regression coverage for real STP/LDP signed-offset raw words that must keep `WB=2` as non-writeback addressing.
+11. Remove all temporary Phase 20 workflows and patch scripts before PR review.
 
 ## 4. Verification policy
 
@@ -95,6 +95,7 @@ Only the exact verified head may be squash-merged. The resulting `main` push mus
 Phase 20 is complete only when:
 
 - compiler-emitted CASP/CASPA/CASPL/CASPAL close through Decoder -> policy -> Translator -> runtime;
+- the full architectural even pair-low range, including X30/W30 + ZR high member, is represented without confusing ZR with VM SP;
 - `OpAtomic` remains seven bytes and scalar kinds 0-11 are unchanged;
 - the `casp128` intentional class is gone rather than broadened or renamed;
 - `machine-outliner` remains the only exact-r29 compiler-derived intentional boundary;
