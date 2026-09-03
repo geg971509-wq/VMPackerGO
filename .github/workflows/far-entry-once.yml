@@ -1,0 +1,119 @@
+name: Far entry transfer one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/far-entry-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: .go-version
+      - name: Integrate inline long entry veneer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('internal/elf/rewrite_plan.go')
+          text = path.read_text()
+          start = text.index('func buildPlannedTokenTrampoline(')
+          end = text.index('\nfunc planProgramHeaders(', start)
+          replacement = r'''func buildPlannedTokenTrampoline(input []byte, selection Selection, translation *arm64.TranslateResult, targetVA uint64, token uint32) ([]byte, error) {
+	if translation == nil {
+		return nil, fmt.Errorf("translation is missing")
+	}
+	code, err := selectedCode(input, selection)
+	if err != nil {
+		return nil, err
+	}
+	patchOffset := 0
+	if translation.HasEntryBTI {
+		patchOffset = 4
+		if selection.Size() < 4 {
+			return nil, fmt.Errorf("BTI entry is truncated")
+		}
+		decoded := arm64.NewDecoder().Decode(binary.LittleEndian.Uint32(code[:4]), 0)
+		if arm64.Op(decoded.Op) != translation.EntryBTI {
+			return nil, fmt.Errorf("BTI entry metadata does not match input encoding")
+		}
+	}
+
+	branchVA, ok := checkedAdd(selection.Address, uint64(patchOffset+8))
+	if !ok {
+		return nil, fmt.Errorf("entry branch address overflows")
+	}
+	transfer, err := buildEntryTransfer(branchVA, targetVA)
+	if err != nil {
+		return nil, err
+	}
+	patchSize := patchOffset + 8 + 4*len(transfer)
+	if selection.Size() < uint64(patchSize) {
+		kind := "entry"
+		if translation.HasEntryBTI {
+			kind = "BTI entry"
+		}
+		if len(transfer) > 1 {
+			kind += " long transfer"
+		}
+		return nil, fmt.Errorf("%s requires at least %d bytes, got %d", kind, patchSize, selection.Size())
+	}
+
+	patch := make([]byte, patchSize)
+	if patchOffset != 0 {
+		copy(patch[:patchOffset], code[:patchOffset])
+	}
+	lo16 := token & 0xffff
+	hi16 := token >> 16
+	binary.LittleEndian.PutUint32(patch[patchOffset:patchOffset+4], 0x52800010|lo16<<5)
+	binary.LittleEndian.PutUint32(patch[patchOffset+4:patchOffset+8], 0x72A00010|hi16<<5)
+	cursor := patchOffset + 8
+	for _, word := range transfer {
+		binary.LittleEndian.PutUint32(patch[cursor:cursor+4], word)
+		cursor += 4
+	}
+	return patch, nil
+}
+'''
+          path.write_text(text[:start] + replacement + text[end:])
+
+          path = Path('internal/runtime/templates/android/arm64/vm_entry.S')
+          text = path.read_text()
+          if text.count('\tbti c\n') != 1:
+              raise SystemExit('vm_entry.S BTI landing marker changed')
+          path.write_text(text.replace('\tbti c\n', '\tbti jc\n', 1))
+
+          path = Path('internal/elf/selection.go')
+          text = path.read_text()
+          old = '\t"the entry patch requires at least 12 contiguous bytes, or 16 bytes when preserving an entry BTI",\n'
+          new = '\t"near entry patches require 12 contiguous bytes, or 16 bytes with entry BTI; far inline veneers require 20 bytes, or 24 bytes with entry BTI, and reject beyond ADRP range",\n'
+          if text.count(old) != 1:
+              raise SystemExit('entry patch limitation text changed')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          gofmt -w internal/elf/rewrite_plan.go internal/elf/entry_transfer.go internal/elf/entry_transfer_test.go internal/elf/selection.go
+          go test -count=1 -run '^(TestBuildEntryTransfer|TestPlannedTokenTrampoline|TestTrampolinePreservesBTI)' ./internal/elf
+          git diff --check
+      - name: Commit far entry transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/elf/rewrite_plan.go internal/elf/entry_transfer.go internal/elf/entry_transfer_test.go internal/elf/selection.go internal/runtime/templates/android/arm64/vm_entry.S
+          git diff --cached --check
+          git commit -m 'Close bounded far entry transfers with inline veneers'
+          git push origin HEAD:codex/productization-closure-20260903
