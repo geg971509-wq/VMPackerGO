@@ -102,7 +102,7 @@ func validateExclusiveBodyInstruction(decoder *Decoder, inst vm.Instruction, add
 	switch Op(inst.Op) {
 	case ADD_IMM, SUB_IMM, SUBS_IMM:
 		registers = []int{inst.Rd, inst.Rn}
-	case ADD_REG, SUB_REG, SUBS_REG, AND_REG, ORR_REG, EOR_REG, MUL,
+	case ADD_REG, SUB_REG, SUBS_REG, SUBS_EXT, AND_REG, ORR_REG, EOR_REG, MUL,
 		CSEL, CSINC, CSINV, CSNEG:
 		registers = []int{inst.Rd, inst.Rn, inst.Rm}
 	default:
@@ -268,7 +268,7 @@ func exclusiveRegisterFields(inst vm.Instruction) []exclusiveRegisterField {
 		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rt2, shift: 10}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
 	case ADD_IMM, SUB_IMM, SUBS_IMM:
 		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
-	case ADD_REG, SUB_REG, SUBS_REG, AND_REG, ORR_REG, EOR_REG, MUL,
+	case ADD_REG, SUB_REG, SUBS_REG, SUBS_EXT, AND_REG, ORR_REG, EOR_REG, MUL,
 		CSEL, CSINC, CSINV, CSNEG:
 		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
 	default:
