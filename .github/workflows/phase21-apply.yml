@@ -1,0 +1,94 @@
+name: Phase21 machine-outliner implementation
+
+on:
+  push:
+    branches:
+      - fix/phase21-machine-outliner
+    paths:
+      - .github/workflows/phase21-apply.yml
+      - scripts/phase21_apply.py
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/phase21-machine-outliner
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - name: Resolve exact Android NDK r29
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=29.0.14206865
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+          ndk="$sdk_root/ndk/$expected"
+          if [[ ! -f "$ndk/source.properties" ]]; then
+            sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+            [[ -x "$sdkmanager" ]] || sdkmanager="$(command -v sdkmanager || true)"
+            [[ -n "$sdkmanager" ]] || { echo '::error::sdkmanager unavailable'; exit 1; }
+            "$sdkmanager" "ndk;$expected"
+          fi
+          revision="$(awk -F= '$1 ~ /^[[:space:]]*Pkg.Revision[[:space:]]*$/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit }' "$ndk/source.properties")"
+          [[ "$revision" == "$expected" ]] || { echo "::error::wrong NDK $revision"; exit 1; }
+          {
+            echo "ANDROID_NDK=$ndk"
+            echo "ANDROID_NDK_HOME=$ndk"
+            echo "ANDROID_NDK_ROOT=$ndk"
+            echo "NDK_HOME=$ndk"
+          } >> "$GITHUB_ENV"
+      - name: Apply product implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/phase21_apply.py
+          gofmt -w \
+            internal/arch/arm64/translator.go \
+            internal/arch/arm64/tr_branch.go \
+            internal/arch/arm64/compiler_corpus_test.go \
+            internal/arch/arm64/outlined_tail_test.go \
+            internal/elf/selection.go \
+            internal/elf/preparation.go \
+            internal/elf/outliner.go \
+            internal/elf/outliner_test.go
+          git diff --check
+      - name: Focused tests
+        run: go test -count=1 ./internal/arch/arm64 ./internal/elf
+      - name: Full Go tests
+        run: go test -count=1 ./...
+      - name: Exact-r29 whole-compiler closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          corpus="$RUNNER_TEMP/compiler-r29.tsv"
+          bash scripts/derive-compiler-corpus.sh "$ANDROID_NDK" > "$corpus"
+          VMPACKER_COMPILER_CORPUS="$corpus" go test -count=1 -run TestExactR29CompilerCorpusCoverage ./internal/arch/arm64
+      - name: Exact-r29 runtime validation
+        run: go test -count=1 -run TestBuildInstalledExactR29Object ./internal/runtime
+      - name: Go vet
+        run: go vet ./...
+      - name: Commit product-only implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vmpacker-phase21-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm -f .github/workflows/phase21-apply.yml scripts/phase21_apply.py
+          git add \
+            .omx/plans/vmp-phase21-machine-outliner.md \
+            internal/arch/arm64/translator.go \
+            internal/arch/arm64/tr_branch.go \
+            internal/arch/arm64/compiler_corpus_test.go \
+            internal/arch/arm64/outlined_tail_test.go \
+            internal/elf/selection.go \
+            internal/elf/preparation.go \
+            internal/elf/outliner.go \
+            internal/elf/outliner_test.go
+          git diff --cached --check
+          git commit -m 'Inline exact-r29 machine-outliner tail helpers'
+          git push origin HEAD:fix/phase21-machine-outliner
