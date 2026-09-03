@@ -154,6 +154,14 @@ func registerWidth(inst vm.Instruction) int {
 }
 
 func validateImmediateDataProcessing(inst vm.Instruction) error {
+	switch Op(inst.Op) {
+	case AND_IMM, ANDS_IMM, ORR_IMM, EOR_IMM:
+		// Logical immediates are unsigned register-width bit patterns. For
+		// 64-bit forms, a valid pattern with bit 63 set is represented in
+		// Instruction.Imm as a negative int64; the translator deliberately
+		// reinterprets it as uint64 when emitting the stack immediate.
+		return nil
+	}
 	if inst.Imm < 0 {
 		return fmt.Errorf("negative data-processing immediate")
 	}
@@ -204,9 +212,12 @@ func validateExtendedRegister(inst vm.Instruction) error {
 }
 
 func validateImmediateAddressing(inst vm.Instruction) error {
-	if inst.WB != 0 && inst.WB != 1 && inst.WB != 3 {
+	if inst.WB != 0 && inst.WB != 1 && inst.WB != 2 && inst.WB != 3 {
 		return fmt.Errorf("address writeback mode %d is invalid", inst.WB)
 	}
+	// Pair mode 2 is the architectural signed-offset form: it changes the
+	// effective address but does not write back Rn. The stack pair
+	// translators already treat every non-1/non-3 mode as offset-only.
 	if inst.WB != 0 && inst.Rn == inst.Rd {
 		return fmt.Errorf("writeback base overlaps transfer register")
 	}
