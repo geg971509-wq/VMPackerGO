@@ -63,7 +63,7 @@ Every decoder opcode is required by test to have an explicit `virtual`, `native 
 
 ## Verification and release evidence
 
-Hosted Verification also validates the exact 85-demo case specification, device-evidence schema/negative cases, release-evidence schema/negative cases, fuzz seed corpora, exact Go toolchain, exact NDK r29 compiler corpora, runtime build, race tests, vet and the macOS ARM64 CLI.
+Hosted Verification validates the exact 85-demo case specification, device-evidence schema/negative cases, release-evidence schema/negative cases, a replayable fail-closed release rehearsal, active bounded mutation fuzzing of the current decoder/ELF/EH-frame/LSDA fuzz targets, exact Go toolchain, exact NDK r29 compiler corpora, runtime build, race tests, vet and the macOS ARM64 CLI.
 
 The following are **not satisfied by host tests** and remain hard release gates:
 
