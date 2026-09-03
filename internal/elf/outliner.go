@@ -141,19 +141,34 @@ func configureExternalTailTransfers(input []byte, meta *elfMetadata, symbols *sy
 			continue
 		}
 
-		names, err := symbols.directTransferNames(branchSite, target)
-		if err != nil {
-			return err
+		var names []string
+		if symbols != nil {
+			var err error
+			names, err = symbols.directTransferNames(branchSite, target)
+			if err != nil {
+				return err
+			}
+			helper, matched, err := resolveOutlinedTailHelper(input, meta, symbols, selection, branchSite, target, names)
+			if err != nil {
+				return err
+			}
+			if matched {
+				if err := translator.SetOutlinedTailInline(inst.Offset, helper.raws); err != nil {
+					return fmt.Errorf("outlined helper %q: %w", helper.name, err)
+				}
+				continue
+			}
 		}
-		helper, matched, err := resolveOutlinedTailHelper(input, meta, symbols, selection, branchSite, target, names)
-		if err != nil {
-			return err
+
+		targetEnd, ok := checkedAdd(target, 4)
+		if !ok || target%4 != 0 || meta == nil {
+			return fmt.Errorf("external unconditional branch at 0x%X to 0x%X has no validated executable target", branchSite, target)
 		}
-		if !matched {
-			return fmt.Errorf("external unconditional branch at 0x%X to 0x%X is neither a selected packed tail target nor a validated compiler outlined helper", branchSite, target)
+		if _, ok := meta.executableMapping(target, targetEnd); !ok {
+			return fmt.Errorf("external unconditional branch at 0x%X to 0x%X is not file-backed by one executable PT_LOAD", branchSite, target)
 		}
-		if err := translator.SetOutlinedTailInline(inst.Offset, helper.raws); err != nil {
-			return fmt.Errorf("outlined helper %q: %w", helper.name, err)
+		if err := translator.SetNativeTailTransfer(inst.Offset); err != nil {
+			return fmt.Errorf("native tail target 0x%X: %w", target, err)
 		}
 	}
 	return nil
