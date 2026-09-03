@@ -1,0 +1,41 @@
+name: Repair stale bytecode capacity test
+
+on:
+  push:
+    branches:
+      - fix/bytecode-capacity-256k
+    paths:
+      - .github/workflows/capacity-test-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/bytecode-capacity-256k
+      - name: Replace stale 64 KiB expectation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('internal/elf/analysis_test.go')
+          s = p.read_text()
+          old = '''\tif err := validateFinalBytecodeSize(64 * 1024); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := validateFinalBytecodeSize(64*1024 + 1); err == nil {\n\t\tt.Fatal("accepted bytecode over 64 KiB")\n\t}\n'''
+          new = '''\tif err := validateFinalBytecodeSize(maxFinalBytecodeSize); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := validateFinalBytecodeSize(maxFinalBytecodeSize + 1); err == nil {\n\t\tt.Fatal("accepted bytecode over configured per-function maximum")\n\t}\n'''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale boundary block, found {s.count(old)}')
+          p.write_text(s.replace(old, new))
+          PY
+          rm .github/workflows/capacity-test-repair.yml
+          git diff --check
+          git diff -- internal/elf/analysis_test.go
+          git config user.name 'geg971509-wq'
+          git config user.email 'geg971509@gmail.com'
+          git add internal/elf/analysis_test.go .github/workflows/capacity-test-repair.yml
+          git commit -m 'Update bytecode capacity boundary regression'
+          git push origin HEAD:fix/bytecode-capacity-256k
