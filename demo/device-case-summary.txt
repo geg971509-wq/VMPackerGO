@@ -1,0 +1,5 @@
+total=85
+resolved=84
+unresolved=1
+
+demo_go_test	needs_manual		Go ABIInternal is not the protected-entry AAPCS64 contract
