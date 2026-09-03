@@ -33,6 +33,7 @@ jobs:
       - name: Focused semantic verification
         run: |
           set -euo pipefail
+          unset ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME
           go test -count=1 ./internal/arch/arm64 ./internal/unwind ./internal/elf ./internal/app
           go vet ./internal/arch/arm64 ./internal/unwind ./internal/elf ./internal/app
       - name: Commit implementation and remove bootstrap
