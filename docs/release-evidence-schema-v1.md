@@ -45,11 +45,12 @@ The canonical validator is `scripts/validate-release-evidence.py`.
 
 Rules:
 
-- `tag` must be a clean SemVer release tag and must point exactly at `commit_sha`.
+- `tag` must be a v-prefixed SemVer release tag, including valid SemVer prerelease identifiers when needed. Build metadata (`+...`) is intentionally not accepted by schema v1 so one release tag maps to one canonical source filename and evidence identity.
+- the tag must point exactly at `commit_sha`.
 - `commit_sha` must be the current clean checkout HEAD.
 - `go_version` is the exact `.go-version` compiler, currently `go1.26.0`.
 - `ndk_revision` must be exactly `29.0.14206865`.
-- all three referenced files are basenames located beside the release-evidence JSON; absolute paths are rejected.
+- all three referenced files are basenames located beside the release-evidence JSON; absolute paths, parent traversal and symbolic links are rejected. Each reference must resolve to a real regular sibling file.
 - hashes are recomputed by the validator; recorded strings are not trusted.
 - the device evidence must independently pass `validate-device-evidence.py` for the same commit.
 - the artifact must be a macOS ARM64 Mach-O and its live codesign/spctl state is rechecked on macOS; JSON booleans cannot substitute for those checks.
