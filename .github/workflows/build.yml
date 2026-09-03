@@ -23,7 +23,7 @@ jobs:
           bash scripts/check-contract-test.sh
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: go.mod
+          go-version-file: .go-version
       - name: Verify host architecture
         run: test "$(uname -s)" = Darwin
       - name: Verify exact Android NDK
