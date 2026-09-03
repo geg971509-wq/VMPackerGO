@@ -57,6 +57,8 @@ Corrected after review:
 - The 85-demo gate must compare baseline and packed behavior, not merely confirm source-file presence.
 - A physical-device qualification script is not itself evidence; evidence must contain execution cases and comparison results.
 - The exact Go release toolchain is pinned independently of the `go` language-version directive.
+- A generic external native AArch64 tail `B` must **not** be approximated as native call plus protected return. That changes LR/backtrace/unwind observations and interacts incorrectly with the shadow-stack return path. Only selected packed tails and explicitly validated compiler-outliner helpers remain supported; other native direct or indirect external tails fail closed.
+- The product contract's bounded protected-entry ABI remains a deliberate release boundary, not an unfinished implementation task. Without explicit type metadata, expanding it would require guessing.
 
 ## 4. Final repair plan and completion criteria
 
@@ -65,7 +67,40 @@ A code item is complete only when the exact branch head passes the normal hosted
 The branch may be merged only when:
 
 - no temporary patch workflow remains;
-- contract checks, vet, race tests, exact-r29 corpora, runtime build and macOS ARM64 CLI build all pass on the exact PR merge commit;
+- contract checks, evidence/demo validators, `go list`, unit tests, race tests, exact-r29 corpora, exact-r29 runtime build, vet and macOS ARM64 CLI build all pass on the exact PR head/merge candidate;
 - remaining external evidence is represented as explicit release blockers rather than ambiguous TODO text;
 - current support documentation matches code behavior;
 - the merge uses the expected reviewed head SHA.
+
+## 5. Execution checkpoint before final hosted verification
+
+Implemented in the candidate branch:
+
+- runtime fault completion is fail-closed after owned mappings are released;
+- SP memory and eval-stack faults no longer silently change results;
+- the architectural shadow stack is a separate guarded 8 MiB mapping;
+- protected-call frames grow dynamically to a bounded resource limit;
+- packed callee loading and trailer/source-map validation are transactional and strict;
+- selected protected-to-protected direct tails switch VM context without adding call depth;
+- generic native external tails were re-audited and intentionally restored to fail-closed instead of keeping a non-equivalent call/return approximation;
+- near entry transfers retain `B imm26`; out-of-range entries use a plan-time inline `ADRP X17 + ADD X17 + BR X17` veneer when within ADRP range and when the selected function has 20 bytes (24 with preserved BTI); farther/shorter cases reject deterministically;
+- `vm_entry_token` uses a BTI landing compatible with both near branch and long jump entry paths;
+- generated runtime unwind FDEs are incorporated into a supported GNU unwind index; exception-bearing protection now rejects when a discoverable `PT_GNU_EH_FRAME` path is unavailable;
+- canonical Go module identity is `github.com/geg971509-wq/VMPackerGO`; release compiler is pinned by `.go-version`/`toolchain go1.26.0`;
+- the stale historical handoff is archived rather than serving as a second current contract;
+- a living support matrix and an exhaustive decoder-opcode→tri-state-policy test define the instruction support boundary;
+- all 85 demo IDs now have an explicit device-case specification; the Go fixture was changed to a `c-shared` exported AAPCS64 entry rather than guessing Go ABIInternal;
+- physical-device qualification, 85-demo differential execution, semantic coverage, evidence merge and strict evidence validation harnesses are present;
+- device evidence is tied to exact commit and manifest hashes and requires 4 KiB/16 KiB physical coverage, repeated baseline/packed equality, atomics contention and C++ exception/destructor/rethrow cases;
+- parser/decoder/unwind fuzz seed tests are present;
+- aggregate rewrite expansion is bounded to 1 GiB and the final file endpoint to 2 GiB in addition to existing per-function limits;
+- the release gate is evidence-driven instead of permanently failing; signed/notarized standalone macOS ARM64 packaging, exact source/checksums and explicit independent-review recording are automated, while real device/Apple/reviewer evidence remains external.
+
+Intentionally not implemented in this repair:
+
+- automatic FP/vector/aggregate/variadic protected-entry ABI inference;
+- full SVE/SVE2/SME emulation;
+- a decrypted-bytecode cache;
+- an O(log n) packed-descriptor lookup, because the existing O(n) lookup is bounded to 4096 entries and no correctness/release defect justifies adding another runtime index structure.
+
+The next state transition is an exact-head hosted Verification run. No item above is marked final-host-verified until that run is green.
