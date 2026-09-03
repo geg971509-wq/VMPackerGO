@@ -313,6 +313,9 @@ func (planner *rewritePlanner) reserveGNUUnwindIndex() error {
 		return err
 	}
 	if !found {
+		if planner.preparation != nil && len(planner.preparation.ExceptionBridges) != 0 {
+			return fmt.Errorf("exception bridge requires a discoverable PT_GNU_EH_FRAME unwind index")
+		}
 		return nil
 	}
 	if fileOffset > uint64(len(planner.req.Input)) || size > uint64(len(planner.req.Input))-fileOffset {
