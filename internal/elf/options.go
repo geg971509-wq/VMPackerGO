@@ -148,6 +148,12 @@ func ProcessAnalyzed(req Request, analysis Analysis) (Result, error) {
 	if err != nil {
 		return result, fmt.Errorf("apply rewrite plan: %w", err)
 	}
+	switch analysis.TargetKind {
+	case TargetKindAndroidSO, TargetKindAndroidPIE, TargetKindAndroidExec:
+		if err := validateAndroidLoadedProgramHeaders(artifact); err != nil {
+			return result, fmt.Errorf("validate rewritten Android program headers: %w", err)
+		}
+	}
 	mode := AndroidMode(strings.ToLower(req.Mode))
 	if mode == "" {
 		mode = AndroidModeAuto
