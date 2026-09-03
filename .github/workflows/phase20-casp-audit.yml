@@ -1,0 +1,63 @@
+name: Phase20 exact-r29 CASP audit
+
+on:
+  push:
+    branches:
+      - fix/phase20-casp128
+    paths:
+      - .github/workflows/phase20-casp-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Resolve exact Android NDK r29
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=29.0.14206865
+          ndk="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/ndk/$expected"
+          if [[ ! -f "$ndk/source.properties" ]]; then
+            sdkmanager="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+            [[ -x "$sdkmanager" ]] || sdkmanager="$(command -v sdkmanager)"
+            "$sdkmanager" "ndk;$expected"
+          fi
+          grep -q "Pkg.Revision = $expected" "$ndk/source.properties"
+          echo "ANDROID_NDK=$ndk" >> "$GITHUB_ENV"
+      - name: Audit CASP assembler constraints and encodings
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+          [[ -x "$host/aarch64-linux-android23-clang" ]] || host="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-aarch64/bin"
+          clang="$host/aarch64-linux-android23-clang"
+          objdump="$host/llvm-objdump"
+          cat > "$RUNNER_TEMP/casp-valid.S" <<'EOF'
+          .text
+          .arch armv8.1-a+lse
+          .global casp_valid
+          casp_valid:
+            casp w0, w1, w2, w3, [x4]
+            caspa w4, w5, w6, w7, [sp]
+            caspl x8, x9, x10, x11, [x12]
+            caspal x30, xzr, x28, x29, [x0]
+            ret
+          EOF
+          "$clang" -c "$RUNNER_TEMP/casp-valid.S" -o "$RUNNER_TEMP/casp-valid.o"
+          "$objdump" -d --show-raw-insn "$RUNNER_TEMP/casp-valid.o"
+
+          cat > "$RUNNER_TEMP/casp-invalid.S" <<'EOF'
+          .text
+          .arch armv8.1-a+lse
+          bad:
+            casp x1, x2, x4, x5, [x0]
+          EOF
+          if "$clang" -c "$RUNNER_TEMP/casp-invalid.S" -o "$RUNNER_TEMP/casp-invalid.o" 2>"$RUNNER_TEMP/invalid.log"; then
+            echo '::error::odd CASP source pair unexpectedly assembled'
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/invalid.log"
