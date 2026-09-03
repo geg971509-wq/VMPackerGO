@@ -1,0 +1,40 @@
+name: Far entry transfer one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/far-entry-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: .go-version
+      - name: Apply and verify far entry patch
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-far-entry-patch.py
+          gofmt -w internal/elf/rewrite_plan.go internal/elf/entry_transfer.go internal/elf/entry_transfer_test.go internal/elf/selection.go
+          go test -count=1 -run '^(TestBuildEntryTransfer|TestPlannedTokenTrampoline|TestTrampolinePreservesBTI)' ./internal/elf
+          git diff --check
+      - name: Commit far entry patch
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm scripts/apply-far-entry-patch.py
+          git add internal/elf/rewrite_plan.go internal/elf/entry_transfer.go internal/elf/entry_transfer_test.go internal/elf/selection.go internal/runtime/templates/android/arm64/vm_entry.S scripts/apply-far-entry-patch.py
+          git diff --cached --check
+          git commit -m 'Close bounded far entry transfers with inline veneers'
+          git push origin HEAD:codex/productization-closure-20260903
