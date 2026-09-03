@@ -6,6 +6,7 @@
 
 #include "../vm_call.h"
 #include "../vm_decode.h"
+#include "../vm_invoke.h"
 #include "../vm_types.h"
 
 static inline u64 vm_pacia_value(u64 value, u64 modifier) {
@@ -219,14 +220,29 @@ static inline int vm_image_address(vm_ctx_t *vm, i64 delta, u64 *address) {
   return 1;
 }
 
+static inline u32 vm_run_native_call(vm_ctx_t *vm, u64 address,
+                                     u32 instruction_size) {
+  if (!vm_prepare_native_call(vm, address, 0))
+    return 0;
+  int invoke = vm_try_exception_invoke(vm, address);
+  if (invoke == VM_INVOKE_NONE) {
+    vm_native_call(vm, address);
+    return instruction_size;
+  }
+  if (invoke == VM_INVOKE_NORMAL)
+    return instruction_size;
+  if (invoke == VM_INVOKE_LANDING || invoke == VM_INVOKE_ERROR)
+    return 0;
+  vm_fault_set(vm, VM_FAULT_INTERNAL);
+  return 0;
+}
+
 static inline u32 h_call_nat(vm_ctx_t *vm) {
   u64 address = rd64(&vm->bc[vm->pc + 1]);
   int packed = vm_try_packed_call(vm, address, vm->pc + 9);
   if (packed != 0)
     return 0;
-  if (vm_prepare_native_call(vm, address, 0))
-    vm_native_call(vm, address);
-  return 9;
+  return vm_run_native_call(vm, address, 9);
 }
 
 static inline u32 h_call_image(vm_ctx_t *vm) {
@@ -236,9 +252,7 @@ static inline u32 h_call_image(vm_ctx_t *vm) {
   int packed = vm_try_packed_call(vm, address, vm->pc + 9);
   if (packed != 0)
     return 0;
-  if (vm_prepare_native_call(vm, address, 0))
-    vm_native_call(vm, address);
-  return 9;
+  return vm_run_native_call(vm, address, 9);
 }
 
 static inline u32 h_call_reg(vm_ctx_t *vm) {
@@ -247,9 +261,7 @@ static inline u32 h_call_reg(vm_ctx_t *vm) {
   int packed = vm_try_packed_call(vm, address, vm->pc + 2);
   if (packed != 0)
     return 0;
-  if (vm_prepare_native_call(vm, address, 0))
-    vm_native_call(vm, address);
-  return 2;
+  return vm_run_native_call(vm, address, 2);
 }
 
 static inline u32 h_br_reg(vm_ctx_t *vm) {
