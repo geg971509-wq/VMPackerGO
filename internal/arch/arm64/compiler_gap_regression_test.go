@@ -60,6 +60,39 @@ func TestExactCompilerPairSignedOffsetIsNonWritebackAddressing(t *testing.T) {
 	}
 }
 
+func TestExactCompilerPairMaskSeparatesLDPSW(t *testing.T) {
+	decoder := NewDecoder()
+	inst := decoder.Decode(0x69400440, 0) // ldpsw x0, x1, [x2]
+	if Op(inst.Op) != LDPSW || inst.Rd != 0 || inst.Rm != 1 || inst.Rn != 2 || inst.WB != 2 {
+		t.Fatalf("LDPSW decoded as %s Rd=%d Rm=%d Rn=%d WB=%d", OpName(Op(inst.Op)), inst.Rd, inst.Rm, inst.Rn, inst.WB)
+	}
+	if err := validateInstructionPolicy(inst); err != nil {
+		t.Fatalf("LDPSW policy: %v", err)
+	}
+	translator, err := NewTranslator(0x1800, 4, vm.IdentityOpcodeMap())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := translator.Translate([]vm.Instruction{inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Unsupported) != 0 {
+		t.Fatalf("LDPSW translation unsupported=%v", result.Unsupported)
+	}
+}
+
+func TestImmediateAddressMode2IsPairOnly(t *testing.T) {
+	inst := vm.Instruction{Op: int(LDR_IMM), WB: 2, Rn: 0, Rd: 1}
+	if err := validateImmediateAddressing(inst); err == nil {
+		t.Fatal("single-register mode 2 addressing was accepted")
+	}
+	pair := vm.Instruction{Op: int(LDP), WB: 2, Rn: 0, Rd: 0, Rm: 1}
+	if err := validateImmediateAddressing(pair); err != nil {
+		t.Fatalf("pair signed-offset base overlap was treated as writeback: %v", err)
+	}
+}
+
 func TestExactCompilerLogicalImmediateUsesUnsignedBitPattern(t *testing.T) {
 	decoder := NewDecoder()
 	for _, raw := range []uint32{
