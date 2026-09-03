@@ -21,30 +21,51 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Apply CASP pair transport
+        id: apply
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          python3 scripts/phase20_apply.py
-          gofmt -w \
-            internal/arch/arm64/decoder.go \
-            internal/arch/arm64/decode_lse_atomic.go \
-            internal/arch/arm64/policy.go \
-            internal/arch/arm64/tr_atomic.go \
-            internal/arch/arm64/translator.go \
-            internal/arch/arm64/compiler_corpus_test.go \
-            internal/arch/arm64/casp_atomic_test.go \
-            internal/runtime/casp_atomic_test.go
-          unset ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME
-          go test -count=1 ./internal/arch/arm64 ./internal/runtime
-          go test -count=1 ./...
-          go vet ./...
-      - name: Commit product-only implementation
+          set +e
+          {
+            set -euo pipefail
+            python3 scripts/phase20_apply.py
+            gofmt -w \
+              internal/arch/arm64/decoder.go \
+              internal/arch/arm64/decode_lse_atomic.go \
+              internal/arch/arm64/policy.go \
+              internal/arch/arm64/tr_atomic.go \
+              internal/arch/arm64/translator.go \
+              internal/arch/arm64/compiler_corpus_test.go \
+              internal/arch/arm64/casp_atomic_test.go \
+              internal/runtime/casp_atomic_test.go
+            unset ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME
+            go test -count=1 ./internal/arch/arm64 ./internal/runtime
+            go test -count=1 ./...
+            go vet ./...
+          } > .omx/phase20-debug.log 2>&1
+          status=$?
+          cat .omx/phase20-debug.log
+          exit "$status"
+      - name: Commit failure evidence
+        if: ${{ steps.apply.outcome == 'failure' }}
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'vmpacker-phase20-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git rm .github/workflows/phase20-apply.yml .github/workflows/phase20-casp-audit.yml scripts/phase20_apply.py
+          git add .omx/phase20-debug.log
+          git commit -m 'Record Phase 20 implementation failure evidence'
+          git push origin HEAD:fix/phase20-casp128
+          exit 1
+      - name: Commit product-only implementation
+        if: ${{ steps.apply.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vmpacker-phase20-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm -f .github/workflows/phase20-apply.yml .github/workflows/phase20-casp-audit.yml scripts/phase20_apply.py
+          rm -f .omx/phase20-debug.log
           git add \
             .omx/plans/vmp-phase20-casp128-lse.md \
             internal/arch/arm64/decoder.go \
@@ -58,6 +79,7 @@ jobs:
             internal/runtime/templates/android/arm64/vm_handlers/h_system.h \
             internal/runtime/templates/android/arm64/vm_native.h \
             internal/runtime/templates/android/arm64/vm_native.S
+          git add -u .omx/phase20-debug.log || true
           git diff --cached --check
           git commit -m 'Close CASP pair atomics through fixed wire transport'
           git push origin HEAD:fix/phase20-casp128
