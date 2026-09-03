@@ -1,0 +1,54 @@
+name: Phase 16 Exception Invoke Runtime Apply
+
+on:
+  push:
+    branches:
+      - fix/exception-invoke-runtime
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Repair audited patch anchors
+        run: |
+          set -euo pipefail
+          python3 scripts/phase16_patch_repair.py
+          python3 scripts/phase16_codegen_repair.py
+      - name: Apply audited source patch
+        run: |
+          set -euo pipefail
+          python3 scripts/phase16_invoke_runtime_patch.py
+          gofmt -w \
+            internal/runtime/invokegen.go \
+            internal/runtime/runtime.go \
+            internal/runtime/image.go \
+            internal/runtime/runtime_test.go
+      - name: Focused semantic verification
+        run: |
+          set -euo pipefail
+          unset ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME
+          go test -count=1 ./internal/unwind ./internal/runtime
+          go vet ./internal/unwind ./internal/runtime
+      - name: Commit implementation and remove bootstrap
+        run: |
+          set -euo pipefail
+          git rm \
+            scripts/phase16_invoke_runtime_patch.py \
+            scripts/phase16_patch_repair.py \
+            scripts/phase16_codegen_repair.py \
+            .github/workflows/phase16-invoke-runtime-apply.yml
+          git add internal/runtime
+          git config user.name "vmpacker-phase16-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Generate unwind-ready exception invoke runtime thunks"
+          git push origin HEAD:fix/exception-invoke-runtime
