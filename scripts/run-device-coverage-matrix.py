@@ -24,12 +24,14 @@ def protect(packer, ndk, source, output, mode, name, abi, work):
     manifest = work / (output.name + ".protect.json")
     common.manifest_for(case, manifest)
     common.run([str(packer), "-ndk", str(ndk), "-mode", mode, "-manifest", str(manifest),
-                "-o", str(output), str(source)])
+                "-force", "-o", str(output), str(source)])
 
 def build_and_run_native(case_id, source, packed, runner=None):
     return common.execute_case({"id": case_id}, source, packed, runner)
 
 def malformed_attempt(packer, ndk, malformed, output):
+    if output.is_symlink() or output.exists():
+        output.unlink()
     result = subprocess.run([str(packer), "-ndk", str(ndk), "-mode", "native",
                              "-func", "protected_calc", "-abi", "i32(i32)",
                              "-o", str(output), str(malformed)],
