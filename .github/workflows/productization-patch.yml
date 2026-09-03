@@ -1,0 +1,78 @@
+name: Productization one-shot patch
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/productization-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Restrict duplicate validation to planned exception symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("internal/runtime/invokegen.go")
+          text = path.read_text()
+          old = '''\tsymbols := make(map[string]*Symbol, len(image.Symbols))
+          \tfor index := range image.Symbols {
+          \t\tsymbol := &image.Symbols[index]
+          \t\tif symbol.Name != "" {
+          \t\t\tif _, duplicate := symbols[symbol.Name]; duplicate {
+          \t\t\t\treturn fmt.Errorf("runtime has duplicate generated symbol %q", symbol.Name)
+          \t\t\t}
+          \t\t\tsymbols[symbol.Name] = symbol
+          \t\t}
+          \t}
+          '''
+          new = '''\texpectedSymbols := map[string]struct{}{
+          \t\t"vm_invoke_routes":      {},
+          \t\t"vm_invoke_route_count": {},
+          \t}
+          \tfor _, item := range invokes {
+          \t\texpectedSymbols[item.ThunkSymbol] = struct{}{}
+          \t\texpectedSymbols[item.LSDASymbol] = struct{}{}
+          \t\texpectedSymbols[item.PersonalityBridge] = struct{}{}
+          \t}
+          \tsymbols := make(map[string]*Symbol, len(expectedSymbols))
+          \tfor index := range image.Symbols {
+          \t\tsymbol := &image.Symbols[index]
+          \t\tif _, expected := expectedSymbols[symbol.Name]; !expected {
+          \t\t\tcontinue
+          \t\t}
+          \t\tif _, duplicate := symbols[symbol.Name]; duplicate {
+          \t\t\treturn fmt.Errorf("runtime has duplicate generated symbol %q", symbol.Name)
+          \t\t}
+          \t\tsymbols[symbol.Name] = symbol
+          \t}
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("exception symbol collection block changed")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          gofmt -w internal/runtime/invokegen.go
+      - name: Commit exception symbol validation fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/runtime/invokegen.go
+          git commit -m "Validate only planned exception runtime symbols"
+          git push origin HEAD:codex/productization-closure-20260903
