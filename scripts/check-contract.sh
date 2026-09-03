@@ -43,7 +43,7 @@ for path in "${paths[@]}"; do
           ;;
       esac
       case "$path" in
-        .github/*|Makefile|scripts/release*)
+        .github/*|Makefile|scripts/*release*)
           release_files+=("$ROOT/$path")
           ;;
       esac
@@ -179,8 +179,13 @@ if (( ${#wails_configs[@]} > 0 )); then
 fi
 
 if [[ "$MODE" == "--release" ]]; then
-  echo "[contract] release blocked: Phase 5-11 implementation and physical-device evidence are incomplete" >&2
-  failures=$((failures + 1))
+  if [[ -z "${VMPACKER_RELEASE_EVIDENCE:-}" ]]; then
+    echo "[contract] release evidence is required in VMPACKER_RELEASE_EVIDENCE" >&2
+    failures=$((failures + 1))
+  elif ! python3 "$ROOT/scripts/validate-release-evidence.py" "$VMPACKER_RELEASE_EVIDENCE" --root "$ROOT"; then
+    echo "[contract] release evidence validation failed" >&2
+    failures=$((failures + 1))
+  fi
 fi
 
 if (( failures > 0 )); then
