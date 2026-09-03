@@ -413,10 +413,22 @@ var ldstPatterns = []InstrPattern{
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRn, fRd},
 		Post:   postAcqRel,
 	},
+	// LDXR: size:001000:0:1:0:11111:0:11111:Rn:Rt
+	{
+		Name: "LDXR", Mask: 0x3FFFFC00, Value: 0x085F7C00, Op: LDXR,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRn, fRd},
+		Post:   postAcqRel,
+	},
 	// LDAXR: size:001000:0:1:0:11111:1:11111:Rn:Rt
 	{
 		Name: "LDAXR", Mask: 0x3FFFFC00, Value: 0x085FFC00, Op: LDAXR,
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRn, fRd},
+		Post:   postAcqRel,
+	},
+	// STXR: size:001000:0:0:0:Rs:0:11111:Rn:Rt
+	{
+		Name: "STXR", Mask: 0x3FE0FC00, Value: 0x08007C00, Op: STXR,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
 		Post:   postAcqRel,
 	},
 	// STLXR: size:001000:0:0:0:Rs:1:11111:Rn:Rt

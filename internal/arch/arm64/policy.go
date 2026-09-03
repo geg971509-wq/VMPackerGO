@@ -63,12 +63,12 @@ func buildInstructionRules() map[Op]instructionRule {
 	allow([]Op{DMB, DSB, ISB}, validateBarrier)
 	// PRFM/YIELD are architectural hints. CLREX is also state-free at the VM
 	// boundary because every supported exclusive monitor is contained inside a
-	// single generated LDAXR...STLXR thunk.
+	// single generated LDXR/LDAXR...STXR/STLXR thunk.
 	allow([]Op{PRFM, YIELD_ARM, CLREX}, nil)
 	allow([]Op{LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN}, validateAtomicNative)
 	allow([]Op{FPSIMD_NATIVE}, func(inst vm.Instruction) error { return ValidateFPSIMDInstruction(inst.Raw) })
 
-	classify(dispositionNativeThunk, WFE, WFI, LDAXR, STLXR)
+	classify(dispositionNativeThunk, WFE, WFI, LDXR, LDAXR, STXR, STLXR)
 	classify(dispositionReject, HLT, BRK, UNKNOWN, UNSUPPORTED)
 	return rules
 }
