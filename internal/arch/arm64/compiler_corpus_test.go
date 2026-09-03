@@ -139,18 +139,6 @@ func compilerRecordLabel(record compilerCorpusRecord) string {
 }
 
 func exactR29IntentionalBoundary(record compilerCorpusRecord, issue string) (string, bool) {
-	if record.Profile == "base" && strings.HasPrefix(record.Function, "vmp_atomic") {
-		op := Op(NewDecoder().Decode(record.Raw, 0).Op)
-		if isExclusiveLoadOp(op) && strings.Contains(issue, "exclusive region offset") &&
-			(strings.Contains(issue, "B.cond is not in the branch-free exclusive-body whitelist") ||
-				strings.Contains(issue, "CBZ is not in the branch-free exclusive-body whitelist") ||
-				strings.Contains(issue, "CBNZ is not in the branch-free exclusive-body whitelist")) {
-			return "branchful-exclusive", true
-		}
-		if isExclusiveStoreOp(op) && strings.Contains(issue, "requires a validated native thunk or relocation") {
-			return "branchful-exclusive", true
-		}
-	}
 
 	if record.Profile == "lse" && record.Function == "vmp_atomic128" && exactR29CASPBoundaryRaws[record.Raw] &&
 		(record.Mnemonic == "casp" || record.Mnemonic == "caspa" || record.Mnemonic == "caspl" || record.Mnemonic == "caspal") &&
@@ -433,7 +421,7 @@ func TestExactR29CompilerCorpusCoverage(t *testing.T) {
 	}
 
 	report := classifyCompilerCorpus(records)
-	for _, kind := range []string{"branchful-exclusive", "casp128", "machine-outliner"} {
+	for _, kind := range []string{"casp128", "machine-outliner"} {
 		if report.IntentionalKinds[kind] == 0 {
 			t.Errorf("exact-r29 compiler corpus no longer exercises intentional boundary %q; audit and remove/update the expectation", kind)
 		}
