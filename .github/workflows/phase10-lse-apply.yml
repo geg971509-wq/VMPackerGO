@@ -1,0 +1,54 @@
+name: Phase 10 LSE Apply
+
+on:
+  push:
+    branches:
+      - fix/lse-atomic-family
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Apply audited source patch
+        run: |
+          set -euo pipefail
+          python3 scripts/phase10_lse_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('internal/arch/arm64/decode_lse_atomic.go')
+          s = p.read_text()
+          s = s.replace('import "github.com/vmpacker/internal/vm"\n\n', '')
+          s = s.replace('\n// Compile-time use of vm keeps the decoder table\'s register semantics tied to\n// the shared decoded instruction type rather than introducing a parallel type.\nvar _ = vm.REG_XZR\n', '\n')
+          p.write_text(s)
+          PY
+          gofmt -w \
+            internal/arch/arm64/decoder.go \
+            internal/arch/arm64/decode_lse_atomic.go \
+            internal/arch/arm64/policy.go \
+            internal/arch/arm64/translator.go \
+            internal/arch/arm64/tr_atomic.go \
+            internal/arch/arm64/lse_atomic_test.go
+      - name: Focused semantic verification
+        run: |
+          set -euo pipefail
+          go test -count=1 ./internal/arch/arm64 ./internal/vm
+          go vet ./internal/arch/arm64 ./internal/vm
+      - name: Commit implementation and remove bootstrap
+        run: |
+          set -euo pipefail
+          git rm scripts/phase10_lse_patch.py .github/workflows/phase10-lse-apply.yml
+          git add internal/arch/arm64 internal/runtime/templates/android/arm64
+          git config user.name "vmpacker-phase10-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Complete scalar LSE atomic RMW family"
+          git push origin HEAD:fix/lse-atomic-family
