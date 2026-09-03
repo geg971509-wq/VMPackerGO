@@ -1,0 +1,117 @@
+name: Contract engineering one-shot
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/contract-engineering-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  close:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - name: Wire evidence validators into engineering contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/check-contract.sh')
+          text = path.read_text()
+          old = '''      case "$path" in
+        .github/*|Makefile|scripts/release*)
+          release_files+=("$ROOT/$path")
+          ;;
+      esac
+'''
+          new = '''      case "$path" in
+        .github/*|Makefile|scripts/*release*)
+          release_files+=("$ROOT/$path")
+          ;;
+      esac
+'''
+          if text.count(old) != 1:
+              raise SystemExit('release_files classifier changed')
+          text = text.replace(old, new, 1)
+          old = '''if [[ "$MODE" == "--release" ]]; then
+  echo "[contract] release blocked: Phase 5-11 implementation and physical-device evidence are incomplete" >&2
+  failures=$((failures + 1))
+fi
+'''
+          new = '''if [[ "$MODE" == "--release" ]]; then
+  if [[ -z "${VMPACKER_RELEASE_EVIDENCE:-}" ]]; then
+    echo "[contract] release evidence is required in VMPACKER_RELEASE_EVIDENCE" >&2
+    failures=$((failures + 1))
+  elif ! python3 "$ROOT/scripts/validate-release-evidence.py" "$VMPACKER_RELEASE_EVIDENCE" --root "$ROOT"; then
+    echo "[contract] release evidence validation failed" >&2
+    failures=$((failures + 1))
+  fi
+fi
+'''
+          if text.count(old) != 1:
+              raise SystemExit('old unconditional release blocker changed')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('Makefile')
+          text = path.read_text()
+          text = text.replace(
+              '.PHONY: all packer mac-cli test test-race vet contract release-contract verify \\\n\tndk-check runtime-integration android-device-check android-fixtures clean help',
+              '.PHONY: all packer mac-cli test test-race vet contract release-contract verify demo-cases evidence-self-test \\\n\tndk-check runtime-integration android-device-check android-fixtures clean help',
+              1)
+          old = '''contract:
+\tbash scripts/check-contract.sh
+\tbash scripts/check-contract-test.sh
+'''
+          new = '''demo-cases:
+\tpython3 scripts/validate-demo-cases.py
+
+evidence-self-test: demo-cases
+\tpython3 scripts/validate-device-evidence-test.py
+\tpython3 scripts/validate-release-evidence-test.py
+
+contract: evidence-self-test
+\tbash scripts/check-contract.sh
+\tbash scripts/check-contract-test.sh
+'''
+          if text.count(old) != 1:
+              raise SystemExit('Makefile contract target changed')
+          text = text.replace(old, new, 1)
+          old = '''android-device-check:
+\tscripts/android-device-smoke.sh --check-only
+'''
+          new = '''android-device-check:
+\tscripts/android-device-check.sh --attest-physical
+'''
+          if text.count(old) != 1:
+              raise SystemExit('Makefile device target changed')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '"make verify              Run Go, race, vet, and contract gates" \\\n',
+              '"make verify              Run Go, race, vet, and contract gates" \\\n\t\t"make demo-cases           Validate the exact 85-demo device case specification" \\\n\t\t"make evidence-self-test   Test device/release evidence validators" \\\n',
+              1)
+          path.write_text(text)
+          PY
+      - name: Verify and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-demo-cases.py
+          python3 scripts/validate-device-evidence-test.py
+          python3 scripts/validate-release-evidence-test.py
+          bash -n scripts/check-contract.sh scripts/package-release.sh scripts/android-device-check.sh
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Makefile scripts/check-contract.sh
+          git diff --cached --check
+          git commit -m 'Wire evidence-driven release and demo gates'
+          git push origin HEAD:codex/productization-closure-20260903
