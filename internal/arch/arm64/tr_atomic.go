@@ -34,6 +34,7 @@ func atomicMemoryOrder(inst vm.Instruction) byte {
 		release := byte((inst.Raw >> 22) & 1)
 		return acquire | release<<1
 	case CAS:
+		// Scalar CAS and pair CASP share the A/R bit positions.
 		acquire := byte((inst.Raw >> 22) & 1)
 		release := byte((inst.Raw >> 15) & 1)
 		return acquire | release<<1
@@ -49,6 +50,9 @@ func (t *Translator) trAtomic(inst vm.Instruction) error {
 		SWP: 4, LDCLR: 5, LDEOR: 6, LDSET: 7,
 		LDSMAX: 8, LDSMIN: 9, LDUMAX: 10, LDUMIN: 11,
 	}[op]
+	if isCASPPair(inst) {
+		kind = 12
+	}
 	rd, err := encodeAtomicRegister(inst.Rd)
 	if err != nil {
 		return err
