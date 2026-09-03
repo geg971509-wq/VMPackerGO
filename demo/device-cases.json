@@ -1697,12 +1697,16 @@
       "source": "demo/demo_token_entry.c"
     },
     {
-      "build_profile": "go-pie",
+      "build_profile": "go-c-shared",
       "id": "demo_go_test",
       "language": "go",
-      "outcome": "needs_manual",
-      "reason": "Go ABIInternal is not the protected-entry AAPCS64 contract",
-      "selectors": [],
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u64(u64)",
+          "name": "check_key"
+        }
+      ],
       "source": "demo/demo_go_test/main.go"
     },
     {
