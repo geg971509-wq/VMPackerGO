@@ -43,7 +43,7 @@ jobs:
       - name: Commit implementation and remove bootstrap
         run: |
           set -euo pipefail
-          git rm \
+          git rm -f \
             scripts/phase17_invoke_runtime_patch.py \
             scripts/phase17_patch_repair.py \
             scripts/phase17_codegen_repair.py \
