@@ -41,8 +41,8 @@ type ExceptionInvokeImage struct {
 	ThunkSymbol                string
 	LSDASymbol                 string
 	LSDA                       *unwind.BridgeLSDA
-	FinalVMCallOffset           uint32
-	FinalVMLandingOffset        uint32
+	FinalVMCallOffset          uint32
+	FinalVMLandingOffset       uint32
 }
 
 func generateExceptionInvokeThunks(configs []ExceptionInvokeConfig) (header, assembly []byte, normalized []ExceptionInvokeImage, err error) {
@@ -131,13 +131,13 @@ func generateExceptionInvokeThunks(configs []ExceptionInvokeConfig) (header, ass
 			}
 			normalized = append(normalized, ExceptionInvokeImage{
 				FunctionAddress: cfg.FunctionAddress, Personality: cfg.Plan.Personality,
-				PersonalityEncoding: cfg.Plan.PersonalityEncoding,
+				PersonalityEncoding:        cfg.Plan.PersonalityEncoding,
 				EmittedPersonalityEncoding: exceptionInvokeCFIPersonalityEncoding,
-				PersonalityBridge: personalityBridge, Thunk: thunk,
-				ThunkSymbol: fmt.Sprintf("vm_invoke_%08x", thunk.ID),
-				LSDASymbol: fmt.Sprintf("vm_lsda_invoke_%08x", thunk.ID),
-				LSDA: cloneBridgeLSDA(bridge),
-				FinalVMCallOffset: route.FinalVMCallOffset,
+				PersonalityBridge:          personalityBridge, Thunk: thunk,
+				ThunkSymbol:          fmt.Sprintf("vm_invoke_%08x", thunk.ID),
+				LSDASymbol:           fmt.Sprintf("vm_lsda_invoke_%08x", thunk.ID),
+				LSDA:                 cloneBridgeLSDA(bridge),
+				FinalVMCallOffset:    route.FinalVMCallOffset,
 				FinalVMLandingOffset: route.FinalVMLandingOffset,
 			})
 		}
@@ -230,7 +230,8 @@ func generateExceptionInvokeHeader(routeCount int) string {
   return 0;
 }
 
-static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target) {
+static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target,
+                                          u32 call_vm_offset) {
   u64 count = *(volatile const u64 *)&vm_invoke_route_count;
   if (count != VM_INVOKE_ROUTE_COUNT) {
     vm_fault_set(vm, VM_FAULT_DESCRIPTOR);
@@ -238,7 +239,7 @@ static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target) {
   }
   if (count == 0)
     return VM_INVOKE_NONE;
-  if (!vm->reverse || target == 0) {
+  if (!vm->reverse || target == 0 || call_vm_offset > vm->bc_len) {
     vm_fault_set(vm, VM_FAULT_CONTROL);
     return VM_INVOKE_ERROR;
   }
@@ -254,7 +255,8 @@ static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target) {
   while (lo < hi) {
     u32 mid = lo + ((hi - lo) >> 1);
     const vm_invoke_route_t *route = &vm_invoke_routes[mid];
-    int comparison = vm_invoke_key_compare(route, function_file_va, vm->pc);
+    int comparison = vm_invoke_key_compare(route, function_file_va,
+                                                   call_vm_offset);
     if (comparison < 0) {
       lo = mid + 1;
     } else if (comparison > 0) {
@@ -426,9 +428,9 @@ func cloneExceptionBridgePlan(source *unwind.ExceptionBridgePlan) *unwind.Except
 	result := &unwind.ExceptionBridgePlan{
 		Personality: source.Personality, PersonalityEncoding: source.PersonalityEncoding,
 		TypeEncoding: source.TypeEncoding, TypeInfos: make(map[uint64]unwind.TypeInfo, len(source.TypeInfos)),
-		ActionTable: append([]byte(nil), source.ActionTable...),
+		ActionTable:    append([]byte(nil), source.ActionTable...),
 		TypeIndexTable: append([]byte(nil), source.TypeIndexTable...),
-		Thunks: append([]unwind.InvokeThunk(nil), source.Thunks...),
+		Thunks:         append([]unwind.InvokeThunk(nil), source.Thunks...),
 	}
 	for key, value := range source.TypeInfos {
 		result.TypeInfos[key] = value
@@ -447,7 +449,7 @@ func cloneBridgeLSDA(source *unwind.BridgeLSDA) *unwind.BridgeLSDA {
 		return nil
 	}
 	return &unwind.BridgeLSDA{
-		Bytes: append([]byte(nil), source.Bytes...),
+		Bytes:       append([]byte(nil), source.Bytes...),
 		Relocations: append([]unwind.LSDARelocation(nil), source.Relocations...),
 	}
 }

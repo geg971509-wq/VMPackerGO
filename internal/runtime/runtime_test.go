@@ -217,12 +217,12 @@ func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T
 func TestGenerateExceptionInvokeThunksRejectsUnsupportedOrDuplicateIdentity(t *testing.T) {
 	cfg := testExceptionInvokeConfig()
 	cfg.Plan.PersonalityEncoding = unwind.PEAbsptr
-	if _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg}); err == nil {
+	if _, _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg}); err == nil {
 		t.Fatal("unsupported personality encoding was accepted")
 	}
 	cfg = testExceptionInvokeConfig()
 	dup := testExceptionInvokeConfig()
-	if _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg, dup}); err == nil {
+	if _, _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg, dup}); err == nil {
 		t.Fatal("duplicate invoke identity was accepted")
 	}
 }

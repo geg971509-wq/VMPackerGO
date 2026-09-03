@@ -224,7 +224,13 @@ static inline u32 vm_run_native_call(vm_ctx_t *vm, u64 address,
                                      u32 instruction_size) {
   if (!vm_prepare_native_call(vm, address, 0))
     return 0;
-  int invoke = vm_try_exception_invoke(vm, address);
+  if (!vm->reverse || vm->pc > vm->bc_len ||
+      instruction_size + 1u > vm->bc_len - vm->pc) {
+    vm_fault_set(vm, VM_FAULT_CONTROL);
+    return 0;
+  }
+  u32 call_vm_offset = vm->pc + instruction_size + 1u;
+  int invoke = vm_try_exception_invoke(vm, address, call_vm_offset);
   if (invoke == VM_INVOKE_NONE) {
     vm_native_call(vm, address);
     return instruction_size;
