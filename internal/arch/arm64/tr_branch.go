@@ -6,11 +6,6 @@ import (
 	"github.com/vmpacker/internal/vm"
 )
 
-// ============================================================
-// 分支翻译 — B / B.cond / BL / BLR / BR / TBZ
-// CSEL/CBZ 已迁移到 tr_stack.go (trStackCSEL/trStackCBZ)
-// ============================================================
-
 // MaxOutlinedTailHelperInstructions bounds the compiler-generated helper body
 // accepted for pack-time tail inlining. Exact NDK r29 currently emits at most
 // five instructions including the terminal RET; the wider bound leaves modest
@@ -53,7 +48,7 @@ func (t *Translator) SetOutlinedTailInline(branchOffset int, raws []uint32) erro
 		return fmt.Errorf("outlined tail branch offset 0x%x is not the final instruction of a 0x%x-byte function", branchOffset, t.funcSize)
 	}
 	if _, exists := t.outlinedTailInlines[branchOffset]; exists {
-		return fmt.Errorf("outlined tail branch offset 0x%x is configured more than once", branchOffset)
+		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
 	}
 	if err := ValidateOutlinedTailHelper(raws); err != nil {
 		return err
@@ -62,14 +57,31 @@ func (t *Translator) SetOutlinedTailInline(branchOffset int, raws []uint32) erro
 	return nil
 }
 
+// SetPackedTailTransfer marks a terminal direct B whose target is another
+// selection in the same pack operation. A nil value is an internal sentinel;
+// real outlined helpers are always non-empty after validation.
+func (t *Translator) SetPackedTailTransfer(branchOffset int) error {
+	if branchOffset < 0 || branchOffset%4 != 0 || branchOffset+4 != t.funcSize {
+		return fmt.Errorf("packed tail branch offset 0x%x is not the final instruction of a 0x%x-byte function", branchOffset, t.funcSize)
+	}
+	if _, exists := t.outlinedTailInlines[branchOffset]; exists {
+		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
+	}
+	t.outlinedTailInlines[branchOffset] = nil
+	return nil
+}
+
 func (t *Translator) trBranchOrOutlined(inst vm.Instruction) error {
-	raws, ok := t.outlinedTailInlines[inst.Offset]
-	if !ok {
+	raws, configured := t.outlinedTailInlines[inst.Offset]
+	if !configured {
 		return t.trBranch(inst)
 	}
 	target := int64(inst.Offset) + inst.Imm
 	if target >= 0 && target < int64(t.funcSize) {
-		return fmt.Errorf("outlined tail inline at 0x%x is configured for an in-function branch target 0x%x", inst.Offset, target)
+		return fmt.Errorf("external tail handling at 0x%x is configured for an in-function branch target 0x%x", inst.Offset, target)
+	}
+	if raws == nil {
+		return t.trPackedTail(inst)
 	}
 	return t.trOutlinedTailInline(raws)
 }
@@ -87,6 +99,26 @@ func (t *Translator) trOutlinedTailInline(raws []uint32) error {
 	// Original A64 semantics are tail B to helper followed by helper RET using
 	// the caller's existing LR. Inlined helper body + VM RET is equivalent.
 	t.emitOp(vm.OpRet, 0)
+	return nil
+}
+
+// trPackedTail preserves the direct-B ABI contract. X16/IP0 is the only
+// temporary and is permitted to be clobbered by an external AAPCS64 transfer
+// or linker veneer. The runtime BR_REG path switches to the packed callee
+// without growing call depth; if provenance no longer matches the immutable
+// token table, execution faults rather than falling through to native code.
+func (t *Translator) trPackedTail(inst vm.Instruction) error {
+	pc, err := addAddressDelta(t.funcAddr, int64(inst.Offset))
+	if err != nil {
+		return err
+	}
+	target, err := addAddressDelta(pc, inst.Imm)
+	if err != nil {
+		return err
+	}
+	ip0 := byte(16)
+	t.emitImageReference(vm.OpMovImage, &ip0, target)
+	t.emitOp(vm.OpBrReg, ip0)
 	return nil
 }
 
@@ -152,9 +184,6 @@ func (t *Translator) trBR(inst vm.Instruction) error {
 	return nil
 }
 
-// trTBZ 翻译 TBZ/TBNZ — test bit and branch
-// 字节码: [OpTbz/OpTbnz][reg][bit][target32] = 7B
-// inst.Shift = bit number (b5:b40), inst.Imm = offset (已乘4)
 func (t *Translator) trTBZ(inst vm.Instruction, isZero bool) error {
 	target := inst.Offset + int(inst.Imm)
 
@@ -173,7 +202,6 @@ func (t *Translator) trTBZ(inst vm.Instruction, isZero bool) error {
 	} else {
 		vmOp = vm.OpTbnz
 	}
-
 	t.emitOp(vmOp, rd, byte(inst.Shift))
 	fixPos := t.pos()
 	t.emitU32(0)
