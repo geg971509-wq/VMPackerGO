@@ -80,7 +80,7 @@ func TestCASPReusesSevenByteAtomicWireFormat(t *testing.T) {
 			t.Fatalf("operands=%v want=%v", operands[0], want)
 		}
 	}
-	if def, ok := vm.Definition(vm.OpAtomic); !ok || def.Size != 7 {
+	if def, ok := vm.OpcodeDefinitionFor(vm.OpAtomic); !ok || def.Size != 7 {
 		t.Fatalf("OpAtomic definition=%+v ok=%v", def, ok)
 	}
 }
