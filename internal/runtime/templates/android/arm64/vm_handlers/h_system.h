@@ -114,6 +114,27 @@ static inline u32 h_atomic(vm_ctx_t *vm) {
   u8 rd = vm->bc[vm->pc + 4];
   u8 rn = vm->bc[vm->pc + 5];
   u8 rm = vm->bc[vm->pc + 6];
+
+  if (kind == 12) {
+    if ((width != 4 && width != 8) || order > 3 || rn > 31 || rd > 28 ||
+        rm > 28 || (rd & 1u) != 0 || (rm & 1u) != 0) {
+      vm->fault |= VM_FAULT_SYSTEM;
+      return 7;
+    }
+    u64 address = vm->R[rn];
+    u64 pair_bytes = (u64)width * 2u;
+    if ((address & (pair_bytes - 1u)) != 0) {
+      vm->fault |= VM_FAULT_SYSTEM;
+      return 7;
+    }
+    vm_atomic_pair_t old = vm_atomic_pair_native(
+        order, width, address, vm->R[rm], vm->R[rm + 1], vm->R[rd],
+        vm->R[rd + 1]);
+    vm_atomic_reg_write(vm, rm, old.lo, width);
+    vm_atomic_reg_write(vm, rm + 1, old.hi, width);
+    return 7;
+  }
+
   if (kind > 11 || (width != 1 && width != 2 && width != 4 && width != 8) ||
       order > 3 || rn > 31) {
     vm->fault |= VM_FAULT_SYSTEM;
