@@ -12,10 +12,10 @@ const (
 	maxExclusiveThunkRegisters     = 16
 )
 
-// trExclusiveRegion lowers one complete scalar/pair load-exclusive...
-// store-exclusive sequence to a single bytecode operation. The generated runtime executes the exact
-// instruction words in one leaf thunk, so no interpreter memory access can
-// break the host exclusive monitor between the load and store.
+// trExclusiveRegion lowers the shortest validated scalar/pair exclusive-monitor
+// CFG to one bytecode operation. The generated runtime executes the exact raw
+// block in one leaf thunk, so retry branches, store-exclusive paths, and CLREX
+// termination cannot be interrupted by interpreter memory access.
 func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int) (int, error) {
 	if start < 0 || start >= len(instructions) || !isExclusiveLoadOp(Op(instructions[start].Op)) {
 		return 0, fmt.Errorf("exclusive region must start with a supported load-exclusive instruction")
