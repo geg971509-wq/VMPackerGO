@@ -12,17 +12,18 @@ const (
 	maxExclusiveThunkRegisters     = 16
 )
 
-// trExclusiveRegion lowers one complete LDAXR...STLXR sequence to a single
-// bytecode operation. The generated runtime executes the exact instruction
-// words in one leaf thunk, so no interpreter memory access can break the host
-// exclusive monitor between the load and store.
+// trExclusiveRegion lowers one complete LDXR/LDAXR...STXR/STLXR sequence
+// to a single bytecode operation. The generated runtime executes the exact
+// instruction words in one leaf thunk, so no interpreter memory access can
+// break the host exclusive monitor between the load and store.
 func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int) (int, error) {
-	if start < 0 || start >= len(instructions) || Op(instructions[start].Op) != LDAXR {
-		return 0, fmt.Errorf("exclusive region must start with LDAXR")
+	if start < 0 || start >= len(instructions) || !isExclusiveLoadOp(Op(instructions[start].Op)) {
+		return 0, fmt.Errorf("exclusive region must start with LDXR or LDAXR")
 	}
 
 	first := instructions[start]
-	if err := validateDecodedExclusiveInstruction(t.decoder, first, LDAXR); err != nil {
+	firstOp := Op(first.Op)
+	if err := validateDecodedExclusiveInstruction(t.decoder, first, firstOp); err != nil {
 		return 0, err
 	}
 	if err := validateExclusiveRegister(first.Rn); err != nil {
@@ -38,10 +39,10 @@ func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int)
 		if inst.Offset != first.Offset+(i-start)*4 {
 			return 0, fmt.Errorf("exclusive region is not contiguous at offset 0x%x", inst.Offset)
 		}
-		if Op(inst.Op) == LDAXR {
-			return 0, fmt.Errorf("nested LDAXR is not a closed exclusive region")
+		if isExclusiveLoadOp(Op(inst.Op)) {
+			return 0, fmt.Errorf("nested exclusive load is not a closed exclusive region")
 		}
-		if Op(inst.Op) == STLXR {
+		if isExclusiveStoreOp(Op(inst.Op)) {
 			end = i
 			break
 		}
@@ -50,15 +51,16 @@ func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int)
 		}
 	}
 	if end < 0 {
-		return 0, fmt.Errorf("LDAXR has no contiguous STLXR within %d instructions", maxExclusiveRegionInstructions)
+		return 0, fmt.Errorf("exclusive load has no contiguous STXR or STLXR within %d instructions", maxExclusiveRegionInstructions)
 	}
 
 	last := instructions[end]
-	if err := validateDecodedExclusiveInstruction(t.decoder, last, STLXR); err != nil {
+	lastOp := Op(last.Op)
+	if err := validateDecodedExclusiveInstruction(t.decoder, last, lastOp); err != nil {
 		return 0, err
 	}
 	if last.Rn != first.Rn || last.Shift != first.Shift {
-		return 0, fmt.Errorf("STLXR address/width does not match LDAXR")
+		return 0, fmt.Errorf("exclusive store address/width does not match exclusive load")
 	}
 	for name, reg := range map[string]int{"store value": last.Rd, "status": last.Rm} {
 		if err := validateExclusiveRegister(reg); err != nil {
@@ -120,6 +122,14 @@ func validateExclusiveBodyInstruction(decoder *Decoder, inst vm.Instruction, add
 	return nil
 }
 
+func isExclusiveLoadOp(op Op) bool {
+	return op == LDXR || op == LDAXR
+}
+
+func isExclusiveStoreOp(op Op) bool {
+	return op == STXR || op == STLXR
+}
+
 func validateExclusiveRegister(reg int) error {
 	if reg == vm.REG_XZR {
 		return nil
@@ -156,8 +166,8 @@ func validateExclusiveRegion(region vm.ExclusiveRegion) ([]vm.Instruction, error
 	}
 	first := decoded[0]
 	last := decoded[len(decoded)-1]
-	if Op(first.Op) != LDAXR || Op(last.Op) != STLXR {
-		return nil, fmt.Errorf("exclusive region must be bounded by LDAXR and STLXR")
+	if !isExclusiveLoadOp(Op(first.Op)) || !isExclusiveStoreOp(Op(last.Op)) {
+		return nil, fmt.Errorf("exclusive region must be bounded by LDXR/LDAXR and STXR/STLXR")
 	}
 	if first.Rn != last.Rn || first.Shift != last.Shift {
 		return nil, fmt.Errorf("exclusive region address/width mismatch")
@@ -185,9 +195,9 @@ type exclusiveRegisterField struct {
 
 func exclusiveRegisterFields(inst vm.Instruction) []exclusiveRegisterField {
 	switch Op(inst.Op) {
-	case LDAXR:
+	case LDXR, LDAXR:
 		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
-	case STLXR:
+	case STXR, STLXR:
 		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
 	case ADD_IMM, SUB_IMM:
 		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}

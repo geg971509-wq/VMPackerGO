@@ -305,7 +305,7 @@ func (t *Translator) emitImageReference(op vm.Opcode, register *byte, targetVA u
 func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, error) {
 	inst := instructions[idx]
 	op := Op(inst.Op)
-	if op == LDAXR {
+	if isExclusiveLoadOp(op) {
 		return t.trExclusiveRegion(instructions, idx)
 	}
 	if err := validateInstructionPolicy(inst); err != nil {
