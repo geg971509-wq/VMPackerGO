@@ -12,7 +12,7 @@ MAC_PACKER  = $(DIST_DIR)/vmpacker-darwin-arm64
 
 ANDROID_BUILD_DIR ?= $(BUILD_DIR)/android
 
-.PHONY: all packer mac-cli test test-race vet contract release-contract verify demo-cases evidence-self-test \
+.PHONY: all packer mac-cli test test-race fuzz-smoke vet contract release-rehearsal release-contract verify demo-cases evidence-self-test \
 	ndk-check runtime-integration android-device-check android-fixtures clean help
 
 all: packer
@@ -32,6 +32,9 @@ test:
 test-race:
 	$(GO) test -race -count=1 ./...
 
+fuzz-smoke:
+	GO="$(GO)" python3 scripts/run-host-fuzz-smoke.py
+
 vet:
 	$(GO) vet ./...
 
@@ -46,10 +49,13 @@ contract: evidence-self-test
 	bash scripts/check-contract.sh
 	bash scripts/check-contract-test.sh
 
+release-rehearsal:
+	python3 scripts/rehearse-release-gates.py
+
 release-contract:
 	bash scripts/check-contract.sh --release
 
-verify: test test-race vet contract
+verify: test test-race fuzz-smoke vet contract release-rehearsal
 
 ndk-check:
 	@test -n "$(ANDROID_NDK)" || { printf '%s\n' "Set ANDROID_NDK to Android NDK $(ANDROID_NDK_REVISION)." >&2; exit 1; }
@@ -79,8 +85,10 @@ help:
 	@printf '%s\n' \
 		"make packer               Build the development CLI" \
 		"make mac-cli              Build the macOS ARM64 CLI" \
-		"make verify               Run Go, race, vet, and contract gates" \
+		"make verify               Run Go, race, fuzz, vet, contract, and rehearsal gates" \
+		"make fuzz-smoke           Run bounded mutation fuzzing for host decoder/parsers" \
 		"make contract             Run product/evidence contract self-tests" \
+		"make release-rehearsal    Replay local release gates and prove missing external evidence fails closed" \
 		"make release-contract     Validate final external release evidence" \
 		"make demo-cases            Validate the exact 85-demo device case specification" \
 		"make evidence-self-test    Test device/release evidence validators" \
