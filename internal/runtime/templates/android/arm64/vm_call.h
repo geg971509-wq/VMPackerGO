@@ -160,6 +160,22 @@ static inline void vm_install_code(vm_ctx_t *vm,
   vm->map_count = state->map_count;
 }
 
+static inline void vm_copy_frame(vm_frame_t *destination,
+                                 const vm_frame_t *source) {
+  destination->bc = source->bc;
+  destination->bc_buf = source->bc_buf;
+  destination->bc_len = source->bc_len;
+  destination->bc_alloc = source->bc_alloc;
+  destination->pc = source->pc;
+  destination->oc_key = source->oc_key;
+  destination->reverse = source->reverse;
+  destination->func_addr = source->func_addr;
+  destination->func_size = source->func_size;
+  destination->addr_map = source->addr_map;
+  destination->map_count = source->map_count;
+  destination->lr = source->lr;
+}
+
 static inline int vm_reserve_frame(vm_ctx_t *vm) {
   if (vm->depth < vm->frame_capacity)
     return 1;
@@ -188,7 +204,7 @@ static inline int vm_reserve_frame(vm_ctx_t *vm) {
     return 0;
   }
   for (u32 i = 0; i < vm->depth; i++)
-    frames[i] = vm->frames[i];
+    vm_copy_frame(&frames[i], &vm->frames[i]);
   if (vm->frames && vm->frame_alloc)
     sys_munmap(vm->frames, vm->frame_alloc);
   vm->frames = frames;
