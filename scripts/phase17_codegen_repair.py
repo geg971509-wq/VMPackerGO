@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-p = Path("scripts/phase16_invoke_runtime_patch.py")
+p = Path("scripts/phase17_invoke_runtime_patch.py")
 text = p.read_text()
 
 # Keep invoke function prefix exclusive to functions so unwind validation does
@@ -38,4 +38,4 @@ if text.count(old) != 1:
 text = text.replace(old, new, 1)
 
 p.write_text(text)
-print("phase16 codegen boundaries repaired")
+print("phase17 codegen boundaries repaired")
