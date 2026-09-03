@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: codex/productization-closure-20260903
-      - name: Canonicalize active module and toolchain
+      - name: Canonicalize active module and historical handoff
         shell: bash
         run: |
           set -euo pipefail
@@ -27,14 +27,11 @@ jobs:
 
           root = Path('.')
           go_mod = root / 'go.mod'
-          text = go_mod.read_text()
-          lines = text.splitlines()
+          lines = go_mod.read_text().splitlines()
           if not lines or not lines[0].startswith('module '):
               raise SystemExit('go.mod has no module directive')
           lines[0] = 'module github.com/geg971509-wq/VMPackerGO'
           lines = [line for line in lines if not line.startswith('toolchain ')]
-          insert = 2 if len(lines) > 1 and lines[1] == '' else 1
-          # Keep the source-language baseline while pinning the release compiler.
           for i, line in enumerate(lines):
               if line.startswith('go '):
                   lines.insert(i + 1, 'toolchain go1.26.0')
@@ -51,25 +48,25 @@ jobs:
               data = path.read_text()
               if old in data:
                   path.write_text(data.replace(old, new))
-
-          workflow = root / '.github/workflows/build.yml'
-          data = workflow.read_text()
-          marker = '          go-version-file: go.mod\n'
-          if data.count(marker) != 1:
-              raise SystemExit('verification workflow go-version-file marker changed')
-          workflow.write_text(data.replace(marker, '          go-version-file: .go-version\n', 1))
           PY
           printf '1.26.0\n' > .go-version
           mkdir -p archive/handoffs
-          git mv PRODUCTIZATION_HANDOFF.md archive/handoffs/productization-handoff-2026-08-28.md
-          rm .github/workflows/canonicalize-once.yml
+          if [[ -f PRODUCTIZATION_HANDOFF.md ]]; then
+            git mv PRODUCTIZATION_HANDOFF.md archive/handoffs/productization-handoff-2026-08-28.md
+          fi
       - name: Commit canonicalization
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add go.mod .go-version cmd internal archive PRODUCTIZATION_HANDOFF.md 2>/dev/null || true
+          git add -u PRODUCTIZATION_HANDOFF.md 2>/dev/null || true
+          git add archive/handoffs 2>/dev/null || true
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'canonicalization already applied'
+            exit 0
+          fi
           git commit -m 'Canonicalize module toolchain and historical handoff'
           git push origin HEAD:codex/productization-closure-20260903
