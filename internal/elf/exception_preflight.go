@@ -30,15 +30,8 @@ func (preparation *TranslationPreparation) ValidateRuntimeRequirements() error {
 	if preparation == nil {
 		return fmt.Errorf("translation preparation is required")
 	}
-	if len(preparation.ExceptionBridges) == 0 {
-		return nil
-	}
-	bridge := preparation.ExceptionBridges[0]
-	thunks := 0
-	if bridge.Plan != nil {
-		thunks = len(bridge.Plan.Thunks)
-	}
-	return fmt.Errorf("function %q requires %d C++ exception landing bridge(s); runtime exception bridge is not integrated", bridge.Selection.Name, thunks)
+	_, err := preparation.RuntimeExceptionInvokes()
+	return err
 }
 
 func prepareExceptionBridges(req Request, functions []PreparedFunction) ([]PreparedExceptionBridge, error) {

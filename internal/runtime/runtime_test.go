@@ -200,8 +200,8 @@ func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T
 	}
 	text := string(assembly)
 	for _, token := range []string{
-		"vm_personality_anchor_0000000000001000", "vm_lsda_invoke_1234abcd", "vm_invoke_1234abcd:",
-		".cfi_personality 0x9b", ".cfi_lsda 0x1b", "bti c", "paciasp", "bl vm_native_call",
+		"vm_personality_bridge_0000000000001000", "vm_lsda_invoke_1234abcd", "vm_invoke_1234abcd:",
+		".cfi_personality 0x1b", ".cfi_lsda 0x1b", "bti c", "paciasp", "bl vm_native_call",
 		"stp x0, x1, [x19, #VM_CTX_R]", "autiasp", ".note.gnu.property",
 	} {
 		if !strings.Contains(text, token) {

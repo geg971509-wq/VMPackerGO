@@ -198,12 +198,14 @@ func generateExceptionInvokeThunks(configs []ExceptionInvokeConfig) (header, ass
 		fmt.Fprintf(&source, ".size %s, .-%s\n", item.ThunkSymbol, item.ThunkSymbol)
 	}
 
-	source.WriteString(".section .rodata.invoke_routes,\"a\",%progbits\n.p2align 3\n.global vm_invoke_routes\n.hidden vm_invoke_routes\n.type vm_invoke_routes, %object\nvm_invoke_routes:\n")
-	for _, item := range normalized {
-		fmt.Fprintf(&source, ".xword 0x%x\n.word 0x%x\n.word 0x%x\n.word %s - .\n.word 0\n", item.FunctionAddress, item.FinalVMCallOffset, item.FinalVMLandingOffset, item.ThunkSymbol)
+	if len(normalized) != 0 {
+		source.WriteString(".section .rodata.invoke_routes,\"a\",%progbits\n.p2align 3\n.global vm_invoke_routes\n.hidden vm_invoke_routes\n.type vm_invoke_routes, %object\nvm_invoke_routes:\n")
+		for _, item := range normalized {
+			fmt.Fprintf(&source, ".xword 0x%x\n.word 0x%x\n.word 0x%x\n.word %s - .\n.word 0\n", item.FunctionAddress, item.FinalVMCallOffset, item.FinalVMLandingOffset, item.ThunkSymbol)
+		}
+		source.WriteString(".size vm_invoke_routes, .-vm_invoke_routes\n.p2align 3\n.global vm_invoke_route_count\n.hidden vm_invoke_route_count\n.type vm_invoke_route_count, %object\nvm_invoke_route_count:\n")
+		fmt.Fprintf(&source, ".xword %d\n.size vm_invoke_route_count, .-vm_invoke_route_count\n", len(normalized))
 	}
-	source.WriteString(".size vm_invoke_routes, .-vm_invoke_routes\n.p2align 3\n.global vm_invoke_route_count\n.hidden vm_invoke_route_count\n.type vm_invoke_route_count, %object\nvm_invoke_route_count:\n")
-	fmt.Fprintf(&source, ".xword %d\n.size vm_invoke_route_count, .-vm_invoke_route_count\n", len(normalized))
 	source.WriteString(".section .note.gnu.property,\"a\",%note\n.p2align 3\n.long 4\n.long 16\n.long 5\n.asciz \"GNU\"\n.p2align 3\n.long 0xc0000000\n.long 4\n.long 3\n.long 0\n.section .note.GNU-stack,\"\",%progbits\n")
 	return header, []byte(source.String()), normalized, nil
 }
@@ -213,9 +215,23 @@ func generateExceptionInvokeHeader(routeCount int) string {
 	header.WriteString("#ifndef VM_INVOKE_H\n#define VM_INVOKE_H\n\n#include \"vm_call.h\"\n\n")
 	header.WriteString("typedef struct {\n  u64 function_file_va;\n  u32 call_vm_offset;\n  u32 landing_vm_offset;\n  i32 thunk_delta;\n  u32 reserved;\n} vm_invoke_route_t;\n\n")
 	header.WriteString("_Static_assert(sizeof(vm_invoke_route_t) == 24, \"invoke route ABI\");\n")
-	header.WriteString("extern const vm_invoke_route_t vm_invoke_routes[];\nextern const u64 vm_invoke_route_count;\n")
 	fmt.Fprintf(&header, "#define VM_INVOKE_ROUTE_COUNT %du\n", routeCount)
 	header.WriteString("#define VM_INVOKE_NONE 0\n#define VM_INVOKE_NORMAL 1\n#define VM_INVOKE_LANDING 2\n#define VM_INVOKE_ERROR -1\n\n")
+	if routeCount == 0 {
+		header.WriteString(`static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target,
+                                          u32 call_vm_offset) {
+  (void)vm;
+  (void)target;
+  (void)call_vm_offset;
+  return VM_INVOKE_NONE;
+}
+
+#endif /* VM_INVOKE_H */
+`)
+		return header.String()
+	}
+	header.WriteString("extern const vm_invoke_route_t vm_invoke_routes[] __attribute__((visibility(\"hidden\")));\n")
+	header.WriteString("extern const u64 vm_invoke_route_count __attribute__((visibility(\"hidden\")));\n")
 	header.WriteString("typedef int (*vm_invoke_fn)(vm_ctx_t *, u64);\n\n")
 	header.WriteString(`static inline int vm_invoke_key_compare(const vm_invoke_route_t *route,
                                         u64 function_file_va, u32 call_vm_offset) {
@@ -333,6 +349,9 @@ func emitRelocatableLSDA(source *strings.Builder, item ExceptionInvokeImage) err
 func validateExceptionInvokeImage(image *Image, invokes []ExceptionInvokeImage) error {
 	if image == nil {
 		return fmt.Errorf("runtime image is required for exception invoke validation")
+	}
+	if len(invokes) == 0 {
+		return nil
 	}
 	symbols := make(map[string]*Symbol, len(image.Symbols))
 	for index := range image.Symbols {

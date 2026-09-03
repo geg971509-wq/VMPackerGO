@@ -104,18 +104,31 @@ func TestFindSelectionFDEFailsClosedOnPartialOrAmbiguousCoverage(t *testing.T) {
 	}
 }
 
-func TestPendingExceptionBridgeBlocksRuntimeValidation(t *testing.T) {
+func TestExceptionBridgeRuntimeRequirementsValidateCompletedRoutes(t *testing.T) {
 	selection, translation, cie, fde, lsda := exceptionFixture()
 	bridge, err := planPreparedExceptionBridge(selection, translation, cie, fde, lsda)
 	if err != nil {
 		t.Fatal(err)
 	}
-	preparation := &TranslationPreparation{ExceptionBridges: []PreparedExceptionBridge{*bridge}}
-	if err := preparation.ValidateRuntimeRequirements(); err == nil || !strings.Contains(err.Error(), "runtime exception bridge is not integrated") {
-		t.Fatalf("pending bridge err=%v", err)
+	bridge.Routes = make([]PreparedExceptionRoute, len(bridge.Plan.Thunks))
+	for index, thunk := range bridge.Plan.Thunks {
+		bridge.Routes[index] = PreparedExceptionRoute{
+			ThunkID: thunk.ID, FinalVMCallOffset: uint32(64 + index*8),
+			FinalVMLandingOffset: uint32(32 + index*8),
+		}
 	}
-	if err := preparation.ValidateRuntimeImage(nil); err == nil || !strings.Contains(err.Error(), "runtime exception bridge is not integrated") {
+	preparation := &TranslationPreparation{ExceptionBridges: []PreparedExceptionBridge{*bridge}}
+	if err := preparation.ValidateRuntimeRequirements(); err != nil {
+		t.Fatalf("completed bridge requirements: %v", err)
+	}
+	if err := preparation.ValidateRuntimeImage(nil); err == nil || !strings.Contains(err.Error(), "runtime image is required") {
 		t.Fatalf("runtime validation err=%v", err)
+	}
+
+	incomplete := *bridge
+	incomplete.Routes = nil
+	if err := (&TranslationPreparation{ExceptionBridges: []PreparedExceptionBridge{incomplete}}).ValidateRuntimeRequirements(); err == nil || !strings.Contains(err.Error(), "final routes") {
+		t.Fatalf("incomplete bridge err=%v", err)
 	}
 	if err := (&TranslationPreparation{}).ValidateRuntimeRequirements(); err != nil {
 		t.Fatalf("empty requirements: %v", err)
