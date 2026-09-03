@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   implement:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -53,7 +53,7 @@ jobs:
           set -euo pipefail
           git config user.name 'vmpacker-phase20-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add .omx/phase20-debug.log
+          git add -f .omx/phase20-debug.log
           git commit -m 'Record Phase 20 implementation failure evidence'
           git push origin HEAD:fix/phase20-casp128
           exit 1
