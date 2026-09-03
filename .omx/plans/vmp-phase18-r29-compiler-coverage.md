@@ -93,7 +93,30 @@ The first exact-r29 PR run is diagnostic by design. If it exposes gaps:
 - do not promote CASP/SVE/SME/MTE/crypto/system extensions merely because the compiler can emit them;
 - rerun the complete current-head/current-base Verification after every correction.
 
-## 5. Exit criteria
+## 5. First exact-r29 diagnostic findings and corrections
+
+The first full PR run proved that the gate catches real product defects rather than merely measuring an abstract instruction count. The following ordinary compiler outputs were incorrectly rejected and are repaired in Phase 18:
+
+- `LDARB` / `LDARH` / `LDAR` were swallowed by an over-broad integer pair-load mask;
+- ordinary signed-offset `LDP` / `STP` addressing (`WB=2` in the decoded IR) was incorrectly treated as an invalid writeback mode;
+- valid 64-bit logical immediates with bit 63 set were incorrectly rejected because their unsigned bit pattern is stored in the signed `Instruction.Imm` field;
+- the pair mask is tightened through bit 30 so integer `LDP` does not consume `LDPSW`;
+- the `LDPSW` match value is corrected to the actual pair-signed-word encoding;
+- mode `WB=2` is accepted only for pair signed-offset addressing and is explicitly excluded from writeback-overlap constraints.
+
+Focused ARM64 tests/vet pass for these repairs. Temporary repair workflows/scripts self-delete and are not part of the product diff.
+
+The same diagnostic run also exposed larger architecture boundaries that are **not** being hidden by the baseline fixes:
+
+- baseline 128-bit atomics use branch-bearing pair-exclusive loops (`CBZ`/`CBNZ`/`B.cond` inside the exclusive sequence), which require PC-relative control-flow relocation rather than a whitelist relaxation;
+- the LSE profile emits `CASP` / `CASPA` / `CASPL` / `CASPAL`, which need a first-class 128-bit pair atomic transport design;
+- exact Clang uses GPR↔D/Q lane moves for `__int128`; single-GPR-role forms are candidates for the existing FP/SIMD native-thunk architecture and must be validated separately;
+- a register-offset `LDR Q` appears in ordinary pair/struct traffic and requires two GPR address roles, beyond the existing one-scratch FP/SIMD thunk contract;
+- `-Oz` can use LLVM machine-outliner tail branches even with outline atomics disabled; external-function tail transfer must stay explicit rather than being misclassified as an in-function branch.
+
+The second exact-r29 run is used to measure these remaining boundaries after removing the confirmed baseline decoder/policy defects.
+
+## 6. Exit criteria
 
 - compiler corpus and derivation are deterministic and exact-r29-bound;
 - real Decoder + whole-function Translator are the authority;
