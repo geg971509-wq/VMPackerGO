@@ -19,7 +19,7 @@ var phase3AnalysisLimitations = []string{
 	"CFG inference is conservative and does not recover arbitrary hand-written or obfuscated functions",
 	"indirect and dynamically resolved setjmp/longjmp or signal-recovery usage cannot be proven absent",
 	"generic external native tail branches remain fail-closed; exact compiler-generated outlined-helper tails may be inlined only after symbol and body validation",
-	"the entry patch requires at least 12 contiguous bytes, or 16 bytes when preserving an entry BTI",
+	"near entry patches require 12 contiguous bytes, or 16 bytes with entry BTI; far inline veneers require 20 bytes, or 24 bytes with entry BTI, and reject beyond ADRP range",
 }
 
 type SelectionRequest struct {

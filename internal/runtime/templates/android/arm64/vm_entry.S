@@ -6,7 +6,7 @@
 	.type vm_entry_token, %function
 vm_entry_token:
 	.cfi_startproc
-	bti c
+	bti jc
 	mov x9, x29
 	mov x10, x30
 	paciasp

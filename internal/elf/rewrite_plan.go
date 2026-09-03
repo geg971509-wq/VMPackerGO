@@ -849,20 +849,37 @@ func buildPlannedTokenTrampoline(input []byte, selection Selection, translation 
 		return nil, err
 	}
 	patchOffset := 0
-	patchSize := currentMinEntryPatch
 	if translation.HasEntryBTI {
 		patchOffset = 4
-		patchSize = 16
-		if selection.Size() < uint64(patchSize) {
-			return nil, fmt.Errorf("BTI entry requires at least %d bytes, got %d", patchSize, selection.Size())
+		if selection.Size() < 4 {
+			return nil, fmt.Errorf("BTI entry is truncated")
 		}
 		decoded := arm64.NewDecoder().Decode(binary.LittleEndian.Uint32(code[:4]), 0)
 		if arm64.Op(decoded.Op) != translation.EntryBTI {
 			return nil, fmt.Errorf("BTI entry metadata does not match input encoding")
 		}
-	} else if selection.Size() < uint64(patchSize) {
-		return nil, fmt.Errorf("entry trampoline requires at least %d bytes, got %d", patchSize, selection.Size())
 	}
+
+	branchVA, ok := checkedAdd(selection.Address, uint64(patchOffset+8))
+	if !ok {
+		return nil, fmt.Errorf("entry branch address overflows")
+	}
+	transfer, err := buildEntryTransfer(branchVA, targetVA)
+	if err != nil {
+		return nil, err
+	}
+	patchSize := patchOffset + 8 + 4*len(transfer)
+	if selection.Size() < uint64(patchSize) {
+		kind := "entry"
+		if translation.HasEntryBTI {
+			kind = "BTI entry"
+		}
+		if len(transfer) > 1 {
+			kind += " long transfer"
+		}
+		return nil, fmt.Errorf("%s requires at least %d bytes, got %d", kind, patchSize, selection.Size())
+	}
+
 	patch := make([]byte, patchSize)
 	if patchOffset != 0 {
 		copy(patch[:patchOffset], code[:patchOffset])
@@ -871,15 +888,11 @@ func buildPlannedTokenTrampoline(input []byte, selection Selection, translation 
 	hi16 := token >> 16
 	binary.LittleEndian.PutUint32(patch[patchOffset:patchOffset+4], 0x52800010|lo16<<5)
 	binary.LittleEndian.PutUint32(patch[patchOffset+4:patchOffset+8], 0x72A00010|hi16<<5)
-	branchVA, ok := checkedAdd(selection.Address, uint64(patchOffset+8))
-	if !ok {
-		return nil, fmt.Errorf("entry branch address overflows")
+	cursor := patchOffset + 8
+	for _, word := range transfer {
+		binary.LittleEndian.PutUint32(patch[cursor:cursor+4], word)
+		cursor += 4
 	}
-	branch, err := encodeBranch26(branchVA, targetVA, 0x14000000)
-	if err != nil {
-		return nil, err
-	}
-	binary.LittleEndian.PutUint32(patch[patchOffset+8:patchOffset+12], branch)
 	return patch, nil
 }
 
