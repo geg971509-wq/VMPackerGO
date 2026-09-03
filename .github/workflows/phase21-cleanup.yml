@@ -1,0 +1,41 @@
+name: Phase21 compiler-gate cleanup
+
+on:
+  push:
+    branches:
+      - fix/phase21-machine-outliner
+    paths:
+      - .github/workflows/phase21-cleanup.yml
+      - scripts/phase21_cleanup.py
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/phase21-machine-outliner
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - name: Tighten gate and test
+        run: |
+          set -euo pipefail
+          python3 scripts/phase21_cleanup.py
+          gofmt -w internal/arch/arm64/compiler_corpus_test.go
+          git diff --check
+          go test -count=1 ./internal/arch/arm64 ./internal/elf
+          go vet ./internal/arch/arm64 ./internal/elf
+      - name: Commit clean product diff
+        run: |
+          set -euo pipefail
+          git config user.name 'vmpacker-phase21-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm -f .github/workflows/phase21-cleanup.yml scripts/phase21_cleanup.py
+          git add internal/arch/arm64/compiler_corpus_test.go
+          git diff --cached --check
+          git commit -m 'Tighten exact outliner corpus identity'
+          git push origin HEAD:fix/phase21-machine-outliner
