@@ -133,6 +133,23 @@ func compilerAddressDelta(address uint64, delta int64) (uint64, bool) {
 	return address - amount, true
 }
 
+func isCompilerOutlinedCorpusName(name string) bool {
+	const prefix = "OUTLINED_FUNCTION_"
+	if !strings.HasPrefix(name, prefix) {
+		return false
+	}
+	suffix := strings.TrimPrefix(name, prefix)
+	if suffix == "" {
+		return false
+	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func configureCompilerOutlinedTailInlines(translator *Translator, key compilerCorpusKey, group []compilerCorpusRecord, groups map[compilerCorpusKey][]compilerCorpusRecord) error {
 	if len(group) == 0 {
 		return nil
@@ -159,7 +176,7 @@ func configureCompilerOutlinedTailInlines(translator *Translator, key compilerCo
 		var helper []compilerCorpusRecord
 		for candidateKey, candidate := range groups {
 			if candidateKey.Optimization != key.Optimization || candidateKey.Profile != key.Profile ||
-				!strings.HasPrefix(candidateKey.Function, "OUTLINED_FUNCTION_") || len(candidate) == 0 || candidate[0].Address != target {
+				!isCompilerOutlinedCorpusName(candidateKey.Function) || len(candidate) == 0 || candidate[0].Address != target {
 				continue
 			}
 			if helper != nil {
@@ -271,8 +288,8 @@ func classifyCompilerCorpus(records []compilerCorpusRecord) compilerCoverageRepo
 		}
 
 		// Side metadata and source-map closure are product obligations only for
-		// functions that actually translated. Intentional fail-closed functions
-		// are rejected before any partial metadata can be consumed.
+		// functions that actually translated. Any unsupported record above is a
+		// hard unexpected compiler gap; there are no intentional exemptions.
 		if len(result.Unsupported) != 0 {
 			continue
 		}
