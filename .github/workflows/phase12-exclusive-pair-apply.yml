@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/phase12_pair_exclusive_patch.py
+          python3 scripts/phase12_pair_exclusive_repair.py
           gofmt -w \
             internal/vm/types.go \
             internal/arch/arm64/decode_fields.go \
@@ -42,7 +43,7 @@ jobs:
       - name: Commit implementation and remove bootstrap
         run: |
           set -euo pipefail
-          git rm scripts/phase12_pair_exclusive_patch.py .github/workflows/phase12-exclusive-pair-apply.yml
+          git rm scripts/phase12_pair_exclusive_patch.py scripts/phase12_pair_exclusive_repair.py .github/workflows/phase12-exclusive-pair-apply.yml
           git add internal
           git config user.name "vmpacker-phase12-bot"
           git config user.email "actions@users.noreply.github.com"
