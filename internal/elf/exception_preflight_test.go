@@ -44,7 +44,7 @@ func TestPlanPreparedExceptionBridgeDetectsLocalLandingNativeCall(t *testing.T) 
 		t.Fatalf("bridge=%+v", bridge)
 	}
 	thunk := bridge.Plan.Thunks[0]
-	if thunk.OriginalPC != 0x1004 || thunk.VMCallOffset != 11 || thunk.VMLandingPad != 36 {
+	if thunk.OriginalPC != 0x1004 || thunk.OriginalLandingPad != 0x1018 || thunk.VMCallOffset != 11 || thunk.VMLandingPad != 36 {
 		t.Fatalf("thunk=%+v", thunk)
 	}
 }

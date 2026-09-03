@@ -15,8 +15,12 @@ type CIE struct {
 	FDEEncoding         byte
 	LSDAEncoding        byte
 	PersonalityEncoding byte
-	Personality         *uint64
-	Instructions        []byte
+	// Personality is the resolved encoded-reference target. When
+	// PersonalityEncoding contains PEIndirect, this is the address of the
+	// indirection slot; the external personality function is intentionally not
+	// dereferenced during packing.
+	Personality  *uint64
+	Instructions []byte
 }
 
 type FDE struct {
@@ -155,7 +159,10 @@ func parseCIE(data []byte, entryOffset, fieldVA uint64, order binary.ByteOrder, 
 				}
 				cie.PersonalityEncoding = data[offset]
 				offset++
-				value, err := DecodePointer(data[:augmentationEnd], &offset, cie.PersonalityEncoding, order, pointerSize, Bases{Field: fieldVA})
+				// Preserve an indirect reference as its slot address. This mirrors
+				// LSDA type-info handling and lets the final writer rebuild the same
+				// relocatable reference without target-memory access.
+				value, err := DecodePointer(data[:augmentationEnd], &offset, cie.PersonalityEncoding&^PEIndirect, order, pointerSize, Bases{Field: fieldVA})
 				if err != nil {
 					return nil, err
 				}
