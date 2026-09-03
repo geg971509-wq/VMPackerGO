@@ -17,6 +17,10 @@ func TestLSEAtomicDecoderFamiliesAndWidths(t *testing.T) {
 		{"LDCLR", 0x38201000, LDCLR},
 		{"LDEOR", 0x38202000, LDEOR},
 		{"LDSET", 0x38203000, LDSET},
+		{"LDSMAX", 0x38204000, LDSMAX},
+		{"LDSMIN", 0x38205000, LDSMIN},
+		{"LDUMAX", 0x38206000, LDUMAX},
+		{"LDUMIN", 0x38207000, LDUMIN},
 	}
 	for _, family := range families {
 		for size := uint32(0); size < 4; size++ {
@@ -41,6 +45,10 @@ func TestLSEAtomicFamiliesPreserveKindWidthOrderAndRegisters(t *testing.T) {
 		{vm.Instruction{Op: int(LDCLR), Rd: 4, Rn: 5, Rm: 6, Shift: 1, Raw: 1 << 23}, []byte{5, 1, 1, 4, 5, 6}},
 		{vm.Instruction{Op: int(LDEOR), Rd: 7, Rn: 8, Rm: 9, Shift: 2, Raw: 1 << 22}, []byte{6, 2, 2, 7, 8, 9}},
 		{vm.Instruction{Op: int(LDSET), Rd: 10, Rn: 11, Rm: 12, Shift: 4}, []byte{7, 4, 0, 10, 11, 12}},
+		{vm.Instruction{Op: int(LDSMAX), Rd: 13, Rn: 14, Rm: 15, Shift: 8, Raw: 1 << 23}, []byte{8, 8, 1, 13, 14, 15}},
+		{vm.Instruction{Op: int(LDSMIN), Rd: 16, Rn: 17, Rm: 18, Shift: 4, Raw: 1 << 22}, []byte{9, 4, 2, 16, 17, 18}},
+		{vm.Instruction{Op: int(LDUMAX), Rd: 19, Rn: 20, Rm: 21, Shift: 2, Raw: 3 << 22}, []byte{10, 2, 3, 19, 20, 21}},
+		{vm.Instruction{Op: int(LDUMIN), Rd: 22, Rn: 23, Rm: 24, Shift: 1}, []byte{11, 1, 0, 22, 23, 24}},
 	} {
 		result := translateForPhase5(t, []vm.Instruction{tc.inst})
 		if len(result.Unsupported) != 0 {
@@ -59,7 +67,7 @@ func TestLSEAtomicFamiliesPreserveKindWidthOrderAndRegisters(t *testing.T) {
 }
 
 func TestLoadReturnLSESuppressesAcquireWhenRtIsXZR(t *testing.T) {
-	for _, op := range []Op{LDADD, SWP, LDCLR, LDEOR, LDSET} {
+	for _, op := range []Op{LDADD, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN} {
 		inst := vm.Instruction{
 			Op: int(op), Rd: vm.REG_XZR, Rn: 2, Rm: 3,
 			Shift: 8, Raw: 1 << 23,
@@ -76,7 +84,7 @@ func TestLoadReturnLSESuppressesAcquireWhenRtIsXZR(t *testing.T) {
 }
 
 func TestLSEAtomicPolicyFailsClosedOnInvalidWidth(t *testing.T) {
-	for _, op := range []Op{SWP, LDCLR, LDEOR, LDSET} {
+	for _, op := range []Op{SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN} {
 		if err := validateInstructionPolicy(vm.Instruction{Op: int(op), Rd: 1, Rn: 2, Rm: 3, Shift: 16}); err == nil {
 			t.Fatalf("%s accepted invalid 16-byte scalar width", OpName(op))
 		}

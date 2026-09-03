@@ -114,7 +114,7 @@ static inline u32 h_atomic(vm_ctx_t *vm) {
   u8 rd = vm->bc[vm->pc + 4];
   u8 rn = vm->bc[vm->pc + 5];
   u8 rm = vm->bc[vm->pc + 6];
-  if (kind > 7 || (width != 1 && width != 2 && width != 4 && width != 8) ||
+  if (kind > 11 || (width != 1 && width != 2 && width != 4 && width != 8) ||
       order > 3 || rn > 31) {
     vm->fault |= VM_FAULT_SYSTEM;
     return 7;

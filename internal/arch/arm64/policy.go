@@ -65,7 +65,7 @@ func buildInstructionRules() map[Op]instructionRule {
 	// boundary because every supported exclusive monitor is contained inside a
 	// single generated LDAXR...STLXR thunk.
 	allow([]Op{PRFM, YIELD_ARM, CLREX}, nil)
-	allow([]Op{LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET}, validateAtomicNative)
+	allow([]Op{LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN}, validateAtomicNative)
 	allow([]Op{FPSIMD_NATIVE}, func(inst vm.Instruction) error { return ValidateFPSIMDInstruction(inst.Raw) })
 
 	classify(dispositionNativeThunk, WFE, WFI, LDAXR, STLXR)

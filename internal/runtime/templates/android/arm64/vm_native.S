@@ -157,6 +157,14 @@ vm_atomic_native:
 	b.eq .Latomic_eor
 	cmp w0, #7
 	b.eq .Latomic_set
+	cmp w0, #8
+	b.eq .Latomic_smax
+	cmp w0, #9
+	b.eq .Latomic_smin
+	cmp w0, #10
+	b.eq .Latomic_umax
+	cmp w0, #11
+	b.eq .Latomic_umin
 	b .Latomic_bad
 
 .Latomic_load:
@@ -307,6 +315,74 @@ vm_atomic_native:
 	VM_ATOMIC_ORDER4 ldseth, ldsetah, ldsetlh, ldsetalh, w4, w0
 .Lset_4:
 	VM_ATOMIC_ORDER4 ldset, ldseta, ldsetl, ldsetal, w4, w0
+
+.Latomic_smax:
+	cmp w1, #1
+	b.eq .Lsmax_1
+	cmp w1, #2
+	b.eq .Lsmax_2
+	cmp w1, #4
+	b.eq .Lsmax_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldsmax, ldsmaxa, ldsmaxl, ldsmaxal, x4, x0
+.Lsmax_1:
+	VM_ATOMIC_ORDER4 ldsmaxb, ldsmaxab, ldsmaxlb, ldsmaxalb, w4, w0
+.Lsmax_2:
+	VM_ATOMIC_ORDER4 ldsmaxh, ldsmaxah, ldsmaxlh, ldsmaxalh, w4, w0
+.Lsmax_4:
+	VM_ATOMIC_ORDER4 ldsmax, ldsmaxa, ldsmaxl, ldsmaxal, w4, w0
+
+.Latomic_smin:
+	cmp w1, #1
+	b.eq .Lsmin_1
+	cmp w1, #2
+	b.eq .Lsmin_2
+	cmp w1, #4
+	b.eq .Lsmin_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldsmin, ldsmina, ldsminl, ldsminal, x4, x0
+.Lsmin_1:
+	VM_ATOMIC_ORDER4 ldsminb, ldsminab, ldsminlb, ldsminalb, w4, w0
+.Lsmin_2:
+	VM_ATOMIC_ORDER4 ldsminh, ldsminah, ldsminlh, ldsminalh, w4, w0
+.Lsmin_4:
+	VM_ATOMIC_ORDER4 ldsmin, ldsmina, ldsminl, ldsminal, w4, w0
+
+.Latomic_umax:
+	cmp w1, #1
+	b.eq .Lumax_1
+	cmp w1, #2
+	b.eq .Lumax_2
+	cmp w1, #4
+	b.eq .Lumax_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldumax, ldumaxa, ldumaxl, ldumaxal, x4, x0
+.Lumax_1:
+	VM_ATOMIC_ORDER4 ldumaxb, ldumaxab, ldumaxlb, ldumaxalb, w4, w0
+.Lumax_2:
+	VM_ATOMIC_ORDER4 ldumaxh, ldumaxah, ldumaxlh, ldumaxalh, w4, w0
+.Lumax_4:
+	VM_ATOMIC_ORDER4 ldumax, ldumaxa, ldumaxl, ldumaxal, w4, w0
+
+.Latomic_umin:
+	cmp w1, #1
+	b.eq .Lumin_1
+	cmp w1, #2
+	b.eq .Lumin_2
+	cmp w1, #4
+	b.eq .Lumin_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldumin, ldumina, lduminl, lduminal, x4, x0
+.Lumin_1:
+	VM_ATOMIC_ORDER4 lduminb, lduminab, lduminlb, lduminalb, w4, w0
+.Lumin_2:
+	VM_ATOMIC_ORDER4 lduminh, lduminah, lduminlh, lduminalh, w4, w0
+.Lumin_4:
+	VM_ATOMIC_ORDER4 ldumin, ldumina, lduminl, lduminal, w4, w0
 
 .Latomic_bad:
 	mov x0, #0
