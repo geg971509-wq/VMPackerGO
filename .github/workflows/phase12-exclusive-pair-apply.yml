@@ -1,0 +1,50 @@
+name: Phase 12 Pair Exclusive Apply
+
+on:
+  push:
+    branches:
+      - fix/exclusive-pair-128
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Apply audited source patch
+        run: |
+          set -euo pipefail
+          python3 scripts/phase12_pair_exclusive_patch.py
+          gofmt -w \
+            internal/vm/types.go \
+            internal/arch/arm64/decode_fields.go \
+            internal/arch/arm64/decoder.go \
+            internal/arch/arm64/decode_ldst.go \
+            internal/arch/arm64/policy.go \
+            internal/arch/arm64/tr_exclusive.go \
+            internal/arch/arm64/exclusive_pair_test.go \
+            internal/runtime/exclusivegen.go \
+            internal/runtime/runtime_test.go
+      - name: Focused semantic verification
+        run: |
+          set -euo pipefail
+          go test -count=1 ./internal/arch/arm64 ./internal/vm
+          go test -count=1 ./internal/runtime -run '^TestGenerateExclusiveThunks'
+          go vet ./internal/arch/arm64 ./internal/runtime ./internal/vm
+      - name: Commit implementation and remove bootstrap
+        run: |
+          set -euo pipefail
+          git rm scripts/phase12_pair_exclusive_patch.py .github/workflows/phase12-exclusive-pair-apply.yml
+          git add internal
+          git config user.name "vmpacker-phase12-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Support pair-exclusive 128-bit atomic fallbacks"
+          git push origin HEAD:fix/exclusive-pair-128
