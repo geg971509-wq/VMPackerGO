@@ -2,121 +2,92 @@
 
 Date: 2026-09-03
 
-This document records the requested complete execution chain: initial repair plan, plan audit, corrected final plan, implementation order, verification gates, and merge policy.
+This file records the **first-pass** productization plan and the corrections made after the requested second-pass audit. The authoritative final necessity decisions and execution checkpoint are in [`remediation-audit-20260903.md`](remediation-audit-20260903.md). Where this file's original direction conflicts with that second-pass audit, the second-pass decision wins.
 
-## 1. Initial repair plan
+## 1. First-pass plan
 
-1. Establish `main` from the only existing verified branch and perform all work on an isolated productization branch.
-2. Close runtime semantic-integrity defects before expanding the ARM64 whitelist:
-   - stack/evaluation-stack bounds;
-   - malformed bytecode and dispatch failures;
-   - nested packed-call depth and callee-load failures;
-   - descriptor/trailer validation;
-   - one explicit fail-closed fault path.
-3. Remove fixed VM stack and call-depth assumptions that silently change legal program behavior.
-4. Generalize external tail transfers instead of keeping a compiler-outliner-only product special case.
-5. Finish exception/unwind runtime integration and final ELF unwind publication.
-6. Finish far-branch veneer planning before mutation.
-7. Expand entry ABI coverage only after the control-flow/runtime boundary is sound.
-8. Add architecture capability and differential verification matrices.
-9. Make physical-device evidence, 85-demo execution, 4 KiB/16 KiB loading, signing, notarization, provenance, and checksums executable release gates.
-10. Normalize repository branch, module, CI, release, and living documentation state.
+The original sequence was:
 
-## 2. Audit of the initial plan
+1. establish `main` and work on an isolated productization branch;
+2. close runtime silent-failure semantics before expanding instruction coverage;
+3. replace fixed VM stack/call-depth assumptions with explicit bounded resources;
+4. close external tail-control-flow gaps;
+5. finish exception/unwind integration;
+6. close transformed-entry branch reach;
+7. consider broader protected-entry ABI coverage;
+8. formalize ARM64 capabilities and differential verification;
+9. make physical-device, 85-demo, signing/notarization, provenance and checksum requirements executable release gates;
+10. normalize repository/module/toolchain/CI/documentation state.
 
-The initial plan was reviewed against correctness, closure, maintainability, over-design risk, and available evidence.
+The core ordering was accepted: correctness first, plan-first ELF rewriting remains authoritative, unsupported semantics fail closed, and external release facts must not be fabricated.
 
-### Accepted
+## 2. Second-pass necessity audit corrections
 
-- Runtime semantic integrity must precede instruction-count growth.
-- Plan-first ELF rewriting remains the architectural authority; the writer must not recompute layout.
-- Unsupported semantics remain deterministic pack-time rejection.
-- Physical-device and signing requirements remain release evidence, not host-test claims.
-- The current tri-state ARM64 policy (`virtual`, `native thunk`, `reject`) is retained and strengthened rather than replaced.
+The second-pass audit rejected several first-pass assumptions that would have widened the product without improving correctness:
 
-### Corrected
+- **Generic native external tail transfer is not implemented by call+return.** That approximation changes observable LR/backtrace/unwind behavior and interacts incorrectly with the shadow-stack return path. The final product boundary accepts selected packed tails and explicitly validated compiler-outliner helpers; other native external direct/indirect tails fail closed.
+- **Protected-entry FP/vector/aggregate/variadic expansion is not a current repair.** The approved binary contract intentionally requires explicit ABI metadata and accepts at most eight integer/pointer parameters plus `void` or one integer/pointer result. A stripped binary generally does not contain trustworthy function-type metadata, so automatic widening would require guessing.
+- **Full SVE/SVE2/SME support is not required.** Every decoded opcode must have an explicit `virtual`, `native thunk`, or `reject` disposition; unsupported architectural profiles reject deterministically.
+- **Far transformed entries use a bounded inline veneer rather than a speculative distant veneer island.** Near entries use `B imm26`; when that cannot reach, the immutable planner may emit `ADRP X17 + ADD X17 + BR X17` within ADRP range and only when enough entry bytes exist. Farther/shorter cases reject.
+- **A decrypted-bytecode cache is deliberately deferred.** It is a performance feature, increases plaintext lifetime and runtime complexity, and is not needed for correctness/release closure.
+- **The bounded O(n) packed-descriptor lookup is retained.** With the approved 4096-function limit, another runtime index is a performance optimization rather than a release correctness fix.
 
-- Increasing fixed stack/call-depth constants is rejected as a false fix. Resource growth must be bounded, explicit, and faulted.
-- Returning integer zero on an internal runtime failure is rejected because zero may be a valid protected-function result.
-- General external tail calls must become a first-class semantic path; exact-r29 outliner inlining may remain only as a validated optimization.
-- A permanently failing release script is not a final gate. It must eventually consume machine-readable evidence and fail for specific missing evidence.
-- Historical handoff text must not compete with the product contract as a second source of truth.
+## 3. Final implementation plan
 
-### Deferred by evidence, not by design
+### Stage A — runtime semantic integrity
 
-The following cannot be truthfully marked PASS without the required external evidence, but all code paths and gates must remain explicit:
+- typed faults separate from NZCV;
+- fatal post-cleanup fault completion;
+- explicit bytecode/control/descriptor/resource/eval-stack faults;
+- SP-memory faults rather than skipped memory semantics;
+- guarded separately mapped architectural shadow stack;
+- dynamically bounded protected-call frame storage;
+- transactional packed-callee loading and trailer/source-map validation.
 
-- physical Android device execution and contention evidence;
-- 4 KiB and 16 KiB device coverage;
-- Developer ID signing and Apple notarization;
-- independent release review.
+### Stage B — control flow and entry reach
 
-Missing evidence keeps release closed; it does not justify weakening the product contract.
+- selected protected direct tails switch VM context without growing call depth;
+- exact-r29 compiler-outliner helpers remain a narrow validated optimization;
+- arbitrary native external tails fail closed;
+- transformed entries use direct near branch or bounded plan-time inline long veneer;
+- BTI landing behavior remains valid for supported entry-transfer forms.
 
-## 3. Corrected final repair plan
+### Stage C — exception and unwind
 
-### Stage A — repository baseline and governance
+- consume prepared final VM exception routes in runtime generation;
+- generate personality/invoke/landing/LSDA/CFI artifacts;
+- include runtime FDEs in a supported GNU unwind index;
+- reject exception-bearing protection when no discoverable `PT_GNU_EH_FRAME` route is available;
+- require physical Android throw/catch/destructor/rethrow evidence before release.
 
-- Create `main` at the current verified HEAD.
-- Create an isolated repair branch.
-- Keep `Verification` active for pull requests and `main` pushes.
-- Merge only an exact reviewed head SHA.
+### Stage D — capability and robustness
 
-### Stage B — runtime fail-closed integrity
+- retain the explicit ARM64 tri-state policy as implementation truth;
+- require every decoder opcode to have a product disposition;
+- keep exact-r29 compiler/FP-SIMD corpora as evidence rather than the capability definition;
+- add parser/decoder/unwind fuzz seeds;
+- bound aggregate rewrite expansion and final output endpoint.
 
-- Define typed runtime fault bits and one fatal completion policy.
-- Make evaluation-stack overflow/underflow set a fault.
-- Make VM stack bounds failures set a fault rather than skip memory semantics.
-- Make malformed instruction sizes, PC movement, missing handlers, descriptor/trailer failures, call-depth exhaustion, and callee-load failures set a fault.
-- Add static translation stack-effect verification where bytecode construction can prove the invariant.
-- Add regression tests that demonstrate faults cannot be observed as normal zero returns.
+### Stage E — device and release evidence
 
-### Stage C — stack and packed-call lifecycle
+- maintain an exact explicit device-case specification for all 85 manifest IDs;
+- expose the Go demo through a real cgo `c-shared` AAPCS64 boundary instead of guessing Go ABIInternal;
+- qualify physical devices and record only pseudonymous device identifiers;
+- execute baseline → pack → transformed comparisons repeatedly on 4 KiB and 16 KiB physical devices;
+- cover shared-object loading, PIE/ASLR/BTI/PAC, `ET_EXEC`, multithreaded atomics and C++ exception/unwind fixtures;
+- merge and strictly validate evidence against exact commit and manifest hashes;
+- require exact tagged source, `SHA256SUMS`, Developer ID/hardened-runtime/timestamp signing, Apple notarization/Gatekeeper validation and distinct independent review.
 
-- Replace fixed in-struct VM memory stack with separately allocated guarded/bounded stack storage.
-- Replace fixed in-struct packed-call frames with bounded dynamic frame storage.
-- Preserve one architectural SP across protected-to-protected calls.
-- Ensure all root, nested, tail-switch, failure, and unwind paths release exactly the owned mappings.
-- Add recursion, mutual-recursion, depth/resource, and cleanup tests.
+### Stage F — repository closure
 
-### Stage D — control-flow completeness
+- canonical module path and exact release Go toolchain;
+- historical handoff archived rather than treated as current truth;
+- one canonical Verification workflow;
+- merge only an exact fully green PR head;
+- verify the resulting `main` push before default-branch/obsolete-branch cleanup.
 
-- Introduce first-class native/packed external tail transfer handling.
-- Keep arbitrary non-tail external `B` fail-closed.
-- Retain exact-r29 outliner validation only as a bounded optimization.
-- Complete B/BL reach analysis and immutable veneer-island planning before writing.
-- Add near/far, packed/native, PIE/ET_EXEC, BTI/PAC, and ASLR tests.
+## 4. Completion rule
 
-### Stage E — exception and unwind closure
+An in-repository repair is complete only after the exact candidate head passes contract/evidence checks, `go list`, full tests, race tests, exact-r29 FP/SIMD and whole-compiler corpora, exact-r29 runtime compilation, vet, and macOS ARM64 CLI build.
 
-- Consume prepared exception bridge routes in runtime generation.
-- Generate invoke/personality/landing-pad assembly with complete CFI.
-- Merge runtime and generated FDE/LSDA data.
-- rebuild `.eh_frame_hdr` and update `PT_GNU_EH_FRAME` in the immutable plan.
-- Keep any unsupported exception topology fail-closed.
-- Add host structural tests and require physical-device unwinder evidence before release.
-
-### Stage F — ABI and instruction capability
-
-- Add FP scalar, vector, HFA/HVA, aggregate, sret/X8, stack-argument, and return-class entry support in bounded increments.
-- Keep variadic entry unsupported until a complete type/ABI contract exists.
-- Make an architecture capability matrix the source of truth; compiler and real-world corpora prove the matrix instead of defining it.
-- Add Android-relevant ARMv8 extension profiles and explicit deterministic rejection for unsupported profiles.
-
-### Stage G — verification and release closure
-
-- Execute the exact 85-demo manifest as build → baseline run → pack → transformed run → differential comparison.
-- Add machine-readable device evidence for API, ABI, page size, BTI/PAC, CPU features, exit/signal/output, side effects, unwind, and contention.
-- Add parser/planner/writer/unwind fuzz targets and adversarial ELF mutation fixtures.
-- Add aggregate memory/output expansion budgets.
-- Replace placeholder module identity with the canonical repository module path.
-- Pin the Go toolchain used for releases.
-- Add signed/notarized macOS ARM64 release automation, source archive, provenance, and `SHA256SUMS`.
-
-## 4. Execution and merge policy
-
-- Each stage must add focused regression coverage before broad verification.
-- Required hosted verification is: contract checks, `go list`, unit tests, race tests, exact-r29 FP/SIMD corpus, exact-r29 whole-compiler corpus, exact-r29 runtime build, vet, and macOS ARM64 CLI build.
-- No stage may convert a semantic failure into a warning or normal return.
-- No release-ready claim is permitted while external evidence gates are absent.
-- The final pull request is merged into `main` only with an exact expected head SHA and green required checks.
+Physical-device executions, Developer ID credentials, Apple notarization acceptance and independent release approval are external evidence, not code TODOs. The repository can implement and validate their harnesses, but the product remains development-stage until real evidence satisfies those gates.
