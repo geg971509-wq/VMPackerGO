@@ -52,19 +52,25 @@ func ParseLSDA(data []byte, address, function uint64, order binary.ByteOrder, po
 		}
 		lsda.LPStart = value
 	}
+	if offset >= len(data) {
+		return nil, fmt.Errorf("missing LSDA type encoding")
+	}
 	typeEncoding := data[offset]
 	offset++
 	lsda.TypeEncoding = typeEncoding
 	typeTableOffset := -1
 	if typeEncoding != PEOmit {
 		typeOffset, err := readULEB(data, &offset)
-		if err != nil || typeOffset > uint64(len(data)-offset) {
-			return nil, fmt.Errorf("invalid LSDA type-table offset")
+		if err != nil {
+			return nil, fmt.Errorf("invalid LSDA type-table offset: %w", err)
 		}
-		if typeOffset > uint64(len(data)-offset) {
+		if offset > len(data) || typeOffset > uint64(len(data)-offset) {
 			return nil, fmt.Errorf("LSDA type table exceeds input")
 		}
 		typeTableOffset = offset + int(typeOffset)
+		if uint64(typeTableOffset) > ^uint64(0)-address {
+			return nil, fmt.Errorf("LSDA type table address overflows")
+		}
 		value := address + uint64(typeTableOffset)
 		lsda.TypeTableBase = &value
 	}
