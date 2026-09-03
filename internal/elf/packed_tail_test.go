@@ -36,7 +36,7 @@ func TestSelectedExternalTailBecomesPackedTailTransfer(t *testing.T) {
 	}
 }
 
-func TestExecutableUnselectedExternalTailBecomesNativeCallReturn(t *testing.T) {
+func TestExecutableUnselectedExternalTailRemainsFailClosed(t *testing.T) {
 	opcodes := vm.IdentityOpcodeMap()
 	translator, err := arm64.NewTranslator(0x1000, 4, opcodes)
 	if err != nil {
@@ -48,26 +48,8 @@ func TestExecutableUnselectedExternalTailBecomesNativeCallReturn(t *testing.T) {
 		vaddr: 0x2000, filesz: 0x100, memsz: 0x100,
 		flags: elf.PF_R | elf.PF_X,
 	}}}
-	if err := configureExternalTailTransfers(nil, meta, nil, selection, instructions, translator, nil); err != nil {
-		t.Fatal(err)
-	}
-	result, err := translator.Translate(instructions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Unsupported) != 0 {
-		t.Fatalf("native tail was rejected: %v", result.Unsupported)
-	}
-	if len(result.Relocations) != 1 || result.Relocations[0].TargetVA != 0x2000 {
-		t.Fatalf("native tail relocation=%+v", result.Relocations)
-	}
-	if len(result.NativeCallSites) != 1 || result.NativeCallSites[0].ARM64Offset != 0 || result.NativeCallSites[0].VMOffset != 0 {
-		t.Fatalf("native tail call sites=%+v", result.NativeCallSites)
-	}
-	callImage, _ := opcodes.Wire(vm.OpCallImage)
-	ret, _ := opcodes.Wire(vm.OpRet)
-	if len(result.Bytecode) < 11 || result.Bytecode[0] != callImage || result.Bytecode[9] != ret || result.Bytecode[10] != 0 {
-		t.Fatalf("native tail bytecode prefix=%x", result.Bytecode)
+	if err := configureExternalTailTransfers(nil, meta, nil, selection, instructions, translator, nil); err == nil {
+		t.Fatal("executable but unselected native tail unexpectedly passed preparation")
 	}
 }
 

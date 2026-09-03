@@ -87,7 +87,6 @@ type Translator struct {
 	fpSIMDInstructions  map[uint32]bool
 	nativeCallSites     []NativeCallSite
 	outlinedTailInlines map[int][]uint32
-	nativeTailTransfers map[int]struct{}
 	entryBTI            Op
 	hasEntryBTI         bool
 }
@@ -114,7 +113,6 @@ func NewTranslator(funcAddr uint64, funcSize int, opcodes vm.OpcodeMap) (*Transl
 		exclusiveRegions:    make(map[uint32]vm.ExclusiveRegion),
 		fpSIMDInstructions:  make(map[uint32]bool),
 		outlinedTailInlines: make(map[int][]uint32),
-		nativeTailTransfers: make(map[int]struct{}),
 	}, nil
 }
 

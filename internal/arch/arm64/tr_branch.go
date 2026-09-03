@@ -50,9 +50,6 @@ func (t *Translator) SetOutlinedTailInline(branchOffset int, raws []uint32) erro
 	if _, exists := t.outlinedTailInlines[branchOffset]; exists {
 		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
 	}
-	if _, exists := t.nativeTailTransfers[branchOffset]; exists {
-		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
-	}
 	if err := ValidateOutlinedTailHelper(raws); err != nil {
 		return err
 	}
@@ -70,39 +67,11 @@ func (t *Translator) SetPackedTailTransfer(branchOffset int) error {
 	if _, exists := t.outlinedTailInlines[branchOffset]; exists {
 		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
 	}
-	if _, exists := t.nativeTailTransfers[branchOffset]; exists {
-		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
-	}
 	t.outlinedTailInlines[branchOffset] = nil
 	return nil
 }
 
-// SetNativeTailTransfer marks a terminal direct B to an executable target
-// outside the selected set. It is deliberately lowered to CALL_IMAGE + RET
-// instead of branching out of the interpreter: this preserves cleanup,
-// AAPCS64 bridge validation, and exception/unwind routing.
-func (t *Translator) SetNativeTailTransfer(branchOffset int) error {
-	if branchOffset < 0 || branchOffset%4 != 0 || branchOffset+4 != t.funcSize {
-		return fmt.Errorf("native tail branch offset 0x%x is not the final instruction of a 0x%x-byte function", branchOffset, t.funcSize)
-	}
-	if _, exists := t.outlinedTailInlines[branchOffset]; exists {
-		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
-	}
-	if _, exists := t.nativeTailTransfers[branchOffset]; exists {
-		return fmt.Errorf("tail branch offset 0x%x is configured more than once", branchOffset)
-	}
-	t.nativeTailTransfers[branchOffset] = struct{}{}
-	return nil
-}
-
 func (t *Translator) trBranchOrOutlined(inst vm.Instruction) error {
-	if _, configured := t.nativeTailTransfers[inst.Offset]; configured {
-		target := int64(inst.Offset) + inst.Imm
-		if target >= 0 && target < int64(t.funcSize) {
-			return fmt.Errorf("native tail handling at 0x%x is configured for an in-function branch target 0x%x", inst.Offset, target)
-		}
-		return t.trNativeTail(inst)
-	}
 	raws, configured := t.outlinedTailInlines[inst.Offset]
 	if !configured {
 		return t.trBranch(inst)
@@ -150,28 +119,6 @@ func (t *Translator) trPackedTail(inst vm.Instruction) error {
 	ip0 := byte(16)
 	t.emitImageReference(vm.OpMovImage, &ip0, target)
 	t.emitOp(vm.OpBrReg, ip0)
-	return nil
-}
-
-// trNativeTail de-optimizes an external A64 tail branch to a validated
-// native call followed by the protected function return. The call site is
-// recorded explicitly because the source instruction is B rather than BL.
-func (t *Translator) trNativeTail(inst vm.Instruction) error {
-	pc, err := addAddressDelta(t.funcAddr, int64(inst.Offset))
-	if err != nil {
-		return err
-	}
-	target, err := addAddressDelta(pc, inst.Imm)
-	if err != nil {
-		return err
-	}
-	vmOffset := t.pos()
-	t.emitImageReference(vm.OpCallImage, nil, target)
-	t.nativeCallSites = append(t.nativeCallSites, NativeCallSite{
-		ARM64Offset: inst.Offset,
-		VMOffset:    vmOffset,
-	})
-	t.emitOp(vm.OpRet, 0)
 	return nil
 }
 
