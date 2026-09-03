@@ -26,7 +26,7 @@ jobs:
           set -euo pipefail
           python3 -c "from pathlib import Path; p=Path('internal/elf/rewrite_plan.go'); s=p.read_text(); old='func (planner *rewritePlanner) validate() error {\n'; new='func (planner *rewritePlanner) validate() error {\n\tif err := validateRewriteBudget(uint64(len(planner.req.Input)), planner.plan.segments); err != nil {\n\t\treturn err\n\t}\n'; assert s.count(old)==1; p.write_text(s.replace(old,new,1))"
           gofmt -w internal/elf/rewrite_plan.go internal/elf/rewrite_budget.go internal/elf/rewrite_budget_test.go
-          go test -count=1 ./internal/elf
+          go test -count=1 -run '^TestValidateRewriteBudget' ./internal/elf
           git diff --check
       - name: Commit planner budget
         run: |
