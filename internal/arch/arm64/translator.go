@@ -612,7 +612,7 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	// ========== Acquire/Release (Batch 5) ==========
 	case LDAXR, STLXR:
 		return 0, fmt.Errorf("acquire/release or exclusive semantics require a validated native thunk")
-	case LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET:
+	case LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN:
 		return 0, t.trAtomic(inst)
 
 	// ========== LDPSW (Batch 8) ==========

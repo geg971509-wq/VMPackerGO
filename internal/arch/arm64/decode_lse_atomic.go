@@ -25,11 +25,31 @@ var lseAtomicPatterns = []InstrPattern{
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
 		Post:   postLdadd,
 	},
+	{
+		Name: "LDSMAX", Mask: 0x3F20FC00, Value: 0x38204000, Op: LDSMAX,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
+		Post:   postLdadd,
+	},
+	{
+		Name: "LDSMIN", Mask: 0x3F20FC00, Value: 0x38205000, Op: LDSMIN,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
+		Post:   postLdadd,
+	},
+	{
+		Name: "LDUMAX", Mask: 0x3F20FC00, Value: 0x38206000, Op: LDUMAX,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
+		Post:   postLdadd,
+	},
+	{
+		Name: "LDUMIN", Mask: 0x3F20FC00, Value: 0x38207000, Op: LDUMIN,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
+		Post:   postLdadd,
+	},
 }
 
 func isLoadReturnLSE(op Op) bool {
 	switch op {
-	case LDADD, SWP, LDCLR, LDEOR, LDSET:
+	case LDADD, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN:
 		return true
 	default:
 		return false

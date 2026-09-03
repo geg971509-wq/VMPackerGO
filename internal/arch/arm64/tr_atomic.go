@@ -25,7 +25,7 @@ func atomicMemoryOrder(inst vm.Instruction) byte {
 		return 1
 	case STLR:
 		return 2
-	case LDADD, SWP, LDCLR, LDEOR, LDSET:
+	case LDADD, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN:
 		acquire := byte((inst.Raw >> 23) & 1)
 		// ARM suppresses acquire for this LSE RMW class when Rt is XZR.
 		if inst.Rd == vm.REG_XZR {
@@ -47,6 +47,7 @@ func (t *Translator) trAtomic(inst vm.Instruction) error {
 	kind := map[Op]byte{
 		LDAR: 0, STLR: 1, LDADD: 2, CAS: 3,
 		SWP: 4, LDCLR: 5, LDEOR: 6, LDSET: 7,
+		LDSMAX: 8, LDSMIN: 9, LDUMAX: 10, LDUMIN: 11,
 	}[op]
 	rd, err := encodeAtomicRegister(inst.Rd)
 	if err != nil {
