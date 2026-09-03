@@ -183,7 +183,7 @@ func validateRuntimeUnwind(image *Image, ehFrameIndex int) error {
 	var required []*Symbol
 	for index := range image.Symbols {
 		symbol := &image.Symbols[index]
-		if symbol.Name == "vm_entry_token" || symbol.Name == "vm_native_call" || symbol.Name == "vm_atomic_native" || strings.HasPrefix(symbol.Name, "vm_svc_") || strings.HasPrefix(symbol.Name, "vm_exclusive_") || strings.HasPrefix(symbol.Name, "vm_fpsimd_") {
+		if symbol.Name == "vm_entry_token" || symbol.Name == "vm_native_call" || symbol.Name == "vm_atomic_native" || strings.HasPrefix(symbol.Name, "vm_svc_") || strings.HasPrefix(symbol.Name, "vm_exclusive_") || strings.HasPrefix(symbol.Name, "vm_fpsimd_") || (strings.HasPrefix(symbol.Name, "vm_invoke_") && elf.ST_TYPE(symbol.Info) == elf.STT_FUNC) {
 			required = append(required, symbol)
 		}
 	}
