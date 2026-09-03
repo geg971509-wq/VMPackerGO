@@ -30,6 +30,7 @@ jobs:
           python3 scripts/validate-release-evidence-test.py
           bash scripts/check-contract.sh
           bash scripts/check-contract-test.sh
+          python3 scripts/rehearse-release-gates.py
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: .go-version
@@ -94,6 +95,8 @@ jobs:
         run: go test -count=1 ./...
       - name: Go race test
         run: go test -race -count=1 ./...
+      - name: Host fuzz smoke
+        run: python3 scripts/run-host-fuzz-smoke.py --fuzztime 3s --parallel 2
       - name: Derive exact-r29 FP/SIMD corpus
         run: |
           corpus="$RUNNER_TEMP/fpsimd-r29.tsv"
