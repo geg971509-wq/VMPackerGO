@@ -170,6 +170,9 @@ func TestGenerateFPSIMDThunksPreservesArchitecturalStateAndFlags(t *testing.T) {
 func testExceptionInvokeConfig() ExceptionInvokeConfig {
 	return ExceptionInvokeConfig{
 		FunctionAddress: 0x1000,
+		Routes: []ExceptionRouteConfig{{
+			ThunkID: 0x1234abcd, FinalVMCallOffset: 64, FinalVMLandingOffset: 32,
+		}},
 		Plan: &unwind.ExceptionBridgePlan{
 			Personality: 0x6000, PersonalityEncoding: unwind.PEIndirect | unwind.PEPcrel | unwind.PESdata4,
 			TypeEncoding: unwind.PEOmit,
@@ -216,7 +219,7 @@ func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T
 
 func TestGenerateExceptionInvokeThunksRejectsUnsupportedOrDuplicateIdentity(t *testing.T) {
 	cfg := testExceptionInvokeConfig()
-	cfg.Plan.PersonalityEncoding = unwind.PEAbsptr
+	cfg.Plan.PersonalityEncoding = unwind.PEDatarel | unwind.PESdata4
 	if _, _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg}); err == nil {
 		t.Fatal("unsupported personality encoding was accepted")
 	}
