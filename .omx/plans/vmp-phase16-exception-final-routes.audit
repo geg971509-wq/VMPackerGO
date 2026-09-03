@@ -1,1 +1,0 @@
-Phase 16 audit checkpoint: final exception routes reuse reverseInstructions offsetMap; runtime exception guard remains fail-closed.
