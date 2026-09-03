@@ -49,10 +49,11 @@ func TestCASPRuntimeTemplatesPreserveSevenBytePairTransport(t *testing.T) {
 
 	h := string(handler)
 	for _, token := range []string{
-		"kind == 12", "rd > 28", "rm > 28", "rd & 1u", "rm & 1u",
-		"vm_atomic_pair_native", "rm + 1", "rd + 1",
+		"kind == 12", "rd > 30", "rm > 30", "rd & 1u", "rm & 1u",
+		"vm_atomic_pair_native", "vm_atomic_pair_high_read", "low == 30 ? 0",
+		"vm_atomic_pair_high_write", "if (low != 30)",
 		"vm_atomic_reg_write(vm, rm, old.lo, width)",
-		"vm_atomic_reg_write(vm, rm + 1, old.hi, width)",
+		"vm_atomic_pair_high_write(vm, rm, old.hi, width)",
 		"return 7;",
 	} {
 		if !strings.Contains(h, token) {
