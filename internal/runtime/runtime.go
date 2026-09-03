@@ -31,6 +31,7 @@ type BuildConfig struct {
 	SVCImmediates      []uint16
 	ExclusiveRegions   []vm.ExclusiveRegion
 	FPSIMDInstructions []uint32
+	ExceptionInvokes   []ExceptionInvokeConfig
 }
 
 type Section struct {
@@ -74,6 +75,7 @@ type Image struct {
 	SVCImmediates      []uint16
 	ExclusiveRegions   []vm.ExclusiveRegion
 	FPSIMDInstructions []uint32
+	ExceptionInvokes   []ExceptionInvokeImage
 }
 
 func (image *Image) ValidateOpcodeMap(opcodes vm.OpcodeMap) error {
@@ -162,6 +164,13 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 	if err := os.WriteFile(filepath.Join(tempDir, "vm_fpsimd.S"), fpSIMDAssembly, 0600); err != nil {
 		return nil, fmt.Errorf("write generated runtime FP/SIMD assembly")
 	}
+	invokeAssembly, exceptionInvokes, err := generateExceptionInvokeThunks(cfg.ExceptionInvokes)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "vm_invoke.S"), invokeAssembly, 0600); err != nil {
+		return nil, fmt.Errorf("write generated runtime invoke assembly")
+	}
 
 	cObject := filepath.Join(tempDir, "vm_interp.o")
 	entryObject := filepath.Join(tempDir, "vm_entry.o")
@@ -169,6 +178,7 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 	svcObject := filepath.Join(tempDir, "vm_svc.o")
 	exclusiveObject := filepath.Join(tempDir, "vm_exclusive.o")
 	fpSIMDObject := filepath.Join(tempDir, "vm_fpsimd.o")
+	invokeObject := filepath.Join(tempDir, "vm_invoke.o")
 	outputObject := filepath.Join(tempDir, "runtime.o")
 	common := []string{
 		"-c", "-Os", "-fPIC", "-ffreestanding", "-fno-builtin", "-fno-stack-protector",
@@ -193,7 +203,10 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 	if err := runTool(ctx, clang, "compile runtime FP/SIMD thunks", append(append([]string{}, common...), "-o", fpSIMDObject, filepath.Join(tempDir, "vm_fpsimd.S"))...); err != nil {
 		return nil, err
 	}
-	if err := runTool(ctx, linker, "link relocatable runtime", "-r", "--build-id=none", "-o", outputObject, cObject, entryObject, nativeObject, svcObject, exclusiveObject, fpSIMDObject); err != nil {
+	if err := runTool(ctx, clang, "compile runtime invoke thunks", append(append([]string{}, common...), "-o", invokeObject, filepath.Join(tempDir, "vm_invoke.S"))...); err != nil {
+		return nil, err
+	}
+	if err := runTool(ctx, linker, "link relocatable runtime", "-r", "--build-id=none", "-o", outputObject, cObject, entryObject, nativeObject, svcObject, exclusiveObject, fpSIMDObject, invokeObject); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -207,9 +220,13 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("validate linked runtime object: %w", err)
 	}
+	if err := validateExceptionInvokeImage(image, exceptionInvokes); err != nil {
+		return nil, fmt.Errorf("validate linked exception invoke artifacts: %w", err)
+	}
 	image.SVCImmediates = append([]uint16(nil), svcImmediates...)
 	image.ExclusiveRegions = append([]vm.ExclusiveRegion(nil), exclusiveRegions...)
 	image.FPSIMDInstructions = append([]uint32(nil), fpSIMDInstructions...)
+	image.ExceptionInvokes = append([]ExceptionInvokeImage(nil), exceptionInvokes...)
 	return image, nil
 }
 

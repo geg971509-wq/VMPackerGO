@@ -12,6 +12,7 @@ import (
 
 	"debug/elf"
 
+	"github.com/vmpacker/internal/unwind"
 	"github.com/vmpacker/internal/vm"
 )
 
@@ -166,6 +167,66 @@ func TestGenerateFPSIMDThunksPreservesArchitecturalStateAndFlags(t *testing.T) {
 	}
 }
 
+func testExceptionInvokeConfig() ExceptionInvokeConfig {
+	return ExceptionInvokeConfig{
+		FunctionAddress: 0x1000,
+		Plan: &unwind.ExceptionBridgePlan{
+			Personality: 0x6000, PersonalityEncoding: unwind.PEIndirect | unwind.PEPcrel | unwind.PESdata4,
+			TypeEncoding: unwind.PEOmit,
+			Thunks: []unwind.InvokeThunk{{
+				ID: 0x1234abcd, OriginalPC: 0x1010, OriginalLandingPad: 0x1020,
+				VMCallOffset: 12, VMLandingPad: 44,
+			}},
+		},
+	}
+}
+
+func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T) {
+	cfg := testExceptionInvokeConfig()
+	before := cfg.Plan.Thunks[0]
+	assembly, got, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Thunk.ID != before.ID || got[0].Personality != cfg.Plan.Personality || got[0].LSDA == nil {
+		t.Fatalf("invoke metadata=%+v", got)
+	}
+	after := cfg.Plan.Thunks[0]
+	if after.ID != before.ID || after.OriginalPC != before.OriginalPC || after.OriginalLandingPad != before.OriginalLandingPad || after.VMCallOffset != before.VMCallOffset || after.VMLandingPad != before.VMLandingPad || after.Action != before.Action || len(after.Actions) != len(before.Actions) {
+		t.Fatal("invoke generator mutated input plan")
+	}
+	text := string(assembly)
+	for _, token := range []string{
+		"vm_personality_anchor_0000000000001000", "vm_lsda_invoke_1234abcd", "vm_invoke_1234abcd:",
+		".cfi_personality 0x9b", ".cfi_lsda 0x1b", "bti c", "paciasp", "bl vm_native_call",
+		"stp x0, x1, [x19, #VM_CTX_R]", "autiasp", ".note.gnu.property",
+	} {
+		if !strings.Contains(text, token) {
+			t.Errorf("invoke assembly lacks %q", token)
+		}
+	}
+	wantLSDA, err := unwind.BuildBridgeLSDA(cfg.Plan, before, exceptionInvokeLayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got[0].LSDA.Bytes) != string(wantLSDA.Bytes) || len(got[0].LSDA.Relocations) != len(wantLSDA.Relocations) {
+		t.Fatalf("invoke LSDA=%+v want=%+v", got[0].LSDA, wantLSDA)
+	}
+}
+
+func TestGenerateExceptionInvokeThunksRejectsUnsupportedOrDuplicateIdentity(t *testing.T) {
+	cfg := testExceptionInvokeConfig()
+	cfg.Plan.PersonalityEncoding = unwind.PEAbsptr
+	if _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg}); err == nil {
+		t.Fatal("unsupported personality encoding was accepted")
+	}
+	cfg = testExceptionInvokeConfig()
+	dup := testExceptionInvokeConfig()
+	if _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg, dup}); err == nil {
+		t.Fatal("duplicate invoke identity was accepted")
+	}
+}
+
 func TestBuildInstalledExactR29Object(t *testing.T) {
 	root := os.Getenv("ANDROID_NDK")
 	if root == "" {
@@ -175,9 +236,10 @@ func TestBuildInstalledExactR29Object(t *testing.T) {
 		t.Skip("exact Android NDK r29 is not configured")
 	}
 	image, err := Build(context.Background(), BuildConfig{
-		NDKDir:        root,
-		Opcodes:       vm.IdentityOpcodeMap(),
-		SVCImmediates: []uint16{0x0000, 0x0001, 0xffff},
+		NDKDir:           root,
+		Opcodes:          vm.IdentityOpcodeMap(),
+		SVCImmediates:    []uint16{0x0000, 0x0001, 0xffff},
+		ExceptionInvokes: []ExceptionInvokeConfig{testExceptionInvokeConfig()},
 		ExclusiveRegions: []vm.ExclusiveRegion{
 			vm.NewExclusiveRegion([]uint32{0xc85ffc20, 0x91000400, 0xc802fc20}),
 			vm.NewExclusiveRegion([]uint32{0xc85ffe34, 0x91000694, 0xc813fe34}),
@@ -191,8 +253,17 @@ func TestBuildInstalledExactR29Object(t *testing.T) {
 	if len(image.EHFrame) == 0 || len(image.GNUPropertyNote) == 0 || len(image.Relocations) == 0 {
 		t.Fatalf("incomplete r29 image: eh_frame=%d note=%d relocations=%d", len(image.EHFrame), len(image.GNUPropertyNote), len(image.Relocations))
 	}
-	if len(image.ExclusiveRegions) != 3 || len(image.FPSIMDInstructions) != 6 {
-		t.Fatalf("generated thunks: exclusive=%d fpsimd=%d", len(image.ExclusiveRegions), len(image.FPSIMDInstructions))
+	if len(image.ExclusiveRegions) != 3 || len(image.FPSIMDInstructions) != 6 || len(image.ExceptionInvokes) != 1 {
+		t.Fatalf("generated thunks: exclusive=%d fpsimd=%d invoke=%d", len(image.ExclusiveRegions), len(image.FPSIMDInstructions), len(image.ExceptionInvokes))
+	}
+	foundInvoke := false
+	for _, symbol := range image.Symbols {
+		if symbol.Name == "vm_invoke_1234abcd" {
+			foundInvoke = true
+		}
+	}
+	if !foundInvoke {
+		t.Fatal("exact-r29 runtime lacks generated invoke symbol")
 	}
 }
 
