@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	vmruntime "github.com/vmpacker/internal/runtime"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 type PreparedFunction struct {
@@ -56,6 +56,14 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 		return nil, fmt.Errorf("read symbols for translation preparation: %w", err)
 	}
 
+	packedTailTargets := make(map[uint64]struct{}, len(analysis.Selections))
+	for _, selection := range analysis.Selections {
+		if _, duplicate := packedTailTargets[selection.Address]; duplicate {
+			return nil, fmt.Errorf("selected functions share entry address 0x%x", selection.Address)
+		}
+		packedTailTargets[selection.Address] = struct{}{}
+	}
+
 	preparation := &TranslationPreparation{Functions: make([]PreparedFunction, 0, len(analysis.Selections)), opcodeMapDigest: opcodeMapDigest}
 	svc := make(map[uint16]struct{})
 	exclusive := make(map[uint32]vm.ExclusiveRegion)
@@ -81,8 +89,8 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 			return nil, fmt.Errorf("function %q: create translator: %w", selection.Name, err)
 		}
 		translator.SetDebug(req.Debug)
-		if err := configureOutlinedTailInlines(req.Input, meta, symbols, selection, instructions, translator); err != nil {
-			return nil, fmt.Errorf("function %q outlined-tail preparation: %w", selection.Name, err)
+		if err := configureExternalTailTransfers(req.Input, meta, symbols, selection, instructions, translator, packedTailTargets); err != nil {
+			return nil, fmt.Errorf("function %q external-tail preparation: %w", selection.Name, err)
 		}
 		translation, err := translator.Translate(instructions)
 		if err != nil {
@@ -192,9 +200,6 @@ func (preparation *TranslationPreparation) ValidateRuntimeImage(image *vmruntime
 	if preparation == nil {
 		return fmt.Errorf("translation preparation is required")
 	}
-	if err := preparation.ValidateRuntimeRequirements(); err != nil {
-		return err
-	}
 	if image == nil {
 		return fmt.Errorf("runtime image is required")
 	}
@@ -206,6 +211,9 @@ func (preparation *TranslationPreparation) ValidateRuntimeImage(image *vmruntime
 	}
 	if !slices.Equal(preparation.FPSIMDInstructions, image.FPSIMDInstructions) {
 		return fmt.Errorf("runtime image FP/SIMD requirements mismatch")
+	}
+	if err := preparation.validateRuntimeExceptionInvokes(image); err != nil {
+		return err
 	}
 	return nil
 }

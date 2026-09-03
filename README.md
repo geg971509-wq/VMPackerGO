@@ -15,29 +15,32 @@ VMPacker only increases the cost of reverse analysis. It does not make code impo
 
 ## Development status
 
-This repository is under development and is not a release-ready product. Release gates include API 23+ compatibility, 4 KiB and 16 KiB page-size validation, BTI/PAC behavior, supported-instruction correctness, ELF loader compatibility, and device smoke coverage. The repository must not be described as passing these gates until the checks exist and pass.
+The host-side productization path is implemented and covered by the repository Verification workflow: fail-closed runtime integrity, guarded/bounded runtime resources, explicit ARM64 capability policy, exact-NDK-r29 runtime construction, plan-first ELF rewriting, bounded near/far transformed-entry transfers, structural C++ exception/unwind bridge generation, the exact 85-demo device-case specification, fuzz/resource-budget gates, and evidence-driven release tooling.
 
-See the [product contract](docs/product-contract.md), [development guide](docs/development.md), and [report schema](docs/report-schema-v1.md).
+The project is **still not release-ready**. Release acceptance requires real physical Android evidence across API/page-size/BTI/PAC/ASLR and CPU-feature matrices, baseline-versus-packed execution for all 85 demos, atomic-contention and C++ exception/unwind evidence, Developer ID signing, Apple notarization, and an independent release review. Those external facts are never inferred from host tests or fabricated by the build.
+
+See the [product contract](docs/product-contract.md), [current support matrix](docs/support-matrix.md), [device evidence schema](docs/device-evidence-schema-v1.md), [release process](docs/release-process.md), [remediation audit](docs/remediation-audit-20260903.md), and [report schema](docs/report-schema-v1.md).
 
 ## Development commands
 
 ```sh
 ./build.sh
 make packer
+make verify
+make demo-cases
+make evidence-self-test
 make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
-go list ./...
-go test ./...
-go vet ./cmd/vmpacker ./internal/...
-bash scripts/check-contract.sh
 
 ./build/vmpacker -ndk /path/to/android-ndk-r29 -mode so \
   -func exported_name -abi 'i32(ptr)' -report pack.json \
   -o libdemo.vmp.so libdemo.so
 ```
 
-The root `build.sh` entry point builds the current Git checkout as a macOS ARM64 executable, verifies the Mach-O architecture, and writes `dist/vmpacker-darwin-arm64` plus the identical direct runner `dist/vmpacker`.
+The root `build.sh` builds the current Git checkout as a macOS ARM64 executable, verifies the Mach-O architecture, and writes `dist/vmpacker-darwin-arm64` plus the identical direct runner `dist/vmpacker`.
 
-The fixed interpreter blob has been removed. Each pack attempt creates a per-run opcode map, translates every selected function once, rebuilds and validates a relocatable runtime from embedded source with exact NDK r29, produces an immutable rewrite plan for the current host-supported layout, applies it to a fresh in-memory ELF image, and reparses the result before publication. The plan covers 0x4000-aligned W^X runtime loads, runtime symbol relocations, encrypted bytecode and token descriptors, BTI-preserving entry trampolines, and verified program-header mutations without changing the caller's input or existing section-header table. Successful host transformations report `rewrite-artifact-ready`; writer or final-reparse failures after planning retain `rewrite-plan-ready` and publish no artifact. The development runtime also includes the Phase 5 core semantic fixes and a real-r29-validated Phase 6 host implementation: AAPCS64/native atomics, an exact-r29 `-O0/-O2/-Oz` FP/SIMD corpus whitelist with state-preserving native thunks, continuous closed exclusive-region thunks, and ASLR-correct packed indirect-branch address rebasing. Unwind parsing and the exact 85-demo manifest are also present. Final veneer/unwind integration, physical-device evidence, the full demo/device matrix, and release gates remain open.
+Each pack attempt creates a per-run opcode map, translates selected functions, rebuilds and validates a relocatable AArch64 runtime from embedded source with exact Android NDK `29.0.14206865`, constructs an immutable rewrite plan, applies that plan to a fresh in-memory ELF image, and reparses the result before publication. The runtime uses explicit fail-closed fault classes, a separately mapped guarded shadow stack and dynamically bounded protected-call frames. The plan covers 0x4000-aligned W^X runtime loads, runtime relocations, encrypted bytecode/token descriptors, BTI-aware entry patches, inline `ADRP+ADD+BR` long entry veneers when a direct `B` cannot reach, program-header mutations, and supported GNU unwind-index integration. Generic native external tail branches are rejected rather than approximated as call+return.
+
+The physical-device harnesses under `scripts/` qualify devices, run the exact 85-demo differential matrix and semantic coverage fixtures, merge evidence, and validate it against the exact commit and manifest. Release tooling then validates that evidence before signing/notarizing a tagged macOS ARM64 candidate and creating source/checksum/evidence artifacts; an independent approval remains a separate mandatory gate.
 
 ## License and use
 

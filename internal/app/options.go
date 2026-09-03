@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vmpacker/internal/abi"
-	elfpacker "github.com/vmpacker/internal/elf"
+	"github.com/geg971509-wq/VMPackerGO/internal/abi"
+	elfpacker "github.com/geg971509-wq/VMPackerGO/internal/elf"
 )
 
 const maxInputSize int64 = 1 << 30

@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	"github.com/vmpacker/internal/unwind"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/unwind"
 )
 
 type PreparedExceptionRoute struct {
@@ -30,15 +30,8 @@ func (preparation *TranslationPreparation) ValidateRuntimeRequirements() error {
 	if preparation == nil {
 		return fmt.Errorf("translation preparation is required")
 	}
-	if len(preparation.ExceptionBridges) == 0 {
-		return nil
-	}
-	bridge := preparation.ExceptionBridges[0]
-	thunks := 0
-	if bridge.Plan != nil {
-		thunks = len(bridge.Plan.Thunks)
-	}
-	return fmt.Errorf("function %q requires %d C++ exception landing bridge(s); runtime exception bridge is not integrated", bridge.Selection.Name, thunks)
+	_, err := preparation.RuntimeExceptionInvokes()
+	return err
 }
 
 func prepareExceptionBridges(req Request, functions []PreparedFunction) ([]PreparedExceptionBridge, error) {

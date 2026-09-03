@@ -38,7 +38,10 @@ func TestMRSReadsVMBackedFPStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	system := string(systemBytes)
-	for _, token := range []string{"case 0x5A20", "val = vm->FPCR", "case 0x5A21", "val = vm->FPSR"} {
+	for _, token := range []string{
+		"case 0x5A20", "value = vm->FPCR",
+		"case 0x5A21", "value = vm->FPSR",
+	} {
 		if !strings.Contains(system, token) {
 			t.Fatalf("MRS runtime lacks %q", token)
 		}
@@ -53,13 +56,13 @@ func TestMSRWritesVMBackedSystemState(t *testing.T) {
 	system := string(systemBytes)
 	for _, token := range []string{
 		"static inline u32 h_msr",
-		"s == 0xff ? 0 : vm->R[s & 31]",
+		"source == 0xff ? 0 : vm->R[source & 31]",
 		"case 0x5A10",
-		"vm->FL = (u32)((val >> 28) & 0xFu)",
+		"vm->FL = (u32)((value >> 28) & 0xfu)",
 		"case 0x5A20",
-		"vm->FPCR = (u32)val",
+		"vm->FPCR = (u32)value",
 		"case 0x5A21",
-		"vm->FPSR = (u32)val",
+		"vm->FPSR = (u32)value",
 	} {
 		if !strings.Contains(system, token) {
 			t.Fatalf("MSR runtime lacks %q", token)
@@ -79,7 +82,8 @@ func TestMSRWritesVMBackedSystemState(t *testing.T) {
 		t.Fatal(err)
 	}
 	dispatch := string(dispatchBytes)
-	if !strings.Contains(dispatch, "return h_msr(vm);") || !strings.Contains(dispatch, "tbl[OP_MSR] = hw_msr;") {
+	if !strings.Contains(dispatch, "return h_msr(vm);") ||
+		!strings.Contains(dispatch, "tbl[OP_MSR] = hw_msr;") {
 		t.Fatal("MSR opcode is not wired into runtime dispatch")
 	}
 }
@@ -99,12 +103,18 @@ func TestPackedTailReplacesContextWithoutGrowingCallDepth(t *testing.T) {
 		t.Fatal("packed tail helper body is incomplete")
 	}
 	tailBody := callSource[start : start+end+3]
-	for _, token := range []string{"vm_lookup_packed", "vm_load_func", "old_bc_buf != vm->root_bc_buf", "sys_munmap(old_bc_buf, old_bc_alloc)"} {
+	for _, token := range []string{
+		"vm_lookup_packed", "vm_load_func",
+		"old_bc_buf != vm->root_bc_buf",
+		"sys_munmap(old_bc_buf, old_bc_alloc)",
+	} {
 		if !strings.Contains(tailBody, token) {
 			t.Errorf("packed tail helper lacks %q", token)
 		}
 	}
-	for _, token := range []string{"vm->depth++", "vm->depth--", "vm->R[30] =", "vm_try_packed_call"} {
+	for _, token := range []string{
+		"vm->depth++", "vm->depth--", "vm->R[30] =", "vm_try_packed_call",
+	} {
 		if strings.Contains(tailBody, token) {
 			t.Errorf("packed tail helper changes call semantics via %q", token)
 		}
@@ -129,13 +139,15 @@ func TestPackedTailReplacesContextWithoutGrowingCallDepth(t *testing.T) {
 	}
 	endMarker := strings.Index(systemSource[start:], "static inline u32 h_vld16")
 	if endMarker < 0 {
-		t.Fatal("BR_REG handler is missing")
+		t.Fatal("BR_REG handler is incomplete")
 	}
 	brBody := systemSource[start : start+endMarker]
-	if !strings.Contains(brBody, "vm_try_packed_tail(vm, addr)") || !strings.Contains(brBody, "vm->fault |= VM_FAULT_SYSTEM") {
-		t.Fatal("BR_REG does not use packed-tail replacement with native fail-closed fallback")
+	if !strings.Contains(brBody, "vm_try_packed_tail(vm, address)") ||
+		!strings.Contains(brBody, "vm_fault_set(vm, VM_FAULT_CONTROL)") {
+		t.Fatal("BR_REG does not use transactional packed-tail replacement with native fail-closed fallback")
 	}
-	if strings.Contains(brBody, "vm_native_call") || strings.Contains(brBody, "vm_prepare_native_call") {
+	if strings.Contains(brBody, "vm_native_call") ||
+		strings.Contains(brBody, "vm_prepare_native_call") {
 		t.Fatal("BR_REG still implements native tail as a returning native call")
 	}
 
@@ -143,7 +155,7 @@ func TestPackedTailReplacesContextWithoutGrowingCallDepth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(interpBytes), "vm->bc_buf != bc_buf") {
+	if !strings.Contains(string(interpBytes), "current_bytecode != root_bytecode") {
 		t.Fatal("top-level packed tail buffer is not released separately from the root buffer")
 	}
 }
@@ -154,17 +166,18 @@ func TestTrailerFunctionAddressUsesImageBias(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := string(callBytes)
-	start := strings.Index(source, "static inline void vm_apply_trailer")
+	start := strings.Index(source, "static inline int vm_parse_code")
 	if start < 0 {
-		t.Fatal("vm_apply_trailer body is missing")
+		t.Fatal("transactional bytecode parser is missing")
 	}
-	end := strings.Index(source[start:], "static inline int vm_load_func")
+	end := strings.Index(source[start:], "static inline void vm_install_code")
 	if end < 0 {
-		t.Fatal("vm_apply_trailer body is incomplete")
+		t.Fatal("transactional bytecode parser body is incomplete")
 	}
 	body := source[start : start+end]
-	if !strings.Contains(body, "vm->func_addr = trail_func_addr + vm_file_bias(vm);") {
-		t.Fatal("trailer function address is not rebased from file VA to runtime VA")
+	if !strings.Contains(body, "vm_file_bias(vm, &bias)") ||
+		!strings.Contains(body, "state->func_addr = func_file_va + bias") {
+		t.Fatal("trailer function address is not validated and rebased from file VA to runtime VA")
 	}
 }
 
@@ -180,7 +193,7 @@ func TestReturningNativeBridgeIsNotAcceptedAsTailHandoff(t *testing.T) {
 	}
 	end := strings.Index(assembly[start:], ".size vm_native_call")
 	if end < 0 {
-		t.Fatal("native call bridge is missing")
+		t.Fatal("native call bridge is incomplete")
 	}
 	bridge := assembly[start : start+end]
 	if !strings.Contains(bridge, "blr x20") || !strings.Contains(bridge, "ret") {
@@ -194,7 +207,7 @@ func TestReturningNativeBridgeIsNotAcceptedAsTailHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(systemBytes), "vm_prepare_native_call(vm, addr, 1)") {
+	if strings.Contains(string(systemBytes), "vm_prepare_native_call(vm, address, 1)") {
 		t.Fatal("runtime still routes a tail through the returning native call bridge")
 	}
 }
@@ -232,7 +245,10 @@ func TestAtomicHelperUsesNativeAcquireReleaseAndLSEInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := string(assembly)
-	for _, token := range []string{"vm_atomic_native:", ".arch_extension lse", "ldar x0", "stlr x4", "ldaddal", "casal", ".cfi_startproc"} {
+	for _, token := range []string{
+		"vm_atomic_native:", ".arch_extension lse", "ldar x0", "stlr x4",
+		"ldaddal", "casal", ".cfi_startproc",
+	} {
 		if !strings.Contains(source, token) {
 			t.Errorf("atomic helper lacks %q", token)
 		}

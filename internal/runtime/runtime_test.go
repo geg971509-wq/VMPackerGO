@@ -12,8 +12,8 @@ import (
 
 	"debug/elf"
 
-	"github.com/vmpacker/internal/unwind"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/unwind"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func TestBuildUsesExactNDKToolsAndCleansPrivateExtraction(t *testing.T) {
@@ -170,6 +170,9 @@ func TestGenerateFPSIMDThunksPreservesArchitecturalStateAndFlags(t *testing.T) {
 func testExceptionInvokeConfig() ExceptionInvokeConfig {
 	return ExceptionInvokeConfig{
 		FunctionAddress: 0x1000,
+		Routes: []ExceptionRouteConfig{{
+			ThunkID: 0x1234abcd, FinalVMCallOffset: 64, FinalVMLandingOffset: 32,
+		}},
 		Plan: &unwind.ExceptionBridgePlan{
 			Personality: 0x6000, PersonalityEncoding: unwind.PEIndirect | unwind.PEPcrel | unwind.PESdata4,
 			TypeEncoding: unwind.PEOmit,
@@ -184,7 +187,7 @@ func testExceptionInvokeConfig() ExceptionInvokeConfig {
 func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T) {
 	cfg := testExceptionInvokeConfig()
 	before := cfg.Plan.Thunks[0]
-	assembly, got, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg})
+	_, assembly, got, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,8 +200,8 @@ func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T
 	}
 	text := string(assembly)
 	for _, token := range []string{
-		"vm_personality_anchor_0000000000001000", "vm_lsda_invoke_1234abcd", "vm_invoke_1234abcd:",
-		".cfi_personality 0x9b", ".cfi_lsda 0x1b", "bti c", "paciasp", "bl vm_native_call",
+		"vm_personality_bridge_0000000000001000", "vm_lsda_invoke_1234abcd", "vm_invoke_1234abcd:",
+		".cfi_personality 0x1b", ".cfi_lsda 0x1b", "bti c", "paciasp", "bl vm_native_call",
 		"stp x0, x1, [x19, #VM_CTX_R]", "autiasp", ".note.gnu.property",
 	} {
 		if !strings.Contains(text, token) {
@@ -216,13 +219,13 @@ func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T
 
 func TestGenerateExceptionInvokeThunksRejectsUnsupportedOrDuplicateIdentity(t *testing.T) {
 	cfg := testExceptionInvokeConfig()
-	cfg.Plan.PersonalityEncoding = unwind.PEAbsptr
-	if _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg}); err == nil {
+	cfg.Plan.PersonalityEncoding = unwind.PEDatarel | unwind.PESdata4
+	if _, _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg}); err == nil {
 		t.Fatal("unsupported personality encoding was accepted")
 	}
 	cfg = testExceptionInvokeConfig()
 	dup := testExceptionInvokeConfig()
-	if _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg, dup}); err == nil {
+	if _, _, _, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg, dup}); err == nil {
 		t.Fatal("duplicate invoke identity was accepted")
 	}
 }

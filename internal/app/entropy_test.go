@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func TestSeededEntropyIsLocalAndDeterministic(t *testing.T) {

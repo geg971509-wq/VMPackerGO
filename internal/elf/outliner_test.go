@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func outlinedFixture(helperName string, callerCode []uint32, helperCode []uint32, callerSize uint64, helperSize uint64) elfFixture {

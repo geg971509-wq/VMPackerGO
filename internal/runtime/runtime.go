@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 const (
@@ -164,9 +164,12 @@ func Build(ctx context.Context, cfg BuildConfig) (*Image, error) {
 	if err := os.WriteFile(filepath.Join(tempDir, "vm_fpsimd.S"), fpSIMDAssembly, 0600); err != nil {
 		return nil, fmt.Errorf("write generated runtime FP/SIMD assembly")
 	}
-	invokeAssembly, exceptionInvokes, err := generateExceptionInvokeThunks(cfg.ExceptionInvokes)
+	invokeHeader, invokeAssembly, exceptionInvokes, err := generateExceptionInvokeThunks(cfg.ExceptionInvokes)
 	if err != nil {
 		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "vm_invoke.h"), invokeHeader, 0600); err != nil {
+		return nil, fmt.Errorf("write generated runtime invoke header")
 	}
 	if err := os.WriteFile(filepath.Join(tempDir, "vm_invoke.S"), invokeAssembly, 0600); err != nil {
 		return nil, fmt.Errorf("write generated runtime invoke assembly")

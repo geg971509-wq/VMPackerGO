@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	vmruntime "github.com/vmpacker/internal/runtime"
-	"github.com/vmpacker/internal/vm"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func TestRunBuildsRuntimeFromPreparedTranslationRequirements(t *testing.T) {

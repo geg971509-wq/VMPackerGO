@@ -1,0 +1,2187 @@
+{
+  "entries": [
+    {
+      "functions": [
+        {
+          "name": "__attribute__",
+          "params": "(noinline)) helper_add(uint64_t a, uint64_t b",
+          "return": "uint64_t"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_all_insn",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_alu_reg",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_alu_imm",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_mov",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_load_store",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_load_store_reg",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_branch",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_csel",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_madd_msub",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_bitfield",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_add_sub_ext",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_eon",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_tbz_tbnz",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ccmp_ccmn",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_adrp_adr",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_simd",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_svc",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_flags_reg",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_eor_shifted",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_bl_blr",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_bic_orn",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_smulh_clz_rev",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_adc_sbc",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_barriers",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_atomic",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "check_all_insn",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_prfm",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ldpsw",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ldadd_cas",
+          "params": "void",
+          "return": "uint64_t"
+        }
+      ],
+      "source": "demo/demo_all_insn.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "crc32_calc",
+          "params": "const u8 *data, u32 len",
+          "return": "u32"
+        },
+        {
+          "name": "next_key",
+          "params": "u32 key",
+          "return": "u32"
+        },
+        {
+          "name": "seg_crypt",
+          "params": "u8 *data, u32 len, u32 key",
+          "return": "void"
+        },
+        {
+          "name": "chain_encrypt",
+          "params": "u8 *data, u32 total_len, u32 seg_size, u32 init_key",
+          "return": "void"
+        },
+        {
+          "name": "chain_init",
+          "params": "chain_ctx_t *ctx, u8 *data, u32 total_len, u32 seg_size, u32 init_key",
+          "return": "void"
+        },
+        {
+          "name": "chain_ensure_decrypted",
+          "params": "chain_ctx_t *ctx, u32 idx",
+          "return": "void"
+        },
+        {
+          "name": "chain_read_byte",
+          "params": "chain_ctx_t *ctx, u32 pc",
+          "return": "u8"
+        },
+        {
+          "name": "fill_test_data",
+          "params": "u8 *data, u32 len",
+          "return": "void"
+        },
+        {
+          "name": "verify_chain_read",
+          "params": "chain_ctx_t *ctx, const u8 *original, u32 len",
+          "return": "int"
+        },
+        {
+          "name": "verify_only_one_cleartext",
+          "params": "chain_ctx_t *ctx, const u8 *original",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_chain_crypt",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_chain_crypt.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "crc32_init",
+          "params": "void",
+          "return": "void"
+        },
+        {
+          "name": "crc32_calc",
+          "params": "const unsigned char *data, unsigned int len",
+          "return": "unsigned int"
+        },
+        {
+          "name": "test_normal",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_tamper",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_multi_segment",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_trailer_format",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_crc",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_crc.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "rd16",
+          "params": "const u8 *p",
+          "return": "inline u16"
+        },
+        {
+          "name": "rd32",
+          "params": "const u8 *p",
+          "return": "inline u32"
+        },
+        {
+          "name": "rd64",
+          "params": "const u8 *p",
+          "return": "inline u64"
+        },
+        {
+          "name": "wr32",
+          "params": "u8 *p, u32 v",
+          "return": "inline void"
+        },
+        {
+          "name": "wr64",
+          "params": "u8 *p, u64 v",
+          "return": "inline void"
+        },
+        {
+          "name": "crc32_init",
+          "params": "void",
+          "return": "void"
+        },
+        {
+          "name": "crc32_calc",
+          "params": "const u8 *data, u32 len",
+          "return": "u32"
+        },
+        {
+          "name": "build_buffer",
+          "params": "u8 *buf, int *total_len, u64 stub_va, u32 stub_size",
+          "return": "int"
+        },
+        {
+          "name": "simulate_crc_verify",
+          "params": "u8 *bc_buf, u32 bc_len, int verbose",
+          "return": "int"
+        },
+        {
+          "name": "test_pass",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_bc_tamper",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_stub_patch",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_no_crc_section",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_dual_tamper",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_crc_reject",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_crc_reject.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "h_alu_add",
+          "params": "u32 a, u32 b",
+          "return": "u32"
+        },
+        {
+          "name": "h_mem_load",
+          "params": "u32 a, u32 b",
+          "return": "u32"
+        },
+        {
+          "name": "h_branch_cmp",
+          "params": "u32 a, u32 b",
+          "return": "u32"
+        },
+        {
+          "name": "h_system_xor",
+          "params": "u32 a, u32 b",
+          "return": "u32"
+        },
+        {
+          "name": "_start",
+          "params": "void",
+          "return": "void"
+        }
+      ],
+      "id": "demo_func_split",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_func_split.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "h_halt",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "h_mov_imm32",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "h_add",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "h_sub",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "h_mul",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "h_nop",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "h_unknown",
+          "params": "vm_ctx_t *vm",
+          "return": "u32"
+        },
+        {
+          "name": "init_jump_table",
+          "params": "void",
+          "return": "void"
+        },
+        {
+          "name": "vm_run",
+          "params": "vm_ctx_t *vm",
+          "return": "u64"
+        },
+        {
+          "name": "sys_write",
+          "params": "const char *buf, u64 len",
+          "return": "void"
+        },
+        {
+          "name": "__attribute__",
+          "params": "(noreturn)) sys_exit(int code",
+          "return": "void"
+        },
+        {
+          "name": "_start",
+          "params": "void",
+          "return": "void"
+        }
+      ],
+      "id": "demo_indirect_dispatch",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "h_halt",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "h_mov_imm32",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "h_add",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "h_sub",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "h_mul",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "h_nop",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "h_unknown",
+          "params": "vm_ctx_t *vm",
+          "return": "static u32"
+        },
+        {
+          "name": "init_jump_table",
+          "params": "void",
+          "return": "static void"
+        },
+        {
+          "name": "vm_run",
+          "params": "vm_ctx_t *vm",
+          "return": "static u64"
+        }
+      ],
+      "source": "demo/demo_indirect_dispatch.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_add",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_add",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_add.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "test_add_ext",
+          "params": "uint64_t a, uint64_t b, uint64_t c, uint64_t d",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_add_ext",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_add_ext",
+          "params": "uint64_t a, uint64_t b, uint64_t c, uint64_t d",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_add_ext.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_add_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_add_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_add_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_and",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_and",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_and.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_and_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_and_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_and_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_asr",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_asr",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_asr.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_asr_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_asr_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_asr_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_br_reg",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_br_reg",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_br_reg.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_call_nat",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "ext_add",
+          "params": "int a, int b",
+          "return": "int"
+        },
+        {
+          "name": "check_call_nat",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_call_nat.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_call_reg",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "ext_add1",
+          "params": "int x",
+          "return": "int"
+        },
+        {
+          "name": "check_call_reg",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_call_reg.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_cmp",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_cmp",
+          "params": "int a, int b",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_cmp.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_cmp_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_cmp_imm",
+          "params": "int a",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_cmp_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "__attribute__",
+          "params": "(noinline)) test_eor_shifted(uint32_t a, uint32_t b",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_eor_shifted",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_insn_eor_shifted.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_extr",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_extr_all",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_extr.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_halt",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_halt",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_halt.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ja",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ja",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_ja.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jae",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jae",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jae.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jb",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jb",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jb.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jbe",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jbe",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jbe.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_je",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_je",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_je.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jge",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jge",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jge.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jgt",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jgt",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jgt.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jl",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jl",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jl.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jle",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jle",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jle.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jmp",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jmp",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jmp.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_jne",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_jne",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_jne.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ldr_literal",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_ldr_literal",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_ldr_literal.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ldrh",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ldrh",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_ldrh.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ldrsb",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ldrsb",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_ldrsb.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ldrsh",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ldrsh",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_ldrsh.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ldrsw",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ldrsw",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_ldrsw.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_load32",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_load32",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_load32.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_load64",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_load64",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_load64.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_load8",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_load8",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_load8.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "__attribute__",
+          "params": "(noinline)) test_madd64(long a, long b, long c",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_madd",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_insn_madd.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_mov_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_mov_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_mov_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_mov_imm32",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_mov_imm32",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_mov_imm32.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_mov_reg",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_mov_reg",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_mov_reg.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_msub",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_msub",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_msub.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_mul",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_mul",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_mul.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_mul_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_mul_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_mul_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_nop",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_nop",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_nop.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_not",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_not",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_not.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_or",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_or",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_or.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_or_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_or_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_or_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_pop",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_pop",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_pop.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_push",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_push",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_push.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "test_tbz_tbnz",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ccmp",
+          "params": "uint64_t a, uint64_t b",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ccmn",
+          "params": "uint64_t a, uint64_t b",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_svc",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_remaining",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_tbz_tbnz",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ccmp",
+          "params": "uint64_t a, uint64_t b",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_ccmn",
+          "params": "uint64_t a, uint64_t b",
+          "return": "uint64_t"
+        },
+        {
+          "name": "test_svc",
+          "params": "void",
+          "return": "uint64_t"
+        }
+      ],
+      "source": "demo/demo_insn_remaining.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ret",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ret",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_ret.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ror",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ror",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "check_ror_w_all",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_ror.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_shl",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_shl",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_shl.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_shl_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_shl_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_shl_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_shr",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_shr",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_shr.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_shr_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_shr_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_shr_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_store32",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_store32",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_store32.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_store64",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_store64",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_store64.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_store8",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_store8",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_store8.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "test_strb_pre",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_strb_pre",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_strb_pre",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_strb_pre.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_strh",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_strh",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_strh.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_stur_call",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "helper_add",
+          "params": "int a, int b",
+          "return": "int"
+        },
+        {
+          "name": "helper_mul",
+          "params": "int a, int b",
+          "return": "int"
+        },
+        {
+          "name": "test_stur_neg",
+          "params": "unsigned char *buf, int len",
+          "return": "void"
+        },
+        {
+          "name": "test_call_stur",
+          "params": "int x",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_stur_call.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_sub",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_sub",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_sub.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_sub_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_sub_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_sub_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_ubfm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_ubfm",
+          "params": "void",
+          "return": "int64_t"
+        },
+        {
+          "name": "check_ubfm2",
+          "params": "void",
+          "return": "int64_t"
+        },
+        {
+          "name": "check_ubfm3",
+          "params": "void",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_insn_ubfm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "test_umulh",
+          "params": "uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e",
+          "return": "uint64_t"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_umulh",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_umulh",
+          "params": "uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e",
+          "return": "uint64_t"
+        }
+      ],
+      "source": "demo/demo_insn_umulh.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_vld16",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_vld16",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_vld16.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_vst16",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_vst16",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_vst16.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_xor",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_xor",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_xor.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_insn_xor_imm",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "check_xor_imm",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_insn_xor_imm.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_ldadd_basic",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_ldadd_basic",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_cas_basic",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_ldadd_basic.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_ldr_reg",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "my_crc32",
+          "params": "const uint8_t *data, uint32_t len",
+          "return": "uint32_t"
+        }
+      ],
+      "source": "demo/demo_ldr_reg.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "check_license",
+          "params": "const char *key",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "int argc, char *argv[]",
+          "return": "int"
+        }
+      ],
+      "id": "demo_license",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_license.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "crc32_init",
+          "params": "void",
+          "return": "void"
+        },
+        {
+          "name": "crc32_calc",
+          "params": "const unsigned char *data, unsigned int len",
+          "return": "unsigned int"
+        },
+        {
+          "name": "test_memcrc_normal",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_memcrc_patch",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_self_locate",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_dual_crc",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "test_fail_abort",
+          "params": "void",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_memcrc",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_func_to_check",
+          "params": "unsigned int a, unsigned int b",
+          "return": "static unsigned int"
+        }
+      ],
+      "source": "demo/demo_memcrc.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "my_timing_checkpoint",
+          "params": "void",
+          "return": "uint64_t"
+        },
+        {
+          "name": "my_timing_check",
+          "params": "uint64_t t_start, uint64_t t_end, uint32_t threshold_us",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_mrs_udiv",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_mrs_udiv.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "my_write",
+          "params": "int fd, const void *buf, long count",
+          "return": "long"
+        },
+        {
+          "name": "my_exit",
+          "params": "int code",
+          "return": "void"
+        },
+        {
+          "name": "rotl32",
+          "params": "u32 v, int n",
+          "return": "u32"
+        },
+        {
+          "name": "my_decrypt",
+          "params": "u32 *key, u32 *addr, u32 *size, u32 *hash",
+          "return": "void"
+        },
+        {
+          "name": "print_hex",
+          "params": "u32 v",
+          "return": "void"
+        },
+        {
+          "name": "print_str",
+          "params": "const char *s",
+          "return": "void"
+        },
+        {
+          "name": "_start",
+          "params": "void",
+          "return": "void"
+        }
+      ],
+      "id": "demo_ror32",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "my_test",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "source": "demo/demo_ror32.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_sdiv_ldst",
+      "language": "c",
+      "noinline_functions": [
+        {
+          "name": "test_sdiv",
+          "params": "int64_t a, int64_t b",
+          "return": "int64_t"
+        },
+        {
+          "name": "test_sdiv_w",
+          "params": "int32_t a, int32_t b",
+          "return": "int32_t"
+        },
+        {
+          "name": "test_ldrh_reg",
+          "params": "uint16_t *arr, int64_t idx",
+          "return": "uint16_t"
+        },
+        {
+          "name": "test_strh_reg",
+          "params": "uint16_t *arr, int64_t idx, uint16_t val",
+          "return": "void"
+        },
+        {
+          "name": "test_ldrsb_reg",
+          "params": "int8_t *arr, int64_t idx",
+          "return": "int64_t"
+        },
+        {
+          "name": "test_ldrsh_reg",
+          "params": "int16_t *arr, int64_t idx",
+          "return": "int64_t"
+        },
+        {
+          "name": "test_ldrsw_reg",
+          "params": "int32_t *arr, int64_t idx",
+          "return": "int64_t"
+        },
+        {
+          "name": "test_ldurh",
+          "params": "uint16_t *p",
+          "return": "uint16_t"
+        },
+        {
+          "name": "test_sturh",
+          "params": "uint16_t *p, uint16_t val",
+          "return": "void"
+        },
+        {
+          "name": "test_ldursb",
+          "params": "int8_t *p",
+          "return": "int64_t"
+        },
+        {
+          "name": "test_ldursh",
+          "params": "int16_t *p",
+          "return": "int64_t"
+        },
+        {
+          "name": "test_ldursw",
+          "params": "int32_t *p",
+          "return": "int64_t"
+        }
+      ],
+      "source": "demo/demo_sdiv_ldst.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "check_simple",
+          "params": "int a",
+          "return": "int"
+        },
+        {
+          "name": "_start",
+          "params": "void",
+          "return": "void"
+        }
+      ],
+      "id": "demo_simple",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_simple.c"
+    },
+    {
+      "functions": [
+        {
+          "name": "test_roundtrip",
+          "params": "uint32_t func_id, uint32_t bc_offset, uint32_t xor_key",
+          "return": "int"
+        },
+        {
+          "name": "main",
+          "params": "void",
+          "return": "int"
+        }
+      ],
+      "id": "demo_token_entry",
+      "language": "c",
+      "noinline_functions": [],
+      "source": "demo/demo_token_entry.c"
+    },
+    {
+      "id": "demo_go_test",
+      "language": "go",
+      "source": "demo/demo_go_test/main.go"
+    },
+    {
+      "id": "demo_rust_test",
+      "language": "rust",
+      "source": "demo/demo_rust_test/src/main.rs"
+    }
+  ],
+  "schema_version": 1
+}

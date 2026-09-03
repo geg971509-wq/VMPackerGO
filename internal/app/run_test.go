@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	elfpacker "github.com/vmpacker/internal/elf"
+	elfpacker "github.com/geg971509-wq/VMPackerGO/internal/elf"
 )
 
 func TestRunVersion(t *testing.T) {

@@ -3,7 +3,7 @@ package arm64
 import (
 	"fmt"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 // ============================================================

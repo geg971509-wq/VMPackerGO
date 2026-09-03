@@ -1,6 +1,6 @@
 package arm64
 
-import "github.com/vmpacker/internal/vm"
+import "github.com/geg971509-wq/VMPackerGO/internal/vm"
 
 // ============================================================
 // 分支 / 异常 / 系统 模式表

@@ -1,13 +1,6 @@
 /*
- * h_stack_ops.h — 栈机器操作 handler
- *
- * 纯栈机器指令集。所有操作数通过 eval_stk[] 操作栈传递，
- * 彻底消除寄存器冲突问题。
- *
- * 栈操作宏:
- *   SPUSH(val): push val 到操作栈
- *   SPOP():     pop 操作栈顶并返回值
- *   SPEEK():    读操作栈顶但不 pop
+ * h_stack_ops.h — stack-machine handlers with explicit overflow/underflow
+ * faults. No stack failure is converted into a normal zero operand.
  */
 #ifndef H_STACK_OPS_H
 #define H_STACK_OPS_H
@@ -15,47 +8,53 @@
 #include "../vm_decode.h"
 #include "../vm_types.h"
 
-/* ---- 操作栈宏 (带边界检查) ---- */
-#define SPUSH(vm, val)                                                         \
-  do {                                                                         \
-    if (__builtin_expect((vm)->eval_sp < VM_EVAL_STACK_SIZE - 1, 1))           \
-      (vm)->eval_stk[++(vm)->eval_sp] = (u64)(val);                            \
-  } while (0)
-#define SPOP(vm)                                                               \
-  (__builtin_expect((vm)->eval_sp >= 0, 1) ? (vm)->eval_stk[(vm)->eval_sp--]   \
-                                           : 0)
-#define SPEEK(vm)                                                              \
-  (__builtin_expect((vm)->eval_sp >= 0, 1) ? (vm)->eval_stk[(vm)->eval_sp] : 0)
+static inline void vm_eval_push(vm_ctx_t *vm, u64 value) {
+  if (__builtin_expect(vm->eval_sp >= VM_EVAL_STACK_SIZE - 1, 0)) {
+    vm_fault_set(vm, VM_FAULT_EVAL_STACK);
+    return;
+  }
+  vm->eval_stk[++vm->eval_sp] = value;
+}
 
-/* ================================================================
- * 栈 ↔ 寄存器传输
- * ================================================================ */
+static inline u64 vm_eval_pop(vm_ctx_t *vm) {
+  if (__builtin_expect(vm->eval_sp < 0, 0)) {
+    vm_fault_set(vm, VM_FAULT_EVAL_STACK);
+    return 0;
+  }
+  return vm->eval_stk[vm->eval_sp--];
+}
 
-/* VLOAD r: push R[r] → 操作栈 */
+static inline u64 vm_eval_peek(vm_ctx_t *vm) {
+  if (__builtin_expect(vm->eval_sp < 0, 0)) {
+    vm_fault_set(vm, VM_FAULT_EVAL_STACK);
+    return 0;
+  }
+  return vm->eval_stk[vm->eval_sp];
+}
+
+#define SPUSH(vm, value) vm_eval_push((vm), (u64)(value))
+#define SPOP(vm) vm_eval_pop((vm))
+#define SPEEK(vm) vm_eval_peek((vm))
+
 static inline u32 h_s_vload(vm_ctx_t *vm) {
   u8 r = vm->bc[vm->pc + 1];
   SPUSH(vm, vm->R[r & 31]);
   return 2;
 }
 
-/* VSTORE r: pop → R[r] */
 static inline u32 h_s_vstore(vm_ctx_t *vm) {
   u8 r = vm->bc[vm->pc + 1];
   vm->R[r & 31] = SPOP(vm);
   return 2;
 }
 
-/* PUSH_IMM32: push 32-bit immediate */
 static inline u32 h_s_push_imm32(vm_ctx_t *vm) {
-  u32 imm = rd32(&vm->bc[vm->pc + 1]);
-  SPUSH(vm, (u64)imm);
+  SPUSH(vm, rd32(&vm->bc[vm->pc + 1]));
   return 5;
 }
 
-/* PUSH_IMM64: push 64-bit immediate */
 static inline u32 h_s_push_imm64(vm_ctx_t *vm) {
-  u64 imm = rd64(&vm->bc[vm->pc + 1]);
-  SPUSH(vm, imm);
+  SPUSH(vm, rd64(&vm->bc[vm->pc + 1]));
   return 9;
 }
 
@@ -65,18 +64,12 @@ static inline u32 h_s_push_image(vm_ctx_t *vm) {
   return 9;
 }
 
-/* ================================================================
- * 栈控制
- * ================================================================ */
-
-/* DUP: 复制栈顶 */
 static inline u32 h_s_dup(vm_ctx_t *vm) {
-  u64 v = SPEEK(vm);
-  SPUSH(vm, v);
+  u64 value = SPEEK(vm);
+  SPUSH(vm, value);
   return 1;
 }
 
-/* SWAP: 交换栈顶两元素 */
 static inline u32 h_s_swap(vm_ctx_t *vm) {
   u64 a = SPOP(vm);
   u64 b = SPOP(vm);
@@ -85,15 +78,10 @@ static inline u32 h_s_swap(vm_ctx_t *vm) {
   return 1;
 }
 
-/* DROP: 丢弃栈顶 */
 static inline u32 h_s_drop(vm_ctx_t *vm) {
-  SPOP(vm);
+  (void)SPOP(vm);
   return 1;
 }
-
-/* ================================================================
- * 栈 ALU — 二元操作: pop b, pop a, push result
- * ================================================================ */
 
 static inline u32 h_s_add(vm_ctx_t *vm) {
   u64 b = SPOP(vm), a = SPOP(vm);
@@ -150,31 +138,37 @@ static inline u32 h_s_asr(vm_ctx_t *vm) {
 }
 
 static inline u32 h_s_ror(vm_ctx_t *vm) {
-  u64 bits = SPOP(vm);       // 先 pop 位数标记 (32或64)
-  u64 shift = SPOP(vm);      // 先 pop 移位量
-  u64 val = SPOP(vm);        // 再 pop 要旋转的值
-
-  shift &= (bits - 1);
-  // val &= 0xFFFFFFFF;
-  if (shift == 0) {
-      SPUSH(vm, val);
-  } else {
-      SPUSH(vm, (val >> shift) | (val << (bits - shift)));
+  u64 bits = SPOP(vm);
+  u64 shift = SPOP(vm);
+  u64 value = SPOP(vm);
+  if (vm->fault)
+    return 1;
+  if (bits != 32 && bits != 64) {
+    vm_fault_set(vm, VM_FAULT_BYTECODE);
+    return 1;
   }
+  shift &= bits - 1;
+  if (bits == 32)
+    value &= 0xFFFFFFFFULL;
+  if (shift != 0)
+    value = (value >> shift) | (value << (bits - shift));
+  if (bits == 32)
+    value &= 0xFFFFFFFFULL;
+  SPUSH(vm, value);
   return 1;
 }
 
 static inline u32 h_s_umulh(vm_ctx_t *vm) {
   u64 b = SPOP(vm), a = SPOP(vm);
-  __uint128_t r = (__uint128_t)a * (__uint128_t)b;
-  SPUSH(vm, (u64)(r >> 64));
+  __uint128_t result = (__uint128_t)a * (__uint128_t)b;
+  SPUSH(vm, (u64)(result >> 64));
   return 1;
 }
 
 static inline u32 h_s_smulh(vm_ctx_t *vm) {
   u64 b = SPOP(vm), a = SPOP(vm);
-  __int128 r = (__int128)(i64)a * (__int128)(i64)b;
-  SPUSH(vm, (u64)((unsigned __int128)r >> 64));
+  __int128 result = (__int128)(i64)a * (__int128)(i64)b;
+  SPUSH(vm, (u64)((unsigned __int128)result >> 64));
   return 1;
 }
 
@@ -186,8 +180,7 @@ static inline u32 h_s_udiv(vm_ctx_t *vm) {
 
 static inline u32 h_s_sdiv(vm_ctx_t *vm) {
   u64 b = SPOP(vm), a = SPOP(vm);
-  i64 divisor = (i64)b;
-  SPUSH(vm, divisor == 0 ? 0 : (u64)((i64)a / divisor));
+  SPUSH(vm, vm_sdiv64(a, b));
   return 1;
 }
 
@@ -205,7 +198,6 @@ static inline u32 h_s_sbc(vm_ctx_t *vm) {
   return 1;
 }
 
-/* Width-aware flag-setting arithmetic. The byte after the opcode is sf. */
 static inline u32 h_s_add_flags(vm_ctx_t *vm) {
   u8 sf = vm->bc[vm->pc + 1] & 1u;
   u64 b = SPOP(vm), a = SPOP(vm);
@@ -224,7 +216,7 @@ static inline u32 h_s_and_flags(vm_ctx_t *vm) {
   u8 sf = vm->bc[vm->pc + 1] & 1u;
   u64 b = SPOP(vm), a = SPOP(vm);
   u64 result = (a & b) & vm_width_mask(sf);
-  vm_set_nz(vm, result, sf); /* Logical flag setters clear C and V. */
+  vm_set_nz(vm, result, sf);
   SPUSH(vm, result);
   return 2;
 }
@@ -245,40 +237,36 @@ static inline u32 h_s_sbc_flags(vm_ctx_t *vm) {
   return 2;
 }
 
-/* ================================================================
- * 栈 ALU — 一元操作: pop a, push result
- * ================================================================ */
-
 static inline u32 h_s_not(vm_ctx_t *vm) {
   SPUSH(vm, ~SPOP(vm));
   return 1;
 }
 
 static inline u32 h_s_clz(vm_ctx_t *vm) {
-  u64 v = SPOP(vm);
-  SPUSH(vm, v == 0 ? 64 : (u64)__builtin_clzll(v));
+  u64 value = SPOP(vm);
+  SPUSH(vm, value == 0 ? 64 : (u64)__builtin_clzll(value));
   return 1;
 }
 
 static inline u32 h_s_cls(vm_ctx_t *vm) {
-  u64 v = SPOP(vm);
-  if (v == 0 || v == ~(u64)0) {
+  u64 value = SPOP(vm);
+  if (value == 0 || value == ~(u64)0) {
     SPUSH(vm, 63);
   } else {
-    u64 x = v ^ (v >> 1);
-    SPUSH(vm, (u64)__builtin_clzll(x) - 1);
+    u64 transitions = value ^ (u64)((i64)value >> 1);
+    SPUSH(vm, (u64)__builtin_clzll(transitions) - 1);
   }
   return 1;
 }
 
 static inline u32 h_s_rbit(vm_ctx_t *vm) {
-  u64 v = SPOP(vm);
-  u64 r = 0;
+  u64 value = SPOP(vm);
+  u64 result = 0;
   for (int i = 0; i < 64; i++) {
-    r = (r << 1) | (v & 1);
-    v >>= 1;
+    result = (result << 1) | (value & 1);
+    value >>= 1;
   }
-  SPUSH(vm, r);
+  SPUSH(vm, result);
   return 1;
 }
 
@@ -288,22 +276,22 @@ static inline u32 h_s_rev(vm_ctx_t *vm) {
 }
 
 static inline u32 h_s_rev16(vm_ctx_t *vm) {
-  u64 v = SPOP(vm);
-  u64 r = 0;
+  u64 value = SPOP(vm);
+  u64 result = 0;
   for (int i = 0; i < 4; i++) {
-    u16 hw = (u16)(v >> (i * 16));
-    hw = (u16)((hw >> 8) | (hw << 8));
-    r |= (u64)hw << (i * 16);
+    u16 half = (u16)(value >> (i * 16));
+    half = (u16)((half >> 8) | (half << 8));
+    result |= (u64)half << (i * 16);
   }
-  SPUSH(vm, r);
+  SPUSH(vm, result);
   return 1;
 }
 
 static inline u32 h_s_rev32(vm_ctx_t *vm) {
-  u64 v = SPOP(vm);
-  u32 lo = __builtin_bswap32((u32)v);
-  u32 hi = __builtin_bswap32((u32)(v >> 32));
-  SPUSH(vm, ((u64)hi << 32) | (u64)lo);
+  u64 value = SPOP(vm);
+  u32 lo = __builtin_bswap32((u32)value);
+  u32 hi = __builtin_bswap32((u32)(value >> 32));
+  SPUSH(vm, ((u64)hi << 32) | lo);
   return 1;
 }
 
@@ -313,78 +301,79 @@ static inline u32 h_s_trunc32(vm_ctx_t *vm) {
 }
 
 static inline u32 h_s_sext32(vm_ctx_t *vm) {
-  u64 v = SPOP(vm);
-  SPUSH(vm, (u64)(i64)(i32)(u32)v);
+  u64 value = SPOP(vm);
+  SPUSH(vm, (u64)(i64)(i32)(u32)value);
   return 1;
 }
 
-/* ================================================================
- * 栈比较
- * ================================================================ */
-
-/* VCMP: pop b, pop a → set flags(a - b) */
 static inline u32 h_s_cmp(vm_ctx_t *vm) {
   u64 b = SPOP(vm), a = SPOP(vm);
   (void)vm_sub_flags(vm, a, b, 1, 1);
   return 1;
 }
 
-/* ================================================================
- * 栈内存访问
- * ================================================================ */
-
-/* LD8: pop addr → push *(u8*)addr */
 static inline u32 h_s_ld8(vm_ctx_t *vm) {
-  u64 addr = SPOP(vm);
-  SPUSH(vm, *(u8 *)addr);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    SPUSH(vm, *(u8 *)address);
   return 1;
 }
 
 static inline u32 h_s_ld16(vm_ctx_t *vm) {
-  u64 addr = SPOP(vm);
-  SPUSH(vm, *(u16 *)addr);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    SPUSH(vm, *(u16 *)address);
   return 1;
 }
 
 static inline u32 h_s_ld32(vm_ctx_t *vm) {
-  u64 addr = SPOP(vm);
-  SPUSH(vm, *(u32 *)addr);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    SPUSH(vm, *(u32 *)address);
   return 1;
 }
 
 static inline u32 h_s_ld64(vm_ctx_t *vm) {
-  u64 addr = SPOP(vm);
-  SPUSH(vm, *(u64 *)addr);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    SPUSH(vm, *(u64 *)address);
   return 1;
 }
 
-/* ST8: pop val, pop addr → *(u8*)addr = val */
 static inline u32 h_s_st8(vm_ctx_t *vm) {
-  u64 val = SPOP(vm);
-  u64 addr = SPOP(vm);
-  *(u8 *)addr = (u8)val;
+  u64 value = SPOP(vm);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    *(u8 *)address = (u8)value;
   return 1;
 }
 
 static inline u32 h_s_st16(vm_ctx_t *vm) {
-  u64 val = SPOP(vm);
-  u64 addr = SPOP(vm);
-  *(u16 *)addr = (u16)val;
+  u64 value = SPOP(vm);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    *(u16 *)address = (u16)value;
   return 1;
 }
 
 static inline u32 h_s_st32(vm_ctx_t *vm) {
-  u64 val = SPOP(vm);
-  u64 addr = SPOP(vm);
-  *(u32 *)addr = (u32)val;
+  u64 value = SPOP(vm);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    *(u32 *)address = (u32)value;
   return 1;
 }
 
 static inline u32 h_s_st64(vm_ctx_t *vm) {
-  u64 val = SPOP(vm);
-  u64 addr = SPOP(vm);
-  *(u64 *)addr = val;
+  u64 value = SPOP(vm);
+  u64 address = SPOP(vm);
+  if (!vm->fault)
+    *(u64 *)address = value;
   return 1;
 }
+
+#undef SPUSH
+#undef SPOP
+#undef SPEEK
 
 #endif /* H_STACK_OPS_H */

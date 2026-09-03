@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []byte, normalized []vm.ExclusiveRegion, err error) {

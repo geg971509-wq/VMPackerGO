@@ -15,27 +15,32 @@ VMPacker 只能提高逆向分析成本，不能让代码变得无法检查、�
 
 ## 开发状态
 
-本仓库仍处于开发阶段，不是可发布产品。发布门槛包括 API 23+ 兼容性、4 KiB 与 16 KiB 页面验证、BTI/PAC 行为、受支持指令的正确性、ELF 加载器兼容性以及真机 smoke 覆盖。在相关检查建立并通过前，不得声称仓库已经通过这些门槛。
+宿主侧产品化链路已经实现，并由仓库 Verification 工作流覆盖：fail-closed 运行时错误语义、带 guard 的受限运行时资源、显式 ARM64 能力策略、准确 NDK r29 runtime 构建、plan-first ELF 重写、受限的近/远入口跳转、结构化 C++ exception/unwind bridge、精确 85-demo 设备 case 规格、fuzz/资源预算门，以及证据驱动的发行工具。
 
-请参阅[产品契约](docs/product-contract.md)、[开发指南](docs/development.md)和[报告格式](docs/report-schema-v1.md)。
+项目**仍然不是 release-ready**。正式发行仍需要真实物理 Android 设备上的 API/页面大小/BTI/PAC/ASLR/CPU 特征矩阵证据，85 个 demo 的 baseline-versus-packed 对比执行，原子竞争与 C++ exception/unwind 真机证据，Developer ID 签名、Apple 公证，以及独立发行审核。这些外部事实不会由宿主测试推断，也不会由构建脚本伪造。
+
+请参阅[产品契约](docs/product-contract.md)、[当前支持矩阵](docs/support-matrix.md)、[设备证据格式](docs/device-evidence-schema-v1.md)、[发行流程](docs/release-process.md)、[修复审计](docs/remediation-audit-20260903.md)和[报告格式](docs/report-schema-v1.md)。
 
 ## 开发命令
 
 ```sh
 ./build.sh
 make packer
+make verify
+make demo-cases
+make evidence-self-test
 make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
-go list ./...
-go test ./...
-go vet ./cmd/vmpacker ./internal/...
-bash scripts/check-contract.sh
 
 ./build/vmpacker -ndk /path/to/android-ndk-r29 -mode so \
   -func exported_name -abi 'i32(ptr)' -report pack.json \
   -o libdemo.vmp.so libdemo.so
 ```
 
-固定解释器 blob 已移除。每次打包尝试都会创建本次运行专用的 opcode map，只翻译每个选中函数一次，使用准确版本的 NDK r29 从内嵌源码重新构建并验证可重定位 runtime，为当前主机端支持的布局生成不可变 rewrite plan，将计划应用到新的内存 ELF 映像，并在发布前重新解析验证结果。该计划覆盖 0x4000 对齐且遵守 W^X 的 runtime load、runtime 符号重定位、加密字节码与 token 描述符、保留 BTI 的入口 trampoline，以及经过验证的 program-header 变更，同时保持调用方输入和原有 section-header 表不变。主机端转换成功时报告 `rewrite-artifact-ready`；计划完成后的 writer 或最终重解析失败仍保留 `rewrite-plan-ready`，且不发布制品。开发运行时还包含 Phase 5 核心语义修复，以及通过真实 r29 验证的 Phase 6 宿主实现：AAPCS64/原生原子操作、由 exact-r29 `-O0/-O2/-Oz` 语料约束并以原生 thunk 保存完整状态的 FP/SIMD 白名单、连续闭合独占区 thunk，以及 ASLR 正确的 packed 间接跳转地址重定位。展开信息解析和精确的 85-demo 清单也已加入。最终 veneer/unwind 集成、真机证据、完整 demo/设备矩阵和发布门仍未关闭。
+根目录 `build.sh` 会把当前 Git checkout 构建成 macOS ARM64 可执行文件，验证 Mach-O 架构，并生成 `dist/vmpacker-darwin-arm64` 及内容相同的直接运行文件 `dist/vmpacker`。
+
+每次打包都会创建本次运行专用的 opcode map，翻译选中的函数，使用准确 Android NDK `29.0.14206865` 从内嵌源码重新构建并验证 AArch64 可重定位 runtime，生成不可变 rewrite plan，再把计划应用到新的内存 ELF 映像并在发布前重新解析。运行时使用显式 fail-closed fault、独立映射且带 guard 的 shadow stack，以及动态受限的 protected-call frame。rewrite plan 覆盖 0x4000 对齐且遵守 W^X 的 runtime load、runtime relocation、加密字节码/token 描述符、BTI 感知入口 patch、直接 `B` 无法到达时的内联 `ADRP+ADD+BR` long-entry veneer、program-header 变更，以及受支持的 GNU unwind index 集成。通用 native external tail branch 不做 call+return 近似，而是确定性拒绝。
+
+`scripts/` 下的物理设备工具负责设备资格检查、精确 85-demo differential matrix、专项语义 fixture、证据合并以及按准确 commit/manifest 校验证据。发行工具只在设备证据通过后处理带 tag 的 macOS ARM64 候选制品、Developer ID 签名、公证、源码/校验和/证据文件；独立审核仍是单独的强制门。
 
 ## 许可证与使用
 

@@ -1,0 +1,1443 @@
+{
+  "entries": [
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "lse"
+      ],
+      "id": "demo_all_insn",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u64()",
+          "name": "test_alu_reg"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_alu_imm"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_mov"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_load_store"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_load_store_reg"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_branch"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_csel"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_madd_msub"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_bitfield"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_add_sub_ext"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_eon"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_tbz_tbnz"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_ccmp_ccmn"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_adrp_adr"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_simd"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_svc"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_flags_reg"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_eor_shifted"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_bl_blr"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_bic_orn"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_smulh_clz_rev"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_adc_sbc"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_barriers"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_atomic"
+        },
+        {
+          "abi": "i32()",
+          "name": "check_all_insn"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_prfm"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_ldpsw"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_ldadd_cas"
+        }
+      ],
+      "source": "demo/demo_all_insn.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "crc"
+      ],
+      "id": "demo_chain_crypt",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_chain_crypt.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "crc"
+      ],
+      "id": "demo_crc",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_crc.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_crc_reject",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_crc_reject.c"
+    },
+    {
+      "build_profile": "c-freestanding",
+      "features": [],
+      "id": "demo_func_split",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "void()",
+          "name": "_start"
+        }
+      ],
+      "source": "demo/demo_func_split.c"
+    },
+    {
+      "build_profile": "c-freestanding",
+      "features": [],
+      "id": "demo_indirect_dispatch",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u32(ptr)",
+          "name": "h_halt"
+        },
+        {
+          "abi": "u32(ptr)",
+          "name": "h_mov_imm32"
+        },
+        {
+          "abi": "u32(ptr)",
+          "name": "h_add"
+        },
+        {
+          "abi": "u32(ptr)",
+          "name": "h_sub"
+        },
+        {
+          "abi": "u32(ptr)",
+          "name": "h_mul"
+        },
+        {
+          "abi": "u32(ptr)",
+          "name": "h_nop"
+        },
+        {
+          "abi": "u32(ptr)",
+          "name": "h_unknown"
+        },
+        {
+          "abi": "void()",
+          "name": "init_jump_table"
+        },
+        {
+          "abi": "u64(ptr)",
+          "name": "vm_run"
+        }
+      ],
+      "source": "demo/demo_indirect_dispatch.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_add",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_add"
+        }
+      ],
+      "source": "demo/demo_insn_add.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_add_ext",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(u64,u64,u64,u64)",
+          "name": "test_add_ext"
+        }
+      ],
+      "source": "demo/demo_insn_add_ext.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_add_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_add_imm"
+        }
+      ],
+      "source": "demo/demo_insn_add_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_and",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_and"
+        }
+      ],
+      "source": "demo/demo_insn_and.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_and_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_and_imm"
+        }
+      ],
+      "source": "demo/demo_insn_and_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_asr",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_asr"
+        }
+      ],
+      "source": "demo/demo_insn_asr.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_asr_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_asr_imm"
+        }
+      ],
+      "source": "demo/demo_insn_asr_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_br_reg",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_br_reg"
+        }
+      ],
+      "source": "demo/demo_insn_br_reg.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_call_nat",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32,i32)",
+          "name": "ext_add"
+        },
+        {
+          "abi": "i32(i32)",
+          "name": "check_call_nat"
+        }
+      ],
+      "source": "demo/demo_insn_call_nat.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_call_reg",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "ext_add1"
+        },
+        {
+          "abi": "i32(i32)",
+          "name": "check_call_reg"
+        }
+      ],
+      "source": "demo/demo_insn_call_reg.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_cmp",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32,i32)",
+          "name": "check_cmp"
+        }
+      ],
+      "source": "demo/demo_insn_cmp.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_cmp_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_cmp_imm"
+        }
+      ],
+      "source": "demo/demo_insn_cmp_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "crc"
+      ],
+      "id": "demo_insn_eor_shifted",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_insn_eor_shifted.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_extr",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_extr_all"
+        }
+      ],
+      "source": "demo/demo_insn_extr.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_halt",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_halt"
+        }
+      ],
+      "source": "demo/demo_insn_halt.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ja",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_ja"
+        }
+      ],
+      "source": "demo/demo_insn_ja.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jae",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jae"
+        }
+      ],
+      "source": "demo/demo_insn_jae.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jb",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jb"
+        }
+      ],
+      "source": "demo/demo_insn_jb.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jbe",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jbe"
+        }
+      ],
+      "source": "demo/demo_insn_jbe.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_je",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_je"
+        }
+      ],
+      "source": "demo/demo_insn_je.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jge",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jge"
+        }
+      ],
+      "source": "demo/demo_insn_jge.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jgt",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jgt"
+        }
+      ],
+      "source": "demo/demo_insn_jgt.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jl",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jl"
+        }
+      ],
+      "source": "demo/demo_insn_jl.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jle",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jle"
+        }
+      ],
+      "source": "demo/demo_insn_jle.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jmp",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jmp"
+        }
+      ],
+      "source": "demo/demo_insn_jmp.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_jne",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_jne"
+        }
+      ],
+      "source": "demo/demo_insn_jne.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ldr_literal",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "test_ldr_literal"
+        }
+      ],
+      "source": "demo/demo_insn_ldr_literal.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ldrh",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_ldrh"
+        }
+      ],
+      "source": "demo/demo_insn_ldrh.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ldrsb",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_ldrsb"
+        }
+      ],
+      "source": "demo/demo_insn_ldrsb.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ldrsh",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_ldrsh"
+        }
+      ],
+      "source": "demo/demo_insn_ldrsh.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ldrsw",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_ldrsw"
+        }
+      ],
+      "source": "demo/demo_insn_ldrsw.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_load32",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_load32"
+        }
+      ],
+      "source": "demo/demo_insn_load32.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_load64",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_load64"
+        }
+      ],
+      "source": "demo/demo_insn_load64.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_load8",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_load8"
+        }
+      ],
+      "source": "demo/demo_insn_load8.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "lse"
+      ],
+      "id": "demo_insn_madd",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_insn_madd.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_mov_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_mov_imm"
+        }
+      ],
+      "source": "demo/demo_insn_mov_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_mov_imm32",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_mov_imm32"
+        }
+      ],
+      "source": "demo/demo_insn_mov_imm32.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_mov_reg",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_mov_reg"
+        }
+      ],
+      "source": "demo/demo_insn_mov_reg.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_msub",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_msub"
+        }
+      ],
+      "source": "demo/demo_insn_msub.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_mul",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_mul"
+        }
+      ],
+      "source": "demo/demo_insn_mul.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_mul_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_mul_imm"
+        }
+      ],
+      "source": "demo/demo_insn_mul_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_nop",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_nop"
+        }
+      ],
+      "source": "demo/demo_insn_nop.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_not",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_not"
+        }
+      ],
+      "source": "demo/demo_insn_not.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_or",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_or"
+        }
+      ],
+      "source": "demo/demo_insn_or.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_or_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_or_imm"
+        }
+      ],
+      "source": "demo/demo_insn_or_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_pop",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_pop"
+        }
+      ],
+      "source": "demo/demo_insn_pop.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_push",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_push"
+        }
+      ],
+      "source": "demo/demo_insn_push.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "lse"
+      ],
+      "id": "demo_insn_remaining",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u64()",
+          "name": "test_tbz_tbnz"
+        },
+        {
+          "abi": "u64(u64,u64)",
+          "name": "test_ccmp"
+        },
+        {
+          "abi": "u64(u64,u64)",
+          "name": "test_ccmn"
+        },
+        {
+          "abi": "u64()",
+          "name": "test_svc"
+        }
+      ],
+      "source": "demo/demo_insn_remaining.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ret",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32)",
+          "name": "check_ret"
+        }
+      ],
+      "source": "demo/demo_insn_ret.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ror",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_ror"
+        },
+        {
+          "abi": "i32()",
+          "name": "check_ror_w_all"
+        }
+      ],
+      "source": "demo/demo_insn_ror.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_shl",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_shl"
+        }
+      ],
+      "source": "demo/demo_insn_shl.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_shl_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_shl_imm"
+        }
+      ],
+      "source": "demo/demo_insn_shl_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_shr",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_shr"
+        }
+      ],
+      "source": "demo/demo_insn_shr.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_shr_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_shr_imm"
+        }
+      ],
+      "source": "demo/demo_insn_shr_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_store32",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_store32"
+        }
+      ],
+      "source": "demo/demo_insn_store32.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_store64",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_store64"
+        }
+      ],
+      "source": "demo/demo_insn_store64.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_store8",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_store8"
+        }
+      ],
+      "source": "demo/demo_insn_store8.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_strb_pre",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "test_strb_pre"
+        }
+      ],
+      "source": "demo/demo_insn_strb_pre.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_strh",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_strh"
+        }
+      ],
+      "source": "demo/demo_insn_strh.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_stur_call",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32,i32)",
+          "name": "helper_add"
+        },
+        {
+          "abi": "i32(i32,i32)",
+          "name": "helper_mul"
+        },
+        {
+          "abi": "void(ptr,i32)",
+          "name": "test_stur_neg"
+        },
+        {
+          "abi": "i32(i32)",
+          "name": "test_call_stur"
+        }
+      ],
+      "source": "demo/demo_insn_stur_call.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_sub",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_sub"
+        }
+      ],
+      "source": "demo/demo_insn_sub.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_sub_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_sub_imm"
+        }
+      ],
+      "source": "demo/demo_insn_sub_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_ubfm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64()",
+          "name": "check_ubfm"
+        },
+        {
+          "abi": "i64()",
+          "name": "check_ubfm2"
+        },
+        {
+          "abi": "i64()",
+          "name": "check_ubfm3"
+        }
+      ],
+      "source": "demo/demo_insn_ubfm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_umulh",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u64(u64,u64,u64,u64,u64)",
+          "name": "test_umulh"
+        }
+      ],
+      "source": "demo/demo_insn_umulh.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_vld16",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_vld16"
+        }
+      ],
+      "source": "demo/demo_insn_vld16.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_vst16",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_vst16"
+        }
+      ],
+      "source": "demo/demo_insn_vst16.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_xor",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_xor"
+        }
+      ],
+      "source": "demo/demo_insn_xor.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_insn_xor_imm",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "check_xor_imm"
+        }
+      ],
+      "source": "demo/demo_insn_xor_imm.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "lse"
+      ],
+      "id": "demo_ldadd_basic",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "test_ldadd_basic"
+        },
+        {
+          "abi": "i32()",
+          "name": "test_cas_basic"
+        }
+      ],
+      "source": "demo/demo_ldadd_basic.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "crc"
+      ],
+      "id": "demo_ldr_reg",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u32(ptr,u32)",
+          "name": "my_crc32"
+        }
+      ],
+      "source": "demo/demo_ldr_reg.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_license",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32(i32,ptr)",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_license.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [
+        "crc"
+      ],
+      "id": "demo_memcrc",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u32(u32,u32)",
+          "name": "test_func_to_check"
+        }
+      ],
+      "source": "demo/demo_memcrc.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_mrs_udiv",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_mrs_udiv.c"
+    },
+    {
+      "build_profile": "c-freestanding",
+      "features": [],
+      "id": "demo_ror32",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "my_test"
+        }
+      ],
+      "source": "demo/demo_ror32.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_sdiv_ldst",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i64(i64,i64)",
+          "name": "test_sdiv"
+        },
+        {
+          "abi": "i32(i32,i32)",
+          "name": "test_sdiv_w"
+        },
+        {
+          "abi": "u16(ptr,i64)",
+          "name": "test_ldrh_reg"
+        },
+        {
+          "abi": "void(ptr,i64,u16)",
+          "name": "test_strh_reg"
+        },
+        {
+          "abi": "i64(ptr,i64)",
+          "name": "test_ldrsb_reg"
+        },
+        {
+          "abi": "i64(ptr,i64)",
+          "name": "test_ldrsh_reg"
+        },
+        {
+          "abi": "i64(ptr,i64)",
+          "name": "test_ldrsw_reg"
+        },
+        {
+          "abi": "u16(ptr)",
+          "name": "test_ldurh"
+        },
+        {
+          "abi": "void(ptr,u16)",
+          "name": "test_sturh"
+        },
+        {
+          "abi": "i64(ptr)",
+          "name": "test_ldursb"
+        },
+        {
+          "abi": "i64(ptr)",
+          "name": "test_ldursh"
+        },
+        {
+          "abi": "i64(ptr)",
+          "name": "test_ldursw"
+        }
+      ],
+      "source": "demo/demo_sdiv_ldst.c"
+    },
+    {
+      "build_profile": "c-freestanding",
+      "features": [],
+      "id": "demo_simple",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "void()",
+          "name": "_start"
+        }
+      ],
+      "source": "demo/demo_simple.c"
+    },
+    {
+      "build_profile": "c-pie",
+      "features": [],
+      "id": "demo_token_entry",
+      "language": "c",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "i32()",
+          "name": "main"
+        }
+      ],
+      "source": "demo/demo_token_entry.c"
+    },
+    {
+      "build_profile": "go-c-shared",
+      "id": "demo_go_test",
+      "language": "go",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u64(u64)",
+          "name": "check_key"
+        }
+      ],
+      "source": "demo/demo_go_test/main.go"
+    },
+    {
+      "build_profile": "rust-pie",
+      "id": "demo_rust_test",
+      "language": "rust",
+      "outcome": "equivalent",
+      "selectors": [
+        {
+          "abi": "u64(u64)",
+          "name": "check_key"
+        }
+      ],
+      "source": "demo/demo_rust_test/src/main.rs"
+    }
+  ],
+  "schema_version": 1
+}

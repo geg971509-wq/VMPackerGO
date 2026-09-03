@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func TestFlagSettingInstructionsUseWidthAwareOpcodes(t *testing.T) {

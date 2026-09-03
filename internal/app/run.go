@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 
-	elfpacker "github.com/vmpacker/internal/elf"
-	"github.com/vmpacker/internal/publish"
-	"github.com/vmpacker/internal/report"
-	vmruntime "github.com/vmpacker/internal/runtime"
-	"github.com/vmpacker/internal/vm"
+	elfpacker "github.com/geg971509-wq/VMPackerGO/internal/elf"
+	"github.com/geg971509-wq/VMPackerGO/internal/publish"
+	"github.com/geg971509-wq/VMPackerGO/internal/report"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 type Processor func(elfpacker.Request) (elfpacker.Result, error)
@@ -35,7 +35,6 @@ func (e *exitError) Unwrap() error { return e.err }
 
 func usageError(err error) error { return &exitError{code: 2, err: err} }
 
-// ExitCode maps Run errors to command-line exit status.
 func ExitCode(err error) int {
 	if err == nil || errors.Is(err, flag.ErrHelp) {
 		return 0
@@ -146,24 +145,29 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 					preparation, prepareErr := elfpacker.PrepareTranslations(request, analysis)
 					if prepareErr != nil {
 						transformErr = prepareErr
-					} else if requirementsErr := preparation.ValidateRuntimeRequirements(); requirementsErr != nil {
-						transformErr = requirementsErr
 					} else {
-						builder := cfg.BuildRuntime
-						if builder == nil {
-							builder = vmruntime.Build
-						}
-						image, buildErr := builder(ctx, vmruntime.BuildConfig{
-							NDKDir: opts.NDK, Opcodes: opcodes,
-							SVCImmediates: preparation.SVCImmediates, ExclusiveRegions: preparation.ExclusiveRegions,
-							FPSIMDInstructions: preparation.FPSIMDInstructions,
-						})
-						if buildErr != nil {
-							transformErr = buildErr
+						exceptionInvokes, invokeErr := preparation.RuntimeExceptionInvokes()
+						if invokeErr != nil {
+							transformErr = invokeErr
 						} else {
-							request.Preparation = preparation
-							request.RuntimeImage = image
-							result, transformErr = elfpacker.ProcessAnalyzed(request, analysis)
+							builder := cfg.BuildRuntime
+							if builder == nil {
+								builder = vmruntime.Build
+							}
+							image, buildErr := builder(ctx, vmruntime.BuildConfig{
+								NDKDir: opts.NDK, Opcodes: opcodes,
+								SVCImmediates: preparation.SVCImmediates,
+								ExclusiveRegions: preparation.ExclusiveRegions,
+								FPSIMDInstructions: preparation.FPSIMDInstructions,
+								ExceptionInvokes: exceptionInvokes,
+							})
+							if buildErr != nil {
+								transformErr = buildErr
+							} else {
+								request.Preparation = preparation
+								request.RuntimeImage = image
+								result, transformErr = elfpacker.ProcessAnalyzed(request, analysis)
+							}
 						}
 					}
 				}

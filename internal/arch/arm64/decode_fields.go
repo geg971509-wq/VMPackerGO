@@ -1,6 +1,6 @@
 package arm64
 
-import "github.com/vmpacker/internal/vm"
+import "github.com/geg971509-wq/VMPackerGO/internal/vm"
 
 // ============================================================
 // ARM64 表驱动解码引擎

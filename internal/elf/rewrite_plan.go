@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	vmruntime "github.com/vmpacker/internal/runtime"
-	"github.com/vmpacker/internal/unwind"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
+	"github.com/geg971509-wq/VMPackerGO/internal/unwind"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 const (
@@ -313,6 +313,9 @@ func (planner *rewritePlanner) reserveGNUUnwindIndex() error {
 		return err
 	}
 	if !found {
+		if planner.preparation != nil && len(planner.preparation.ExceptionBridges) != 0 {
+			return fmt.Errorf("exception bridge requires a discoverable PT_GNU_EH_FRAME unwind index")
+		}
 		return nil
 	}
 	if fileOffset > uint64(len(planner.req.Input)) || size > uint64(len(planner.req.Input))-fileOffset {
@@ -720,6 +723,9 @@ func (planner *rewritePlanner) writeRuntimeGlobal(name string, value uint64) err
 }
 
 func (planner *rewritePlanner) validate() error {
+	if err := validateRewriteBudget(uint64(len(planner.req.Input)), planner.plan.segments); err != nil {
+		return err
+	}
 	for i, segment := range planner.plan.segments {
 		if segment.flags&elf.PF_W != 0 && segment.flags&elf.PF_X != 0 {
 			return fmt.Errorf("planned segment %d violates W^X", i)
@@ -846,20 +852,37 @@ func buildPlannedTokenTrampoline(input []byte, selection Selection, translation 
 		return nil, err
 	}
 	patchOffset := 0
-	patchSize := currentMinEntryPatch
 	if translation.HasEntryBTI {
 		patchOffset = 4
-		patchSize = 16
-		if selection.Size() < uint64(patchSize) {
-			return nil, fmt.Errorf("BTI entry requires at least %d bytes, got %d", patchSize, selection.Size())
+		if selection.Size() < 4 {
+			return nil, fmt.Errorf("BTI entry is truncated")
 		}
 		decoded := arm64.NewDecoder().Decode(binary.LittleEndian.Uint32(code[:4]), 0)
 		if arm64.Op(decoded.Op) != translation.EntryBTI {
 			return nil, fmt.Errorf("BTI entry metadata does not match input encoding")
 		}
-	} else if selection.Size() < uint64(patchSize) {
-		return nil, fmt.Errorf("entry trampoline requires at least %d bytes, got %d", patchSize, selection.Size())
 	}
+
+	branchVA, ok := checkedAdd(selection.Address, uint64(patchOffset+8))
+	if !ok {
+		return nil, fmt.Errorf("entry branch address overflows")
+	}
+	transfer, err := buildEntryTransfer(branchVA, targetVA)
+	if err != nil {
+		return nil, err
+	}
+	patchSize := patchOffset + 8 + 4*len(transfer)
+	if selection.Size() < uint64(patchSize) {
+		kind := "entry"
+		if translation.HasEntryBTI {
+			kind = "BTI entry"
+		}
+		if len(transfer) > 1 {
+			kind += " long transfer"
+		}
+		return nil, fmt.Errorf("%s requires at least %d bytes, got %d", kind, patchSize, selection.Size())
+	}
+
 	patch := make([]byte, patchSize)
 	if patchOffset != 0 {
 		copy(patch[:patchOffset], code[:patchOffset])
@@ -868,15 +891,11 @@ func buildPlannedTokenTrampoline(input []byte, selection Selection, translation 
 	hi16 := token >> 16
 	binary.LittleEndian.PutUint32(patch[patchOffset:patchOffset+4], 0x52800010|lo16<<5)
 	binary.LittleEndian.PutUint32(patch[patchOffset+4:patchOffset+8], 0x72A00010|hi16<<5)
-	branchVA, ok := checkedAdd(selection.Address, uint64(patchOffset+8))
-	if !ok {
-		return nil, fmt.Errorf("entry branch address overflows")
+	cursor := patchOffset + 8
+	for _, word := range transfer {
+		binary.LittleEndian.PutUint32(patch[cursor:cursor+4], word)
+		cursor += 4
 	}
-	branch, err := encodeBranch26(branchVA, targetVA, 0x14000000)
-	if err != nil {
-		return nil, err
-	}
-	binary.LittleEndian.PutUint32(patch[patchOffset+8:patchOffset+12], branch)
 	return patch, nil
 }
 
