@@ -1,10 +1,23 @@
 package arm64
 
-// lseAtomicPatterns covers the single-register FEAT_LSE read-modify-write
-// family that shares LDADD's width/register/order encoding. Keep these
-// separate from the general load/store table so the product surface is
-// explicit and the generic table does not become an unreviewed LSE catch-all.
+import "github.com/vmpacker/internal/vm"
+
+const (
+	caspMask  uint32 = 0xBFA07C00
+	caspValue uint32 = 0x08207C00
+)
+
+// lseAtomicPatterns keeps FEAT_LSE atomics explicit rather than widening the
+// generic load/store table into an unreviewed catch-all. CASP is modeled as
+// the CAS semantic family with a pair-specific raw encoding; the translator
+// uses that encoding to select the pair transport kind while preserving the
+// existing seven-byte OpAtomic wire format.
 var lseAtomicPatterns = []InstrPattern{
+	{
+		Name: "CASP", Mask: caspMask, Value: caspValue, Op: CAS,
+		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
+		Post:   postCasp,
+	},
 	{
 		Name: "SWP", Mask: 0x3F20FC00, Value: 0x38208000, Op: SWP,
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
@@ -45,6 +58,20 @@ var lseAtomicPatterns = []InstrPattern{
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
 		Post:   postLdadd,
 	},
+}
+
+func isCASPPair(inst vm.Instruction) bool {
+	return Op(inst.Op) == CAS && inst.Raw&caspMask == caspValue
+}
+
+func postCasp(f map[string]int64, inst *vm.Instruction) {
+	sz := f["size"]
+	// CASP has two architectural pair widths. With bit31 fixed to zero by the
+	// pattern, size=00 is Wt/Wt2 (4-byte members) and size=01 is Xt/Xt2
+	// (8-byte members). The high member is implicit low+1 in both register
+	// pairs and is validated separately by the product policy.
+	inst.Shift = 4 << int(sz)
+	inst.SF = sz == 1
 }
 
 func isLoadReturnLSE(op Op) bool {
