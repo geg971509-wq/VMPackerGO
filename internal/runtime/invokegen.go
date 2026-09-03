@@ -353,15 +353,25 @@ func validateExceptionInvokeImage(image *Image, invokes []ExceptionInvokeImage) 
 	if len(invokes) == 0 {
 		return nil
 	}
-	symbols := make(map[string]*Symbol, len(image.Symbols))
+	expectedSymbols := map[string]struct{}{
+		"vm_invoke_routes":      {},
+		"vm_invoke_route_count": {},
+	}
+	for _, item := range invokes {
+		expectedSymbols[item.ThunkSymbol] = struct{}{}
+		expectedSymbols[item.LSDASymbol] = struct{}{}
+		expectedSymbols[item.PersonalityBridge] = struct{}{}
+	}
+	symbols := make(map[string]*Symbol, len(expectedSymbols))
 	for index := range image.Symbols {
 		symbol := &image.Symbols[index]
-		if symbol.Name != "" {
-			if _, duplicate := symbols[symbol.Name]; duplicate {
-				return fmt.Errorf("runtime has duplicate generated symbol %q", symbol.Name)
-			}
-			symbols[symbol.Name] = symbol
+		if _, expected := expectedSymbols[symbol.Name]; !expected {
+			continue
 		}
+		if _, duplicate := symbols[symbol.Name]; duplicate {
+			return fmt.Errorf("runtime has duplicate generated symbol %q", symbol.Name)
+		}
+		symbols[symbol.Name] = symbol
 	}
 	validateStorage := func(name string, wantType elf.SymType, wantSize uint64, executable bool) error {
 		symbol := symbols[name]
