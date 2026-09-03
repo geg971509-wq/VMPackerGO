@@ -115,7 +115,8 @@ Phase 18 safely closes the forms that fit the existing architecture:
 - exact-r29 `__int128` GPR↔D/Q transfer shapes are admitted through the existing FP/SIMD native-thunk path;
 - single GPR input/output forms keep the existing X9 scratch contract and preserve GPR/SIMD/FPCR/FPSR state semantics;
 - exact `LDR Qd, [Xn, Xm, LSL #4]` gains a bounded two-read-role remap through caller-saved X9/X10, while dynamic SP-indexed addressing remains rejected;
-- `SUBS(ext)` is admitted only as a branch-free exclusive-region body instruction because its register fields are safely remappable; this deliberately leaves the actual PC-relative loop branch as the fail-closed boundary.
+- `SUBS(ext)` is admitted only as a branch-free exclusive-region body instruction because its register fields are safely remappable; this deliberately leaves the actual PC-relative loop branch as the fail-closed boundary;
+- the third exact-r29 run reduced unexpected gaps to six identical byte/halfword compare cases and exposed a decoder normalization bug: `Rd=31` is `XZR` for flag-setting `ADDS/SUBS(ext)` but remains `SP` for non-flag `ADD/SUB(ext)`. The decoder now applies that distinction and regression tests protect both sides.
 
 The remaining exact-r29 boundaries require independent architecture work and are therefore kept explicitly fail-closed rather than hidden:
 
