@@ -26,6 +26,8 @@ func TestCASPDecoderExactR29AndArchitecturalWidths(t *testing.T) {
 		{"O2-CASPL", 0x482afc02, 10, 0, 2, 8, 2},
 		{"O2-CASPAL", 0x4868fc0a, 8, 0, 10, 8, 3},
 		{"W-pair", 0x08207c82, 0, 4, 2, 4, 0},
+		{"X30-expected", 0x483e7c1c, 30, 0, 28, 8, 0},
+		{"X30-replacement", 0x483c7c1e, 28, 0, 30, 8, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -43,20 +45,23 @@ func TestCASPDecoderExactR29AndArchitecturalWidths(t *testing.T) {
 	}
 }
 
-func TestCASPPolicyRequiresEvenBoundedPairs(t *testing.T) {
-	good := vm.Instruction{Op: int(CAS), Rd: 2, Rn: 31, Rm: 4, Shift: 8, Raw: 0x48247fe2}
-	if err := validateInstructionPolicy(good); err != nil {
-		t.Fatalf("valid CASP rejected: %v", err)
+func TestCASPPolicyRequiresEvenArchitecturalPairs(t *testing.T) {
+	for _, good := range []vm.Instruction{
+		{Op: int(CAS), Rd: 2, Rn: 31, Rm: 4, Shift: 8, Raw: 0x48247fe2},
+		{Op: int(CAS), Rd: 28, Rn: 0, Rm: 30, Shift: 8, Raw: 0x483e7c1c},
+		{Op: int(CAS), Rd: 30, Rn: 0, Rm: 28, Shift: 8, Raw: 0x483c7c1e},
+	} {
+		if err := validateInstructionPolicy(good); err != nil {
+			t.Fatalf("valid CASP rejected: %+v: %v", good, err)
+		}
 	}
-	for _, tc := range []vm.Instruction{
+	for _, bad := range []vm.Instruction{
 		{Op: int(CAS), Rd: 3, Rn: 0, Rm: 4, Shift: 8, Raw: 0x48207c00},
 		{Op: int(CAS), Rd: 2, Rn: 0, Rm: 5, Shift: 8, Raw: 0x48207c00},
-		{Op: int(CAS), Rd: 30, Rn: 0, Rm: 4, Shift: 8, Raw: 0x48207c00},
-		{Op: int(CAS), Rd: 2, Rn: 0, Rm: 30, Shift: 8, Raw: 0x48207c00},
 		{Op: int(CAS), Rd: 2, Rn: 0, Rm: 4, Shift: 16, Raw: 0x48207c00},
 	} {
-		if err := validateInstructionPolicy(tc); err == nil {
-			t.Fatalf("invalid CASP accepted: %+v", tc)
+		if err := validateInstructionPolicy(bad); err == nil {
+			t.Fatalf("invalid CASP accepted: %+v", bad)
 		}
 	}
 }
