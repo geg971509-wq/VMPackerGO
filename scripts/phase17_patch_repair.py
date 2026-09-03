@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-p = Path("scripts/phase16_invoke_runtime_patch.py")
+p = Path("scripts/phase17_invoke_runtime_patch.py")
 text = p.read_text()
 old = '''replace_once(
     "internal/runtime/runtime.go",
@@ -82,4 +82,4 @@ replace_once(
 if text.count(old) != 1:
     raise SystemExit(f"expected one ambiguous runtime block, found {text.count(old)}")
 p.write_text(text.replace(old, new, 1))
-print("phase16 patch anchors repaired")
+print("phase17 patch anchors repaired")
