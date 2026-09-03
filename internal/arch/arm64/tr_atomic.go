@@ -18,19 +18,24 @@ func encodeAtomicRegister(reg int) (byte, error) {
 	return byte(reg), nil
 }
 
-func atomicMemoryOrder(op Op, raw uint32) byte {
+func atomicMemoryOrder(inst vm.Instruction) byte {
+	op := Op(inst.Op)
 	switch op {
 	case LDAR:
 		return 1
 	case STLR:
 		return 2
-	case LDADD:
-		acquire := byte((raw >> 23) & 1)
-		release := byte((raw >> 22) & 1)
+	case LDADD, SWP, LDCLR, LDEOR, LDSET:
+		acquire := byte((inst.Raw >> 23) & 1)
+		// ARM suppresses acquire for this LSE RMW class when Rt is XZR.
+		if inst.Rd == vm.REG_XZR {
+			acquire = 0
+		}
+		release := byte((inst.Raw >> 22) & 1)
 		return acquire | release<<1
 	case CAS:
-		acquire := byte((raw >> 22) & 1)
-		release := byte((raw >> 15) & 1)
+		acquire := byte((inst.Raw >> 22) & 1)
+		release := byte((inst.Raw >> 15) & 1)
 		return acquire | release<<1
 	default:
 		panic("atomicMemoryOrder called for a non-atomic operation")
@@ -39,7 +44,10 @@ func atomicMemoryOrder(op Op, raw uint32) byte {
 
 func (t *Translator) trAtomic(inst vm.Instruction) error {
 	op := Op(inst.Op)
-	kind := map[Op]byte{LDAR: 0, STLR: 1, LDADD: 2, CAS: 3}[op]
+	kind := map[Op]byte{
+		LDAR: 0, STLR: 1, LDADD: 2, CAS: 3,
+		SWP: 4, LDCLR: 5, LDEOR: 6, LDSET: 7,
+	}[op]
 	rd, err := encodeAtomicRegister(inst.Rd)
 	if err != nil {
 		return err
@@ -49,12 +57,12 @@ func (t *Translator) trAtomic(inst vm.Instruction) error {
 		return err
 	}
 	rm := atomicZeroRegister
-	if op == LDADD || op == CAS {
+	if atomicUsesRm(op) {
 		rm, err = encodeAtomicRegister(inst.Rm)
 		if err != nil {
 			return err
 		}
 	}
-	t.emitOp(vm.OpAtomic, kind, byte(inst.Shift), atomicMemoryOrder(op, inst.Raw), rd, rn, rm)
+	t.emitOp(vm.OpAtomic, kind, byte(inst.Shift), atomicMemoryOrder(inst), rd, rn, rm)
 	return nil
 }

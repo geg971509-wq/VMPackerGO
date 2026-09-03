@@ -149,6 +149,14 @@ vm_atomic_native:
 	b.eq .Latomic_add
 	cmp w0, #3
 	b.eq .Latomic_cas
+	cmp w0, #4
+	b.eq .Latomic_swp
+	cmp w0, #5
+	b.eq .Latomic_clr
+	cmp w0, #6
+	b.eq .Latomic_eor
+	cmp w0, #7
+	b.eq .Latomic_set
 	b .Latomic_bad
 
 .Latomic_load:
@@ -231,6 +239,74 @@ vm_atomic_native:
 	VM_ATOMIC_ORDER4 cash, casah, caslh, casalh, w0, w5
 .Lcas_4:
 	VM_ATOMIC_ORDER4 cas, casa, casl, casal, w0, w5
+
+.Latomic_swp:
+	cmp w1, #1
+	b.eq .Lswp_1
+	cmp w1, #2
+	b.eq .Lswp_2
+	cmp w1, #4
+	b.eq .Lswp_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 swp, swpa, swpl, swpal, x4, x0
+.Lswp_1:
+	VM_ATOMIC_ORDER4 swpb, swpab, swplb, swpalb, w4, w0
+.Lswp_2:
+	VM_ATOMIC_ORDER4 swph, swpah, swplh, swpalh, w4, w0
+.Lswp_4:
+	VM_ATOMIC_ORDER4 swp, swpa, swpl, swpal, w4, w0
+
+.Latomic_clr:
+	cmp w1, #1
+	b.eq .Lclr_1
+	cmp w1, #2
+	b.eq .Lclr_2
+	cmp w1, #4
+	b.eq .Lclr_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldclr, ldclra, ldclrl, ldclral, x4, x0
+.Lclr_1:
+	VM_ATOMIC_ORDER4 ldclrb, ldclrab, ldclrlb, ldclralb, w4, w0
+.Lclr_2:
+	VM_ATOMIC_ORDER4 ldclrh, ldclrah, ldclrlh, ldclralh, w4, w0
+.Lclr_4:
+	VM_ATOMIC_ORDER4 ldclr, ldclra, ldclrl, ldclral, w4, w0
+
+.Latomic_eor:
+	cmp w1, #1
+	b.eq .Leor_1
+	cmp w1, #2
+	b.eq .Leor_2
+	cmp w1, #4
+	b.eq .Leor_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldeor, ldeora, ldeorl, ldeoral, x4, x0
+.Leor_1:
+	VM_ATOMIC_ORDER4 ldeorb, ldeorab, ldeorlb, ldeoralb, w4, w0
+.Leor_2:
+	VM_ATOMIC_ORDER4 ldeorh, ldeorah, ldeorlh, ldeoralh, w4, w0
+.Leor_4:
+	VM_ATOMIC_ORDER4 ldeor, ldeora, ldeorl, ldeoral, w4, w0
+
+.Latomic_set:
+	cmp w1, #1
+	b.eq .Lset_1
+	cmp w1, #2
+	b.eq .Lset_2
+	cmp w1, #4
+	b.eq .Lset_4
+	cmp w1, #8
+	b.ne .Latomic_bad
+	VM_ATOMIC_ORDER4 ldset, ldseta, ldsetl, ldsetal, x4, x0
+.Lset_1:
+	VM_ATOMIC_ORDER4 ldsetb, ldsetab, ldsetlb, ldsetalb, w4, w0
+.Lset_2:
+	VM_ATOMIC_ORDER4 ldseth, ldsetah, ldsetlh, ldsetalh, w4, w0
+.Lset_4:
+	VM_ATOMIC_ORDER4 ldset, ldseta, ldsetl, ldsetal, w4, w0
 
 .Latomic_bad:
 	mov x0, #0

@@ -114,7 +114,7 @@ static inline u32 h_atomic(vm_ctx_t *vm) {
   u8 rd = vm->bc[vm->pc + 4];
   u8 rn = vm->bc[vm->pc + 5];
   u8 rm = vm->bc[vm->pc + 6];
-  if (kind > 3 || (width != 1 && width != 2 && width != 4 && width != 8) ||
+  if (kind > 7 || (width != 1 && width != 2 && width != 4 && width != 8) ||
       order > 3 || rn > 31) {
     vm->fault |= VM_FAULT_SYSTEM;
     return 7;
@@ -123,14 +123,14 @@ static inline u32 h_atomic(vm_ctx_t *vm) {
   u64 first = 0, second = 0;
   if (kind == 1)
     first = vm_atomic_reg_read(vm, rd);
-  else if (kind == 2)
+  else if (kind == 2 || kind >= 4)
     first = vm_atomic_reg_read(vm, rm);
   else if (kind == 3) {
     first = vm_atomic_reg_read(vm, rm);
     second = vm_atomic_reg_read(vm, rd);
   }
   u64 old = vm_atomic_native(kind, width, order, address, first, second);
-  if (kind == 0 || kind == 2)
+  if (kind == 0 || kind == 2 || kind >= 4)
     vm_atomic_reg_write(vm, rd, old, width);
   else if (kind == 3)
     vm_atomic_reg_write(vm, rm, old, width);
