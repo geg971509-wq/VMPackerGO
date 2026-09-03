@@ -19,23 +19,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected=29.0.14206865
-          ndk="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/ndk/$expected"
-          if [[ ! -f "$ndk/source.properties" ]]; then
+          expected="29.0.14206865"
+          candidates=("${ANDROID_NDK_ROOT:-}" "${ANDROID_NDK_HOME:-}" "${NDK_HOME:-}")
+          for sdk in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}" "$HOME/Library/Android/sdk"; do
+            [[ -n "$sdk" ]] && candidates+=("$sdk/ndk/$expected")
+          done
+          ndk=""
+          for candidate in "${candidates[@]}"; do
+            [[ -n "$candidate" && -f "$candidate/source.properties" ]] || continue
+            revision="$(awk -F= '$1 ~ /^[[:space:]]*Pkg.Revision[[:space:]]*$/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit }' "$candidate/source.properties")"
+            if [[ "$revision" == "$expected" ]]; then ndk="$candidate"; break; fi
+          done
+          if [[ -z "$ndk" ]]; then
             sdkmanager="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/cmdline-tools/latest/bin/sdkmanager"
-            [[ -x "$sdkmanager" ]] || sdkmanager="$(command -v sdkmanager)"
+            [[ -x "$sdkmanager" ]] || sdkmanager="$(command -v sdkmanager || true)"
+            [[ -n "$sdkmanager" ]] || { echo '::error::sdkmanager unavailable'; exit 1; }
             "$sdkmanager" "ndk;$expected"
+            sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+            ndk="$sdk_root/ndk/$expected"
           fi
-          grep -q "Pkg.Revision = $expected" "$ndk/source.properties"
+          revision="$(awk -F= '$1 ~ /^[[:space:]]*Pkg.Revision[[:space:]]*$/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit }' "$ndk/source.properties")"
+          [[ "$revision" == "$expected" ]] || { echo "::error::wrong NDK revision $revision"; exit 1; }
           echo "ANDROID_NDK=$ndk" >> "$GITHUB_ENV"
       - name: Audit CASP assembler constraints and encodings
         shell: bash
         run: |
           set -euo pipefail
-          host="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin"
-          [[ -x "$host/aarch64-linux-android23-clang" ]] || host="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-aarch64/bin"
-          clang="$host/aarch64-linux-android23-clang"
-          objdump="$host/llvm-objdump"
+          host=darwin-x86_64
+          if [[ "$(uname -m)" == arm64 && -d "$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-arm64" ]]; then host=darwin-arm64; fi
+          bin="$ANDROID_NDK/toolchains/llvm/prebuilt/$host/bin"
+          clang="$bin/aarch64-linux-android23-clang"
+          objdump="$bin/llvm-objdump"
+          [[ -x "$clang" && -x "$objdump" ]]
           cat > "$RUNNER_TEMP/casp-valid.S" <<'EOF'
           .text
           .arch armv8.1-a+lse
