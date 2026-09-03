@@ -1,9 +1,9 @@
-name: Phase 16 Exception Invoke Runtime Apply
+name: Phase 17 Exception Invoke Runtime Apply
 
 on:
   push:
     branches:
-      - fix/exception-invoke-runtime
+      - fix/exception-invoke-runtime-v2
 
 permissions:
   contents: write
@@ -22,12 +22,13 @@ jobs:
       - name: Repair audited patch anchors
         run: |
           set -euo pipefail
-          python3 scripts/phase16_patch_repair.py
-          python3 scripts/phase16_codegen_repair.py
+          python3 scripts/phase17_patch_repair.py
+          python3 scripts/phase17_codegen_repair.py
+          python3 scripts/phase17_current_baseline_repair.py
       - name: Apply audited source patch
         run: |
           set -euo pipefail
-          python3 scripts/phase16_invoke_runtime_patch.py
+          python3 scripts/phase17_invoke_runtime_patch.py
           gofmt -w \
             internal/runtime/invokegen.go \
             internal/runtime/runtime.go \
@@ -43,12 +44,13 @@ jobs:
         run: |
           set -euo pipefail
           git rm \
-            scripts/phase16_invoke_runtime_patch.py \
-            scripts/phase16_patch_repair.py \
-            scripts/phase16_codegen_repair.py \
-            .github/workflows/phase16-invoke-runtime-apply.yml
-          git add internal/runtime
-          git config user.name "vmpacker-phase16-bot"
+            scripts/phase17_invoke_runtime_patch.py \
+            scripts/phase17_patch_repair.py \
+            scripts/phase17_codegen_repair.py \
+            scripts/phase17_current_baseline_repair.py \
+            .github/workflows/phase17-invoke-runtime-apply.yml
+          git add internal/runtime .omx/plans/vmp-phase17-invoke-runtime.md
+          git config user.name "vmpacker-phase17-bot"
           git config user.email "actions@users.noreply.github.com"
           git commit -m "Generate unwind-ready exception invoke runtime thunks"
-          git push origin HEAD:fix/exception-invoke-runtime
+          git push origin HEAD:fix/exception-invoke-runtime-v2
