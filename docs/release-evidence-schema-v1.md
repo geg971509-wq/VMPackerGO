@@ -32,7 +32,7 @@ The canonical validator is `scripts/validate-release-evidence.py`.
   "notarization": {
     "status": "Accepted",
     "submission_id": "non-empty Apple notary submission identifier",
-    "stapled": true,
+    "ticket_mode": "online",
     "spctl_accepted": true
   },
   "independent_review": {
@@ -54,6 +54,7 @@ Rules:
 - the device evidence must independently pass `validate-device-evidence.py` for the same commit.
 - the artifact must be a macOS ARM64 Mach-O and its live codesign/spctl state is rechecked on macOS; JSON booleans cannot substitute for those checks.
 - notarization status must be `Accepted`; the release packager writes the submission identifier returned by Apple.
+- the official release artifact is a standalone Mach-O command-line executable. Apple creates a notarization ticket for standalone binaries but currently does not support stapling that ticket directly to the binary, so `ticket_mode` is `online`; Gatekeeper assessment remains a live release check. If the product later changes to a staplable `.app`, `.pkg`, or `.dmg` distribution, that is a schema change rather than silently reinterpreting this field.
 - independent review is deliberately not produced by the build script. A distinct reviewer must approve the exact commit after inspecting the candidate and evidence.
 
 Credentials, notary profiles, raw device identifiers, seeds and encryption keys are never fields in release evidence.
