@@ -14,12 +14,13 @@ type NativeCallLocation struct {
 }
 
 type InvokeThunk struct {
-	ID           uint32
-	OriginalPC   uint64
-	VMCallOffset uint32
-	VMLandingPad uint32
-	Action       uint64
-	Actions      []ActionRecord
+	ID                 uint32
+	OriginalPC         uint64
+	OriginalLandingPad uint64
+	VMCallOffset       uint32
+	VMLandingPad       uint32
+	Action             uint64
+	Actions            []ActionRecord
 }
 
 type ExceptionBridgePlan struct {
@@ -104,8 +105,8 @@ func PlanExceptionBridge(cie *CIE, fde *FDE, lsda *LSDA, mapped []MappedCallSite
 			continue // unwind-through range; no local landing wrapper is required
 		}
 		thunk := InvokeThunk{
-			OriginalPC: call.OriginalPC, VMCallOffset: call.VMOffset,
-			VMLandingPad: mapped[siteIndex].VMLandingPad, Action: site.Action,
+			OriginalPC: call.OriginalPC, OriginalLandingPad: site.LandingPad,
+			VMCallOffset: call.VMOffset, VMLandingPad: mapped[siteIndex].VMLandingPad, Action: site.Action,
 			Actions: append([]ActionRecord(nil), lsda.ActionChains[site.Action]...),
 		}
 		thunk.ID = invokeThunkID(*cie.Personality, fde.Offset, thunk)
@@ -125,7 +126,7 @@ func invokeThunkID(personality, fdeOffset uint64, thunk InvokeThunk) uint32 {
 	h := sha256.New()
 	h.Write([]byte("vmpacker-invoke-thunk-v1\x00"))
 	var b [8]byte
-	for _, value := range []uint64{personality, fdeOffset, thunk.OriginalPC, uint64(thunk.VMCallOffset), uint64(thunk.VMLandingPad), thunk.Action} {
+	for _, value := range []uint64{personality, fdeOffset, thunk.OriginalPC, thunk.OriginalLandingPad, uint64(thunk.VMCallOffset), uint64(thunk.VMLandingPad), thunk.Action} {
 		binary.LittleEndian.PutUint64(b[:], value)
 		h.Write(b[:])
 	}

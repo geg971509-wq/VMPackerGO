@@ -25,6 +25,35 @@ func TestDecodePointerFormatsAndRelativeBases(t *testing.T) {
 	}
 }
 
+func TestParseEHFramePreservesIndirectPersonalityReferenceSlot(t *testing.T) {
+	const sectionVA = uint64(0x1000)
+	const slotVA = uint64(0x3000)
+	// zPR: personality=indirect|pcrel|sdata4, FDE encoding=pcrel|sdata4.
+	cieContent := []byte{1, 'z', 'P', 'R', 0, 1, 0x78, 30, 6, PEIndirect | PEPcrel | PESdata4, 0, 0, 0, 0, PEPcrel | PESdata4, 0x0c}
+	// CIE content starts at sectionVA+8; the encoded personality sdata4 starts
+	// after version/string/alignment/register/augmentation-length/encoding.
+	fieldVA := sectionVA + 8 + 10
+	delta := int32(slotVA - fieldVA)
+	binary.LittleEndian.PutUint32(cieContent[10:14], uint32(delta))
+	cieBody := append([]byte{0, 0, 0, 0}, cieContent...)
+	data := appendLength(nil, cieBody)
+	data = append(data, 0, 0, 0, 0)
+
+	frame, err := ParseEHFrame(data, sectionVA, binary.LittleEndian, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cie := frame.CIEs[0]
+	if cie == nil || cie.Personality == nil || *cie.Personality != slotVA || cie.PersonalityEncoding != PEIndirect|PEPcrel|PESdata4 {
+		t.Fatalf("CIE personality=%+v", cie)
+	}
+	// Generic DecodePointer still refuses to claim a dereference without a
+	// target-memory resolver.
+	if _, err := DecodePointer([]byte{0, 0, 0, 0}, new(int), PEIndirect|PESdata4, binary.LittleEndian, 8, Bases{}); err == nil {
+		t.Fatal("generic indirect pointer dereference was unexpectedly accepted")
+	}
+}
+
 func TestParseEHFrameCIEAndFDE(t *testing.T) {
 	const sectionVA = uint64(0x1000)
 	cieContent := []byte{1, 'z', 'R', 0, 1, 0x78, 30, 1, PEPcrel | PESdata4, 0x0c}
@@ -125,8 +154,13 @@ func TestPlanExceptionBridgeAndRebuildSingleCallLSDA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Thunks) != 1 || plan.Thunks[0].ID == 0 || plan.Personality != personality || plan.Thunks[0].VMLandingPad != 0x80 {
+	if len(plan.Thunks) != 1 || plan.Thunks[0].ID == 0 || plan.Personality != personality || plan.Thunks[0].VMLandingPad != 0x80 || plan.Thunks[0].OriginalLandingPad != 0x1008 {
 		t.Fatalf("plan=%+v", plan)
+	}
+	changed := plan.Thunks[0]
+	changed.OriginalLandingPad++
+	if invokeThunkID(plan.Personality, fde.Offset, changed) == plan.Thunks[0].ID {
+		t.Fatal("invoke thunk ID did not include original landing identity")
 	}
 	encoded, err := BuildBridgeLSDA(plan, plan.Thunks[0], InvokeThunkLayout{CallOffset: 12, CallLength: 4, LandingOffset: 32, RangeLength: 64})
 	if err != nil {
