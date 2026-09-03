@@ -65,7 +65,11 @@ func buildInstructionRules() map[Op]instructionRule {
 	// boundary because every supported exclusive monitor is contained inside a
 	// single generated scalar/pair load-exclusive...store-exclusive thunk.
 	allow([]Op{PRFM, YIELD_ARM, CLREX}, nil)
-	allow([]Op{LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN}, validateAtomicNative)
+	allow([]Op{LDAR, STLR, LDADD, SWP, LDCLR, LDEOR, LDSET, LDSMAX, LDSMIN, LDUMAX, LDUMIN}, validateAtomicNative)
+	// CASP intentionally reuses the CAS semantic Op. Keep the policy wiring
+	// explicit here so scalar CAS and pair CASP share one product rule without
+	// hidden package-init mutation.
+	allow([]Op{CAS}, validateCASOrPair)
 	allow([]Op{FPSIMD_NATIVE}, func(inst vm.Instruction) error { return ValidateFPSIMDInstruction(inst.Raw) })
 
 	classify(dispositionNativeThunk, WFE, WFI, LDXR, LDAXR, LDXP, LDAXP, STXR, STLXR, STXP, STLXP)

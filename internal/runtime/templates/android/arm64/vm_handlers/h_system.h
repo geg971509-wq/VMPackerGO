@@ -107,6 +107,16 @@ static inline void vm_atomic_reg_write(vm_ctx_t *vm, u8 reg, u64 value,
   vm->R[reg & 31] = value;
 }
 
+static inline u64 vm_atomic_pair_high_read(vm_ctx_t *vm, u8 low) {
+  return low == 30 ? 0 : vm->R[low + 1];
+}
+
+static inline void vm_atomic_pair_high_write(vm_ctx_t *vm, u8 low, u64 value,
+                                             u8 width) {
+  if (low != 30)
+    vm_atomic_reg_write(vm, low + 1, value, width);
+}
+
 static inline u32 h_atomic(vm_ctx_t *vm) {
   u8 kind = vm->bc[vm->pc + 1];
   u8 width = vm->bc[vm->pc + 2];
@@ -114,6 +124,27 @@ static inline u32 h_atomic(vm_ctx_t *vm) {
   u8 rd = vm->bc[vm->pc + 4];
   u8 rn = vm->bc[vm->pc + 5];
   u8 rm = vm->bc[vm->pc + 6];
+
+  if (kind == 12) {
+    if ((width != 4 && width != 8) || order > 3 || rn > 31 || rd > 30 ||
+        rm > 30 || (rd & 1u) != 0 || (rm & 1u) != 0) {
+      vm->fault |= VM_FAULT_SYSTEM;
+      return 7;
+    }
+    u64 address = vm->R[rn];
+    u64 pair_bytes = (u64)width * 2u;
+    if ((address & (pair_bytes - 1u)) != 0) {
+      vm->fault |= VM_FAULT_SYSTEM;
+      return 7;
+    }
+    vm_atomic_pair_t old = vm_atomic_pair_native(
+        order, width, address, vm->R[rm], vm_atomic_pair_high_read(vm, rm),
+        vm->R[rd], vm_atomic_pair_high_read(vm, rd));
+    vm_atomic_reg_write(vm, rm, old.lo, width);
+    vm_atomic_pair_high_write(vm, rm, old.hi, width);
+    return 7;
+  }
+
   if (kind > 11 || (width != 1 && width != 2 && width != 4 && width != 8) ||
       order > 3 || rn > 31) {
     vm->fault |= VM_FAULT_SYSTEM;

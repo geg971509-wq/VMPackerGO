@@ -389,6 +389,78 @@ vm_atomic_native:
 	ret
 	.cfi_endproc
 	.size vm_atomic_native, .-vm_atomic_native
+
+	/* CASP uses two fixed even/odd scratch pairs and returns the observed pair
+	 * through the standard AAPCS64 X0/X1 aggregate-result registers. */
+	.p2align 2
+	.global vm_atomic_pair_native
+	.hidden vm_atomic_pair_native
+	.type vm_atomic_pair_native, %function
+vm_atomic_pair_native:
+	.cfi_startproc
+	bti c
+	cmp w0, #3
+	b.hi .Latomic_pair_bad
+	cmp w1, #4
+	b.eq .Lpair_w
+	cmp w1, #8
+	b.ne .Latomic_pair_bad
+
+	mov x8, x3
+	mov x9, x4
+	mov x10, x5
+	mov x11, x6
+	cbz w0, .Lpair_x_relaxed
+	cmp w0, #1
+	b.eq .Lpair_x_acquire
+	cmp w0, #2
+	b.eq .Lpair_x_release
+	caspal x8, x9, x10, x11, [x2]
+	b .Lpair_x_done
+.Lpair_x_relaxed:
+	casp x8, x9, x10, x11, [x2]
+	b .Lpair_x_done
+.Lpair_x_acquire:
+	caspa x8, x9, x10, x11, [x2]
+	b .Lpair_x_done
+.Lpair_x_release:
+	caspl x8, x9, x10, x11, [x2]
+.Lpair_x_done:
+	mov x0, x8
+	mov x1, x9
+	ret
+
+.Lpair_w:
+	mov w8, w3
+	mov w9, w4
+	mov w10, w5
+	mov w11, w6
+	cbz w0, .Lpair_w_relaxed
+	cmp w0, #1
+	b.eq .Lpair_w_acquire
+	cmp w0, #2
+	b.eq .Lpair_w_release
+	caspal w8, w9, w10, w11, [x2]
+	b .Lpair_w_done
+.Lpair_w_relaxed:
+	casp w8, w9, w10, w11, [x2]
+	b .Lpair_w_done
+.Lpair_w_acquire:
+	caspa w8, w9, w10, w11, [x2]
+	b .Lpair_w_done
+.Lpair_w_release:
+	caspl w8, w9, w10, w11, [x2]
+.Lpair_w_done:
+	mov w0, w8
+	mov w1, w9
+	ret
+
+.Latomic_pair_bad:
+	mov x0, #0
+	mov x1, #0
+	ret
+	.cfi_endproc
+	.size vm_atomic_pair_native, .-vm_atomic_pair_native
 	.purgem VM_ATOMIC_ORDER4
 
 	.section .note.gnu.property,"a",@note
