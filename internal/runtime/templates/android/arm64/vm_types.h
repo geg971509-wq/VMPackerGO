@@ -22,11 +22,14 @@ typedef short i16;
 #define VM_STACK_SIZE 32       /* PUSH/POP 操作栈深度 */
 #define VM_EVAL_STACK_SIZE 256 /* 栈机器操作栈深度 */
 #define VM_MEM_STACK 16384     /* 内存栈 (SP 指向的空间, 16KB) */
-#define VM_BYTECODE_MAX 65536  /* 最大字节码长度 (64KB, 含映射表) */
+#define VM_BYTECODE_MAX (256u * 1024u) /* 单函数最终字节码上限: 256 KiB */
 #define VM_VECTOR_COUNT 32     /* V0-V31 */
 #define VM_VECTOR_BYTES 16     /* architectural 128-bit vector width */
 #define VM_CALL_DEPTH_MAX 16
 #define VM_PACKED_LR 1ull
+
+_Static_assert(VM_BYTECODE_MAX <= 0xFFFFF000u,
+               "VM bytecode limit must leave room for page rounding");
 
 /* ---- AArch64 architectural NZCV bits (same order as the NZCV nibble) ---- */
 #define FL_V 0x1u
