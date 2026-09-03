@@ -30,8 +30,8 @@ func TestCASPDecoderExactR29AndArchitecturalWidths(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			inst := decoder.Decode(tc.raw, 0)
-			if got := Op(inst.Op); got != CASP {
-				t.Fatalf("raw=%08x decoded as %s", tc.raw, OpName(got))
+			if got := Op(inst.Op); got != CAS || !isCASPPair(inst) {
+				t.Fatalf("raw=%08x decoded as %s pair=%v", tc.raw, OpName(got), isCASPPair(inst))
 			}
 			if inst.Rm != tc.rm || inst.Rn != tc.rn || inst.Rd != tc.rd || inst.Shift != tc.width {
 				t.Fatalf("decoded=%+v", inst)
@@ -44,16 +44,16 @@ func TestCASPDecoderExactR29AndArchitecturalWidths(t *testing.T) {
 }
 
 func TestCASPPolicyRequiresEvenBoundedPairs(t *testing.T) {
-	good := vm.Instruction{Op: int(CASP), Rd: 2, Rn: 31, Rm: 4, Shift: 8, Raw: 0x48247fe2}
+	good := vm.Instruction{Op: int(CAS), Rd: 2, Rn: 31, Rm: 4, Shift: 8, Raw: 0x48247fe2}
 	if err := validateInstructionPolicy(good); err != nil {
 		t.Fatalf("valid CASP rejected: %v", err)
 	}
 	for _, tc := range []vm.Instruction{
-		{Op: int(CASP), Rd: 3, Rn: 0, Rm: 4, Shift: 8},
-		{Op: int(CASP), Rd: 2, Rn: 0, Rm: 5, Shift: 8},
-		{Op: int(CASP), Rd: 30, Rn: 0, Rm: 4, Shift: 8},
-		{Op: int(CASP), Rd: 2, Rn: 0, Rm: 30, Shift: 8},
-		{Op: int(CASP), Rd: 2, Rn: 0, Rm: 4, Shift: 16},
+		{Op: int(CAS), Rd: 3, Rn: 0, Rm: 4, Shift: 8, Raw: 0x48207c00},
+		{Op: int(CAS), Rd: 2, Rn: 0, Rm: 5, Shift: 8, Raw: 0x48207c00},
+		{Op: int(CAS), Rd: 30, Rn: 0, Rm: 4, Shift: 8, Raw: 0x48207c00},
+		{Op: int(CAS), Rd: 2, Rn: 0, Rm: 30, Shift: 8, Raw: 0x48207c00},
+		{Op: int(CAS), Rd: 2, Rn: 0, Rm: 4, Shift: 16, Raw: 0x48207c00},
 	} {
 		if err := validateInstructionPolicy(tc); err == nil {
 			t.Fatalf("invalid CASP accepted: %+v", tc)
@@ -62,7 +62,10 @@ func TestCASPPolicyRequiresEvenBoundedPairs(t *testing.T) {
 }
 
 func TestCASPReusesSevenByteAtomicWireFormat(t *testing.T) {
-	inst := vm.Instruction{Op: int(CASP), Rd: 4, Rn: 6, Rm: 2, Shift: 8, Raw: 0x4862fcc4}
+	inst := vm.Instruction{Op: int(CAS), Rd: 4, Rn: 6, Rm: 2, Shift: 8, Raw: 0x4862fcc4}
+	if !isCASPPair(inst) {
+		t.Fatalf("test encoding is not CASP: raw=%08x", inst.Raw)
+	}
 	result := translateForPhase5(t, []vm.Instruction{inst})
 	if len(result.Unsupported) != 0 {
 		t.Fatalf("unsupported=%v", result.Unsupported)
@@ -88,8 +91,8 @@ func TestCASPReusesSevenByteAtomicWireFormat(t *testing.T) {
 func TestCASPReservedSizeDoesNotDecodeAsPairAtomic(t *testing.T) {
 	decoder := NewDecoder()
 	for _, raw := range []uint32{0x88207c82, 0xc8207c82} {
-		if got := Op(decoder.Decode(raw, 0).Op); got == CASP {
-			t.Fatalf("reserved CASP size decoded as CASP: raw=%08x", raw)
+		if inst := decoder.Decode(raw, 0); isCASPPair(inst) {
+			t.Fatalf("reserved CASP size decoded as pair atomic: raw=%08x inst=%+v", raw, inst)
 		}
 	}
 }
