@@ -59,6 +59,10 @@ git -C "$clean" init -q
 git -C "$clean" add .
 run_pass clean "$clean"
 
+prepare_case
+chmod -x "$TMP/case/scripts/package-release.sh"
+run_fail executable-mode "non-executable product shell entry point"
+
 for method in String StringVar Func; do
   for flag_name in apk profile; do
     prepare_case

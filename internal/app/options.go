@@ -90,11 +90,11 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 			return opts, fmt.Errorf("-seed must contain exactly 64 hexadecimal characters")
 		}
 	}
-	if err := validateNDK(opts.NDK); err != nil {
-		return opts, err
-	}
 	if opts.Info {
 		return opts, nil
+	}
+	if err := validateNDK(opts.NDK); err != nil {
+		return opts, err
 	}
 
 	direct := strings.TrimSpace(opts.Func) != "" || strings.TrimSpace(opts.Addr) != ""

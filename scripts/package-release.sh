@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEVICE_EVIDENCE="${1:-}"
-OUT_DIR="${2:-$ROOT/dist/release}"
+FINAL_OUT_DIR="${2:-$ROOT/dist/release}"
 
 if [[ -z "$DEVICE_EVIDENCE" ]]; then
   echo "usage: VMPACKER_SIGN_IDENTITY='Developer ID Application: ...' VMPACKER_NOTARY_PROFILE=profile $0 device-evidence.json [out-dir]" >&2
@@ -21,8 +21,10 @@ command -v xcrun >/dev/null
 command -v ditto >/dev/null
 
 TAG="$(git -C "$ROOT" describe --tags --exact-match HEAD 2>/dev/null || true)"
-[[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || {
-  echo "release HEAD must have an exact v-prefixed SemVer tag" >&2; exit 1;
+readonly PRERELEASE_ID='(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
+readonly SEMVER_RE="^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-${PRERELEASE_ID}(\\.${PRERELEASE_ID})*)?$"
+[[ "$TAG" =~ $SEMVER_RE ]] || {
+  echo "release HEAD must have an exact v-prefixed SemVer tag without build metadata" >&2; exit 1;
 }
 COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || {
@@ -47,8 +49,19 @@ REVISION="$(awk -F= '$1 ~ /^[[:space:]]*Pkg.Revision[[:space:]]*$/ { gsub(/^[[:s
 python3 "$ROOT/scripts/validate-demo-cases.py"
 python3 "$ROOT/scripts/validate-device-evidence.py" "$DEVICE_EVIDENCE" --root "$ROOT"
 
-rm -rf "$OUT_DIR"
-mkdir -p "$OUT_DIR"
+if [[ -e "$FINAL_OUT_DIR" || -L "$FINAL_OUT_DIR" ]]; then
+  echo "release output path already exists; choose a new path or remove the old release directory explicitly: $FINAL_OUT_DIR" >&2
+  exit 1
+fi
+OUT_PARENT="$(dirname "$FINAL_OUT_DIR")"
+mkdir -p "$OUT_PARENT"
+STAGING_DIR="$(mktemp -d "$OUT_PARENT/.vmpacker-release.XXXXXX")"
+cleanup_staging() {
+  [[ -n "${STAGING_DIR:-}" ]] && rm -rf "$STAGING_DIR"
+}
+trap cleanup_staging EXIT HUP INT TERM
+OUT_DIR="$STAGING_DIR"
+
 "$ROOT/build.sh"
 ARTIFACT="$OUT_DIR/vmpacker-darwin-arm64"
 cp "$ROOT/dist/vmpacker-darwin-arm64" "$ARTIFACT"
@@ -117,6 +130,15 @@ chmod 0600 "$OUT_DIR/release-evidence-draft.json"
   shasum -a 256 vmpacker-darwin-arm64 "vmpacker-$TAG-source.tar.gz" device-evidence.json > SHA256SUMS
 )
 rm -f "$NOTARY_ZIP"
+
+if [[ -e "$FINAL_OUT_DIR" || -L "$FINAL_OUT_DIR" ]]; then
+  echo "release output path appeared while packaging; refusing to overwrite it: $FINAL_OUT_DIR" >&2
+  exit 1
+fi
+mv "$STAGING_DIR" "$FINAL_OUT_DIR"
+STAGING_DIR=""
+trap - EXIT HUP INT TERM
+OUT_DIR="$FINAL_OUT_DIR"
 
 echo "release candidate packaged under $OUT_DIR"
 echo "independent review remains required; finalize release-evidence-draft.json only after that review"

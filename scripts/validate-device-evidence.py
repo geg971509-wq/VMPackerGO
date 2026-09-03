@@ -48,16 +48,24 @@ def _validate_result(value, where):
         _require(isinstance(value[key], str) and HEX64.fullmatch(value[key]) is not None,
                  f"{where}.{key} must be lowercase SHA-256 hex")
 
-def _validate_attempts(attempts, where):
+def _validate_attempts(attempts, where, *, expect_success):
     _require(isinstance(attempts, list) and len(attempts) >= 3,
              f"{where}.attempts must contain at least three executions")
     for index, attempt in enumerate(attempts):
+        attempt_where = f"{where}.attempts[{index}]"
         _require(isinstance(attempt, dict) and set(attempt) == {"baseline", "packed"},
-                 f"{where}.attempts[{index}] must contain baseline and packed only")
-        _validate_result(attempt["baseline"], f"{where}.attempts[{index}].baseline")
-        _validate_result(attempt["packed"], f"{where}.attempts[{index}].packed")
+                 f"{attempt_where} must contain baseline and packed only")
+        _validate_result(attempt["baseline"], f"{attempt_where}.baseline")
+        _validate_result(attempt["packed"], f"{attempt_where}.packed")
         _require(attempt["baseline"] == attempt["packed"],
-                 f"{where}.attempts[{index}] baseline/packed behavior differs")
+                 f"{attempt_where} baseline/packed behavior differs")
+        result = attempt["baseline"]
+        if expect_success:
+            _require(result["exit_code"] == 0 and result["signal"] is None,
+                     f"{attempt_where} is equivalent but did not complete successfully")
+        else:
+            _require(result["exit_code"] > 0 and result["signal"] is None,
+                     f"{attempt_where} malformed-input rejection must be a deterministic positive exit")
 
 def validate_document(document, manifest_ids, manifest_sha256, expected_commit):
     _walk_forbidden(document)
@@ -112,7 +120,7 @@ def validate_document(document, manifest_ids, manifest_sha256, expected_commit):
         device_id = run.get("device_id")
         _require(demo_id in manifest_ids, f"{where}.demo_id {demo_id!r} is not in the approved manifest")
         _require(device_id in device_by_id, f"{where}.device_id is unknown")
-        _validate_attempts(run.get("attempts"), where)
+        _validate_attempts(run.get("attempts"), where, expect_success=True)
         demo_coverage[demo_id].add(device_by_id[device_id]["page_size"])
     for demo_id, page_sizes in sorted(demo_coverage.items()):
         _require(page_sizes == {4096, 16384},
@@ -131,13 +139,19 @@ def validate_document(document, manifest_ids, manifest_sha256, expected_commit):
         tags = run.get("tags")
         _require(isinstance(tags, list) and tags and all(isinstance(tag, str) and tag for tag in tags),
                  f"{where}.tags must be a non-empty string array")
-        _validate_attempts(run.get("attempts"), where)
-        observed_tags.update(tags)
-        if "bti" in tags:
+        tag_set = set(tags)
+        _require(len(tag_set) == len(tags), f"{where}.tags must not contain duplicates")
+        malformed = "malformed_reject" in tag_set
+        if malformed:
+            _require(tag_set == {"malformed_reject"},
+                     f"{where}.malformed_reject must be an isolated rejection case")
+        _validate_attempts(run.get("attempts"), where, expect_success=not malformed)
+        observed_tags.update(tag_set)
+        if "bti" in tag_set:
             _require(device_by_id[device_id]["bti"], f"{where} claims BTI on a non-BTI device/path")
-        if "pac" in tags:
+        if "pac" in tag_set:
             _require(device_by_id[device_id]["pac"], f"{where} claims PAC on a non-PAC device/path")
-        if "atomics_contention" in tags:
+        if "atomics_contention" in tag_set:
             _require(isinstance(run.get("threads"), int) and run["threads"] >= 2,
                      f"{where}.threads must be >= 2 for atomics_contention")
             _require(isinstance(run.get("iterations"), int) and run["iterations"] >= 1,

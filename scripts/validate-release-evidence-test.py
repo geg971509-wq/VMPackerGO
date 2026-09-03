@@ -18,13 +18,13 @@ DEV4 = "c" * 64
 DEV16 = "d" * 64
 
 
-def result():
-    return {"exit_code": 0, "signal": None, "stdout_sha256": HASH,
+def result(exit_code=0):
+    return {"exit_code": exit_code, "signal": None, "stdout_sha256": HASH,
             "stderr_sha256": HASH, "side_effect_sha256": HASH}
 
 
-def attempts():
-    return [{"baseline": result(), "packed": result()} for _ in range(3)]
+def attempts(exit_code=0):
+    return [{"baseline": result(exit_code), "packed": result(exit_code)} for _ in range(3)]
 
 
 def make_repo(root: Path):
@@ -52,8 +52,10 @@ def device_document(ids, manifest_sha, commit):
         runs.append({"demo_id": demo_id, "device_id": DEV4, "attempts": attempts()})
         runs.append({"demo_id": demo_id, "device_id": DEV16, "attempts": attempts()})
     coverage = {"case_id": "coverage", "device_id": DEV16,
-                "tags": sorted(module.device_evidence.REQUIRED_TAGS),
+                "tags": sorted(module.device_evidence.REQUIRED_TAGS - {"malformed_reject"}),
                 "threads": 4, "iterations": 10, "attempts": attempts()}
+    malformed = {"case_id": "malformed", "device_id": DEV16,
+                 "tags": ["malformed_reject"], "attempts": attempts(1)}
     return {"schema_version": 1, "commit_sha": commit,
             "ndk_revision": module.NDK_REVISION, "manifest_sha256": manifest_sha,
             "devices": [
@@ -61,7 +63,7 @@ def device_document(ids, manifest_sha, commit):
                  "page_size": 4096, "bti": True, "pac": True},
                 {"id_hash": DEV16, "physical": True, "abi": "arm64-v8a", "api": 35,
                  "page_size": 16384, "bti": True, "pac": True},
-            ], "demo_runs": runs, "coverage_runs": [coverage]}
+            ], "demo_runs": runs, "coverage_runs": [coverage, malformed]}
 
 
 def expect_invalid(document, path, root, label):
@@ -113,6 +115,17 @@ def main():
         wrong_ticket = copy.deepcopy(release)
         wrong_ticket["notarization"]["ticket_mode"] = "stapled"
         expect_invalid(wrong_ticket, evidence_path, root, "standalone stapling claim")
+
+        for invalid_tag in ("v1.2.3-01", "v1.2.3-alpha..1", "v1.2.3-"):
+            invalid_semver = copy.deepcopy(release)
+            invalid_semver["tag"] = invalid_tag
+            expect_invalid(invalid_semver, evidence_path, root, f"invalid SemVer {invalid_tag}")
+
+        linked_device = evidence_dir / "device-link.json"
+        linked_device.symlink_to(device_path.name)
+        symlinked = copy.deepcopy(release)
+        symlinked["device_evidence"] = {"file": linked_device.name, "sha256": module.sha256(device_path)}
+        expect_invalid(symlinked, evidence_path, root, "symlinked evidence file")
 
     print("release evidence validator self-test passed")
     return 0

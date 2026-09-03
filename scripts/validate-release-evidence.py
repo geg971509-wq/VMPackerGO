@@ -18,7 +18,11 @@ spec.loader.exec_module(device_evidence)
 NDK_REVISION = "29.0.14206865"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-SEMVER = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$")
+PRERELEASE_ID = r"(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+SEMVER = re.compile(
+    rf"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    rf"(?:-{PRERELEASE_ID}(?:\.{PRERELEASE_ID})*)?$"
+)
 
 class ReleaseEvidenceError(ValueError):
     pass
@@ -47,6 +51,7 @@ def safe_sibling(base: Path, name, label):
     require(isinstance(name, str) and name and Path(name).name == name and not Path(name).is_absolute(),
             f"{label}.file must be a basename beside the evidence JSON")
     path = base / name
+    require(not path.is_symlink(), f"{label}.file must be a regular file, not a symbolic link")
     require(path.is_file(), f"{label} file {name!r} is missing")
     return path
 
@@ -55,7 +60,8 @@ def validate_document(document, evidence_path: Path, root: Path, *, live_checks=
     require(document.get("schema_version") == 1, "schema_version must be 1")
     tag = document.get("tag")
     commit = document.get("commit_sha")
-    require(isinstance(tag, str) and SEMVER.fullmatch(tag), "tag must be a v-prefixed SemVer release tag")
+    require(isinstance(tag, str) and SEMVER.fullmatch(tag),
+            "tag must be a v-prefixed SemVer release tag without build metadata")
     require(isinstance(commit, str) and HEX40.fullmatch(commit), "commit_sha must be lowercase 40-hex")
     require(document.get("go_version") == "go" + (root / ".go-version").read_text().strip(),
             "go_version does not match .go-version")

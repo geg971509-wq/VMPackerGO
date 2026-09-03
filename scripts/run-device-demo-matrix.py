@@ -192,7 +192,7 @@ def main(argv=None):
             packed = case_dir / ("packed.so" if mode == "so" else "packed")
             try:
                 run([str(args.packer.resolve()), "-ndk", str(args.ndk.resolve()), "-mode", mode,
-                     "-manifest", str(selection_manifest), "-o", str(packed), str(baseline)])
+                     "-manifest", str(selection_manifest), "-force", "-o", str(packed), str(baseline)])
             except RuntimeError:
                 fail(f"{case['id']}: packing failed")
             attempts = execute_case(case, baseline, packed, runner)

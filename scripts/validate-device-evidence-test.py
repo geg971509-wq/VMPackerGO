@@ -16,15 +16,20 @@ DEVICE_16K = "d" * 64
 DEMO_IDS = [f"demo_{i:03d}" for i in range(85)]
 RESULT = {"exit_code": 0, "signal": None, "stdout_sha256": HASH,
           "stderr_sha256": HASH, "side_effect_sha256": HASH}
+REJECTION = {"exit_code": 1, "signal": None, "stdout_sha256": HASH,
+             "stderr_sha256": HASH, "side_effect_sha256": HASH}
+SIGNALLED = {"exit_code": -9, "signal": None, "stdout_sha256": HASH,
+             "stderr_sha256": HASH, "side_effect_sha256": HASH}
 
-def attempts():
-    return [{"baseline": copy.deepcopy(RESULT), "packed": copy.deepcopy(RESULT)} for _ in range(3)]
+def attempts(result=RESULT):
+    return [{"baseline": copy.deepcopy(result), "packed": copy.deepcopy(result)} for _ in range(3)]
 
 def valid_document():
     runs = []
     for demo_id in DEMO_IDS:
         runs.append({"demo_id": demo_id, "device_id": DEVICE_4K, "attempts": attempts()})
         runs.append({"demo_id": demo_id, "device_id": DEVICE_16K, "attempts": attempts()})
+    success_tags = sorted(module.REQUIRED_TAGS - {"malformed_reject"})
     return {
         "schema_version": 1, "commit_sha": COMMIT,
         "ndk_revision": module.NDK_REVISION, "manifest_sha256": MANIFEST_SHA,
@@ -35,9 +40,13 @@ def valid_document():
              "page_size": 16384, "bti": True, "pac": True},
         ],
         "demo_runs": runs,
-        "coverage_runs": [{"case_id": "matrix", "device_id": DEVICE_16K,
-                           "tags": sorted(module.REQUIRED_TAGS), "threads": 4,
-                           "iterations": 1000, "attempts": attempts()}],
+        "coverage_runs": [
+            {"case_id": "matrix", "device_id": DEVICE_16K,
+             "tags": success_tags, "threads": 4,
+             "iterations": 1000, "attempts": attempts()},
+            {"case_id": "malformed", "device_id": DEVICE_16K,
+             "tags": ["malformed_reject"], "attempts": attempts(REJECTION)},
+        ],
     }
 
 def expect_invalid(document, label):
@@ -54,6 +63,22 @@ def main():
     mismatch = copy.deepcopy(document)
     mismatch["demo_runs"][0]["attempts"][0]["packed"]["exit_code"] = 1
     expect_invalid(mismatch, "behavior mismatch")
+
+    equivalent_failure = copy.deepcopy(document)
+    equivalent_failure["demo_runs"][0]["attempts"] = attempts(REJECTION)
+    expect_invalid(equivalent_failure, "equivalent demo failure")
+
+    malformed_success = copy.deepcopy(document)
+    malformed_success["coverage_runs"][1]["attempts"] = attempts()
+    expect_invalid(malformed_success, "successful malformed rejection")
+
+    malformed_signal = copy.deepcopy(document)
+    malformed_signal["coverage_runs"][1]["attempts"] = attempts(SIGNALLED)
+    expect_invalid(malformed_signal, "signal termination masquerading as malformed rejection")
+
+    mixed_malformed = copy.deepcopy(document)
+    mixed_malformed["coverage_runs"][1]["tags"] = ["malformed_reject", "exception_throw"]
+    expect_invalid(mixed_malformed, "malformed rejection satisfying success coverage")
 
     incomplete = copy.deepcopy(document)
     incomplete["demo_runs"] = [r for r in incomplete["demo_runs"]
