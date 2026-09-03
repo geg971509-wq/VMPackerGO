@@ -1,0 +1,60 @@
+name: Phase19 exact-r29 exclusive audit
+
+on:
+  push:
+    branches:
+      - fix/phase19-branchful-exclusive
+    paths:
+      - .github/workflows/phase19-exclusive-audit.yml
+      - .omx/plans/vmp-phase19-branchful-exclusive-cfg.md
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Resolve exact Android NDK r29
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="29.0.14206865"
+          candidates=("${ANDROID_NDK_ROOT:-}" "${ANDROID_NDK_HOME:-}" "${NDK_HOME:-}")
+          for sdk in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}" "$HOME/Library/Android/sdk"; do
+            [[ -n "$sdk" ]] && candidates+=("$sdk/ndk/$expected")
+          done
+          ndk=""
+          for candidate in "${candidates[@]}"; do
+            [[ -n "$candidate" && -f "$candidate/source.properties" ]] || continue
+            revision="$(awk -F= '$1 ~ /^[[:space:]]*Pkg.Revision[[:space:]]*$/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit }' "$candidate/source.properties")"
+            if [[ "$revision" == "$expected" ]]; then ndk="$candidate"; break; fi
+          done
+          if [[ -z "$ndk" ]]; then
+            sdkmanager="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+            [[ -x "$sdkmanager" ]] || sdkmanager="$(command -v sdkmanager || true)"
+            [[ -n "$sdkmanager" ]] || { echo "::error::sdkmanager unavailable"; exit 1; }
+            "$sdkmanager" "ndk;$expected"
+            sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+            ndk="$sdk_root/ndk/$expected"
+          fi
+          echo "ANDROID_NDK=$ndk" >> "$GITHUB_ENV"
+      - name: Print baseline atomic compiler streams
+        shell: bash
+        run: |
+          set -euo pipefail
+          corpus="$RUNNER_TEMP/compiler-r29.tsv"
+          bash scripts/derive-compiler-corpus.sh "$ANDROID_NDK" > "$corpus"
+          python3 - "$corpus" <<'PY'
+          import csv, sys
+          path=sys.argv[1]
+          rows=list(csv.DictReader(open(path), delimiter='\t'))
+          for opt in ('O0','O2','Oz'):
+              for fn in ('vmp_atomic8','vmp_atomic16','vmp_atomic32','vmp_atomic64','vmp_atomic128'):
+                  group=[r for r in rows if r['optimization']==opt and r['profile']=='base' and r['function']==fn]
+                  if not group: continue
+                  print(f'=== {opt}/base {fn} ===')
+                  for r in group:
+                      print(f"{r['address']}\t{r['raw']}\t{r['mnemonic']}\t{r['operands']}")
+          PY
