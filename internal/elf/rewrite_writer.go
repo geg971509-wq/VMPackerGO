@@ -30,9 +30,6 @@ func applyRewritePlan(input []byte, plan *RewritePlan) ([]byte, error) {
 	for _, function := range plan.functions {
 		copy(artifact[function.entryFileOffset:function.entryFileOffset+uint64(len(function.entryPatch))], function.entryPatch)
 	}
-	if err := validateAndroidLoadedProgramHeaders(artifact); err != nil {
-		return nil, err
-	}
 	return artifact, nil
 }
 
