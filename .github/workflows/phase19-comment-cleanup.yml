@@ -1,0 +1,40 @@
+name: Phase19 exclusive comment cleanup
+
+on:
+  push:
+    branches:
+      - fix/phase19-branchful-exclusive
+    paths:
+      - .github/workflows/phase19-comment-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/phase19-branchful-exclusive
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - name: Correct stale exclusive-region comment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/phase19_comment_patch.py
+          gofmt -w internal/arch/arm64/tr_exclusive.go
+          env -u ANDROID_NDK -u ANDROID_NDK_HOME -u ANDROID_NDK_ROOT -u NDK_HOME go test -count=1 ./internal/arch/arm64
+      - name: Commit product-only cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vmpacker-phase19-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/phase19-comment-cleanup.yml scripts/phase19_comment_patch.py
+          git add internal/arch/arm64/tr_exclusive.go
+          git diff --cached --check
+          git commit -m 'Clarify exclusive CFG translation contract'
+          git push origin HEAD:fix/phase19-branchful-exclusive
