@@ -10,15 +10,24 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Go checks (macOS)
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Contract checks
+      - name: Contract and evidence-schema checks
         run: |
           bash -n build.sh scripts/*.sh
+          python3 -m py_compile scripts/*.py
+          python3 scripts/validate-demo-cases.py
+          python3 scripts/validate-device-evidence-test.py
+          python3 scripts/validate-release-evidence-test.py
           bash scripts/check-contract.sh
           bash scripts/check-contract-test.sh
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
