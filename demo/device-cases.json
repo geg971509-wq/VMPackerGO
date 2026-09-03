@@ -120,10 +120,6 @@
         {
           "abi": "u64()",
           "name": "test_ldadd_cas"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_all_insn.c"
@@ -244,10 +240,6 @@
         {
           "abi": "i32()",
           "name": "check_add"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_add.c"
@@ -262,10 +254,6 @@
         {
           "abi": "i32(u64,u64,u64,u64)",
           "name": "test_add_ext"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_add_ext.c"
@@ -280,10 +268,6 @@
         {
           "abi": "i32()",
           "name": "check_add_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_add_imm.c"
@@ -298,10 +282,6 @@
         {
           "abi": "i32()",
           "name": "check_and"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_and.c"
@@ -316,10 +296,6 @@
         {
           "abi": "i32()",
           "name": "check_and_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_and_imm.c"
@@ -334,10 +310,6 @@
         {
           "abi": "i32()",
           "name": "check_asr"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_asr.c"
@@ -352,10 +324,6 @@
         {
           "abi": "i32()",
           "name": "check_asr_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_asr_imm.c"
@@ -370,10 +338,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_br_reg"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_br_reg.c"
@@ -392,10 +356,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_call_nat"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_call_nat.c"
@@ -414,10 +374,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_call_reg"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_call_reg.c"
@@ -432,10 +388,6 @@
         {
           "abi": "i32(i32,i32)",
           "name": "check_cmp"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_cmp.c"
@@ -450,10 +402,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_cmp_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_cmp_imm.c"
@@ -484,10 +432,6 @@
         {
           "abi": "i32()",
           "name": "check_extr_all"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_extr.c"
@@ -502,10 +446,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_halt"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_halt.c"
@@ -520,10 +460,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_ja"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ja.c"
@@ -538,10 +474,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jae"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jae.c"
@@ -556,10 +488,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jb"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jb.c"
@@ -574,10 +502,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jbe"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jbe.c"
@@ -592,10 +516,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_je"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_je.c"
@@ -610,10 +530,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jge"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jge.c"
@@ -628,10 +544,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jgt"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jgt.c"
@@ -646,10 +558,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jl"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jl.c"
@@ -664,10 +572,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jle"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jle.c"
@@ -682,10 +586,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jmp"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jmp.c"
@@ -700,10 +600,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_jne"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_jne.c"
@@ -718,10 +614,6 @@
         {
           "abi": "i32()",
           "name": "test_ldr_literal"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ldr_literal.c"
@@ -736,10 +628,6 @@
         {
           "abi": "i64()",
           "name": "check_ldrh"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ldrh.c"
@@ -754,10 +642,6 @@
         {
           "abi": "i64()",
           "name": "check_ldrsb"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ldrsb.c"
@@ -772,10 +656,6 @@
         {
           "abi": "i64()",
           "name": "check_ldrsh"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ldrsh.c"
@@ -790,10 +670,6 @@
         {
           "abi": "i64()",
           "name": "check_ldrsw"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ldrsw.c"
@@ -808,10 +684,6 @@
         {
           "abi": "i32()",
           "name": "check_load32"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_load32.c"
@@ -826,10 +698,6 @@
         {
           "abi": "i32()",
           "name": "check_load64"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_load64.c"
@@ -844,10 +712,6 @@
         {
           "abi": "i32()",
           "name": "check_load8"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_load8.c"
@@ -878,10 +742,6 @@
         {
           "abi": "i32()",
           "name": "check_mov_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_mov_imm.c"
@@ -896,10 +756,6 @@
         {
           "abi": "i32()",
           "name": "check_mov_imm32"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_mov_imm32.c"
@@ -914,10 +770,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_mov_reg"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_mov_reg.c"
@@ -932,10 +784,6 @@
         {
           "abi": "i64()",
           "name": "check_msub"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_msub.c"
@@ -950,10 +798,6 @@
         {
           "abi": "i32()",
           "name": "check_mul"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_mul.c"
@@ -968,10 +812,6 @@
         {
           "abi": "i32()",
           "name": "check_mul_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_mul_imm.c"
@@ -986,10 +826,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_nop"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_nop.c"
@@ -1004,10 +840,6 @@
         {
           "abi": "i32()",
           "name": "check_not"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_not.c"
@@ -1022,10 +854,6 @@
         {
           "abi": "i32()",
           "name": "check_or"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_or.c"
@@ -1040,10 +868,6 @@
         {
           "abi": "i32()",
           "name": "check_or_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_or_imm.c"
@@ -1058,10 +882,6 @@
         {
           "abi": "i32()",
           "name": "check_pop"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_pop.c"
@@ -1076,10 +896,6 @@
         {
           "abi": "i32()",
           "name": "check_push"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_push.c"
@@ -1108,10 +924,6 @@
         {
           "abi": "u64()",
           "name": "test_svc"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_remaining.c"
@@ -1126,10 +938,6 @@
         {
           "abi": "i32(i32)",
           "name": "check_ret"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ret.c"
@@ -1148,10 +956,6 @@
         {
           "abi": "i32()",
           "name": "check_ror_w_all"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ror.c"
@@ -1166,10 +970,6 @@
         {
           "abi": "i32()",
           "name": "check_shl"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_shl.c"
@@ -1184,10 +984,6 @@
         {
           "abi": "i32()",
           "name": "check_shl_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_shl_imm.c"
@@ -1202,10 +998,6 @@
         {
           "abi": "i32()",
           "name": "check_shr"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_shr.c"
@@ -1220,10 +1012,6 @@
         {
           "abi": "i32()",
           "name": "check_shr_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_shr_imm.c"
@@ -1238,10 +1026,6 @@
         {
           "abi": "i32()",
           "name": "check_store32"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_store32.c"
@@ -1256,10 +1040,6 @@
         {
           "abi": "i32()",
           "name": "check_store64"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_store64.c"
@@ -1274,10 +1054,6 @@
         {
           "abi": "i32()",
           "name": "check_store8"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_store8.c"
@@ -1292,10 +1068,6 @@
         {
           "abi": "i32()",
           "name": "test_strb_pre"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_strb_pre.c"
@@ -1310,10 +1082,6 @@
         {
           "abi": "i64()",
           "name": "check_strh"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_strh.c"
@@ -1340,10 +1108,6 @@
         {
           "abi": "i32(i32)",
           "name": "test_call_stur"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_stur_call.c"
@@ -1358,10 +1122,6 @@
         {
           "abi": "i32()",
           "name": "check_sub"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_sub.c"
@@ -1376,10 +1136,6 @@
         {
           "abi": "i32()",
           "name": "check_sub_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_sub_imm.c"
@@ -1402,10 +1158,6 @@
         {
           "abi": "i64()",
           "name": "check_ubfm3"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_ubfm.c"
@@ -1420,10 +1172,6 @@
         {
           "abi": "u64(u64,u64,u64,u64,u64)",
           "name": "test_umulh"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_umulh.c"
@@ -1438,10 +1186,6 @@
         {
           "abi": "i32()",
           "name": "check_vld16"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_vld16.c"
@@ -1456,10 +1200,6 @@
         {
           "abi": "i32()",
           "name": "check_vst16"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_vst16.c"
@@ -1474,10 +1214,6 @@
         {
           "abi": "i32()",
           "name": "check_xor"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_xor.c"
@@ -1492,10 +1228,6 @@
         {
           "abi": "i32()",
           "name": "check_xor_imm"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_insn_xor_imm.c"
@@ -1516,10 +1248,6 @@
         {
           "abi": "i32()",
           "name": "test_cas_basic"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_ldadd_basic.c"
@@ -1536,10 +1264,6 @@
         {
           "abi": "u32(ptr,u32)",
           "name": "my_crc32"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_ldr_reg.c"
@@ -1570,10 +1294,6 @@
         {
           "abi": "u32(u32,u32)",
           "name": "test_func_to_check"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_memcrc.c"
@@ -1660,10 +1380,6 @@
         {
           "abi": "i64(ptr)",
           "name": "test_ldursw"
-        },
-        {
-          "abi": "i32()",
-          "name": "main"
         }
       ],
       "source": "demo/demo_sdiv_ldst.c"
