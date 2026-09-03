@@ -51,23 +51,38 @@ jobs:
           clang="$bin/aarch64-linux-android23-clang"
           objdump="$bin/llvm-objdump"
           [[ -x "$clang" && -x "$objdump" ]]
+
           cat > "$RUNNER_TEMP/casp-valid.S" <<'EOF'
           .text
-          .arch armv8.1-a+lse
+          .arch_extension lse
           .global casp_valid
           casp_valid:
             casp w0, w1, w2, w3, [x4]
             caspa w4, w5, w6, w7, [sp]
             caspl x8, x9, x10, x11, [x12]
-            caspal x30, xzr, x28, x29, [x0]
+            caspal x12, x13, x14, x15, [x16]
             ret
           EOF
           "$clang" -c "$RUNNER_TEMP/casp-valid.S" -o "$RUNNER_TEMP/casp-valid.o"
           "$objdump" -d --show-raw-insn "$RUNNER_TEMP/casp-valid.o"
 
+          cat > "$RUNNER_TEMP/casp-r30.S" <<'EOF'
+          .text
+          .arch_extension lse
+          probe:
+            caspal x30, xzr, x28, x29, [x0]
+          EOF
+          if "$clang" -c "$RUNNER_TEMP/casp-r30.S" -o "$RUNNER_TEMP/casp-r30.o" 2>"$RUNNER_TEMP/r30.log"; then
+            echo 'CASP_R30_PAIR=accepted'
+            "$objdump" -d --show-raw-insn "$RUNNER_TEMP/casp-r30.o"
+          else
+            echo 'CASP_R30_PAIR=rejected'
+            cat "$RUNNER_TEMP/r30.log"
+          fi
+
           cat > "$RUNNER_TEMP/casp-invalid.S" <<'EOF'
           .text
-          .arch armv8.1-a+lse
+          .arch_extension lse
           bad:
             casp x1, x2, x4, x5, [x0]
           EOF
@@ -75,4 +90,5 @@ jobs:
             echo '::error::odd CASP source pair unexpectedly assembled'
             exit 1
           fi
+          echo 'CASP_ODD_PAIR=rejected'
           cat "$RUNNER_TEMP/invalid.log"
