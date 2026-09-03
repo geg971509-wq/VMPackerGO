@@ -24,7 +24,7 @@ The initial phrase “relocate PC-relative branches” is too imprecise. AArch64
 - therefore a correct region may contain multiple store-exclusive instructions and internal branch targets;
 - a copied block is safe only when all control-flow paths from its load-exclusive entry terminate inside a validated closed block and then converge to one native-thunk return boundary, or when a separately designed continuation result is returned to the VM.
 
-The exact-r29 corpus, not a hand-written synthetic example, is the architectural evidence source. Before product changes, Phase 19 will capture the baseline atomic instruction streams emitted by NDK `29.0.14206865` at O0/O2/Oz and audit their branch targets and termination paths.
+The exact-r29 corpus, not a hand-written synthetic example, is the architectural evidence source. Before product changes, Phase 19 captures the baseline atomic instruction streams emitted by NDK `29.0.14206865` at O0/O2/Oz and audits their branch targets and termination paths.
 
 ## 3. Corrected repair plan
 
@@ -44,11 +44,11 @@ No product behavior changes are allowed until this evidence is reviewed.
 
 ### 3.2 Region representation
 
-Prefer keeping `vm.ExclusiveRegion` content-addressed by exact original instruction words. Do not add mutable process-local labels or numbering.
+Keep `vm.ExclusiveRegion` content-addressed by exact original instruction words. Do not add mutable process-local labels or numbering.
 
-If the exact-r29 CFG is fully internal and has a single post-region continuation, extend the region to include the entire closed instruction block. Preserve original instruction order and spacing so internal PC-relative branch immediates remain valid after copying.
+When the exact-r29 CFG is fully internal and has a single post-region continuation, extend the region to include the shortest complete closed instruction block. Preserve original instruction order and spacing so internal PC-relative branch immediates remain valid after copying.
 
-If any exact-r29 path requires more than one post-region continuation, add an explicit, deterministic exit code / continuation-offset field to the thunk contract rather than guessing. Any such ABI change must be versioned through the content identity or otherwise proven collision-safe.
+A new continuation ABI is not introduced because the exact-r29 evidence shows a single post-region continuation for the relevant micro-CFGs.
 
 ### 3.3 CFG validator
 
@@ -57,24 +57,30 @@ Replace the current first-store linear scan with a bounded CFG validator for the
 The validator must:
 
 - start only at LDXR/LDAXR/LDXP/LDAXP;
-- bound the region size and number of visited CFG states;
-- reject nested load-exclusive instructions except a proven retry back-edge to the same entry;
-- allow only the existing arithmetic/select body plus exact branch operations proven by the compiler corpus;
-- require conditional branch targets to be aligned and inside the candidate region;
-- reject calls, indirect branches, exception-generating instructions, memory operations other than the exclusive boundaries/CLREX, and PC-relative data accesses;
-- require every path to terminate the monitor through a matching STXR/STLXR/STXP/STLXP or CLREX before leaving the native thunk;
+- bound the region to the existing maximum instruction count;
+- reject nested load-exclusive instructions; retry is represented as a branch back to the same region entry rather than a second copied load;
+- allow only the existing arithmetic/select body plus `B`, `B.cond`, `CBZ`, and `CBNZ`, which are the branch forms proven by the exact-r29 micro-CFGs;
+- allow `CLREX` as an in-region monitor termination operation;
+- require branch targets to be aligned and either inside the candidate copied block or exactly at the one-past-block cleanup sentinel;
+- reject any backward branch whose target is not the exclusive-load entry;
+- reject calls, indirect branches, exception-generating instructions, unrelated memory operations, and PC-relative data accesses;
+- require at least one matching store-exclusive in the candidate and validate every store path against the entry load;
 - preserve scalar/pair arity, width, address-base, status/data overlap, and remap-capacity validation;
-- require all branch register operands to be remappable and ensure the address register is not overwritten.
+- require CBZ/CBNZ register operands to be remappable and ensure ordinary body instructions do not overwrite the address register.
+
+The translator searches candidate lengths in ascending order after the first store appears. This preserves the historical shortest linear region for ordinary `LDXR/LDAXR → body → STXR/STLXR` loops and therefore avoids gratuitously changing existing region identities.
 
 ### 3.4 Thunk planning
 
 Extend `PlanExclusiveThunk` only as needed for the validated CFG:
 
-- remap register fields for CBZ/CBNZ (and TBZ/TBNZ only if exact-r29 evidence requires them);
-- do not rewrite a branch immediate when both source and target remain at the same relative positions;
-- if the complete copied CFG is not position-isomorphic, re-encode the immediate from validated source/target indices with range checks;
-- preserve NZCV bridge and complete guest-register writeback on every thunk return path;
-- never return directly from inside the copied raw instruction stream unless all architectural state has first been committed back to `vm_ctx_t`.
+- remap the register field of CBZ/CBNZ;
+- keep branch immediates unchanged because the validated raw block is copied position-isomorphically;
+- branch targets equal to the one-past-block sentinel land on the generated cleanup sequence;
+- preserve the NZCV bridge and complete guest-register writeback on the single thunk return path;
+- issue an unconditional cleanup `CLREX` immediately after the copied raw block before architectural state is written back to `vm_ctx_t`.
+
+The final cleanup `CLREX` is deliberate monitor hygiene. It is necessary for O0 compare-mismatch paths that branch out without executing a store-exclusive or source `CLREX`; it is harmless after STXR/STLXR or after an already executed source `CLREX`, and it does not change NZCV.
 
 ### 3.5 Tests
 
@@ -82,34 +88,45 @@ Add focused tests for:
 
 - exact-r29 scalar compare/exchange branch shapes;
 - exact-r29 byte/halfword `SUBS(ext)` + conditional branch shapes;
-- exact-r29 pair-exclusive 128-bit baseline shapes where support is architecturally closed;
+- exact-r29 pair-exclusive 128-bit dual-store paths;
 - retry back-edge behavior;
-- CLREX failure path if emitted;
+- explicit CLREX failure paths;
 - branch target outside the region rejected;
-- branch into the middle of an instruction rejected;
-- branch to unsupported instruction rejected;
-- nested unrelated exclusive load rejected;
-- scalar/pair mismatch rejected;
-- register remap preserves branch register operands;
-- malformed/raw-field mismatch remains fail-closed;
-- deterministic content identity and thunk generation.
+- backward branch to an interior instruction rejected;
+- region with no store-exclusive rejected;
+- register remap preserves CBZ/CBNZ operands;
+- shortest existing linear region remains unchanged;
+- deterministic content identity and thunk generation;
+- generated one-past target lands on cleanup CLREX before NZCV/GPR writeback.
 
 ### 3.6 Phase 18 gate update
 
 Remove only the `branchful-exclusive` intentional boundary classification after exact-r29 proves the affected baseline functions fully close through the real Translator. Keep `casp128` and `machine-outliner` unchanged.
 
-The exact-r29 test must explicitly fail if any `branchful-exclusive` intentional record remains after Phase 19.
+The exact-r29 test must no longer accept a branchful-exclusive failure. Any remaining one is an unexpected gap.
 
 ## 4. Execution policy
 
 - Implement only compiler-proven branch families needed for the closed CFG.
 - Do not fold CASP128 or machine-outliner into this phase.
 - Do not support arbitrary branch-bearing native snippets.
-- Do not change VM wire opcodes unless the diagnostic proves a multi-continuation exit protocol is unavoidable.
+- Do not change VM wire opcodes or the ExclusiveRegion content-addressing contract.
 - Temporary diagnostic/repair workflows and scripts must self-delete or be removed before the final diff.
 - Every correction must pass focused Go tests/vet before the full PR Verification.
 
-## 5. Exit criteria
+## 5. Exact-r29 diagnostic evidence and execution consensus
+
+The exact NDK r29 baseline audit confirmed the architecture and removed the need for a new continuation ABI:
+
+- O0 8/16/32/64-bit compare/exchange emits `LDAXR* → CMP/SUBS(ext) → B.ne(one-past) → STLXR* → CBNZ(entry)`. The compare-failure path has no source `CLREX`, so returning directly to the interpreter would leak a live exclusive monitor. The generated thunk therefore always performs cleanup `CLREX` before state writeback.
+- O2/Oz 8/16/32/64-bit compare/exchange emits `LDAXR* → CMP → B.ne(CLREX) → STLXR* → CBNZ(entry) → B(one-past) → CLREX`. Copying all seven raw words preserves both internal branch distances; the final `B` targets the generated cleanup sentinel.
+- O2/Oz 128-bit pair compare/exchange emits one `LDAXP`, comparisons/selects, a conditional branch to one of two `STLXP` paths, retry `CBNZ` edges to the entry, and a single one-past continuation. The entire 11-word block is position-isomorphic and therefore needs register remapping but no branch-immediate relocation.
+- Ordinary fetch-add/exchange exclusive loops remain represented by their existing shortest load/body/store region; the following retry CBNZ remains ordinary VM control flow, preserving existing region identity and avoiding unnecessary native expansion.
+- Oz machine-outliner tail branches occur after the exclusive sub-CFG has already closed and therefore remain a separate Phase 18 intentional fail-closed class.
+
+Focused ARM64/runtime tests, full Go tests, and vet pass after implementation when exact-r29-only runtime tests are correctly left to the macOS release gate. The first temporary Ubuntu run failed only because its preinstalled NDK 27 environment triggered `TestBuildInstalledExactR29Object`; no product commit was made from that run. The corrected focused runner clears NDK environment variables, and the authoritative PR gate will rerun the exact-r29 compiler corpus and exact-r29 runtime build on macOS.
+
+## 6. Exit criteria
 
 - exact-r29 baseline atomic branch CFGs are structurally understood and encoded as tests;
 - supported branchful exclusive regions execute entirely in one native thunk without interpreter interruption;
