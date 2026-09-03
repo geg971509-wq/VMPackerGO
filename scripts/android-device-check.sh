@@ -51,17 +51,23 @@ fi
 ID_HASH="$(printf '%s' "$SERIAL" | shasum -a 256 | awk '{print $1}')"
 BTI=false
 PAC=false
+CPU_FEATURES=()
 if grep -Eq '(^|[[:space:]])bti([[:space:]]|$)' <<<"$FEATURES"; then BTI=true; fi
 if grep -Eq '(^|[[:space:]])paca([[:space:]]|$)|(^|[[:space:]])pacg([[:space:]]|$)' <<<"$FEATURES"; then PAC=true; fi
+if grep -Eq '(^|[[:space:]])atomics([[:space:]]|$)' <<<"$FEATURES"; then CPU_FEATURES+=(lse); fi
+if grep -Eq '(^|[[:space:]])crc32([[:space:]]|$)' <<<"$FEATURES"; then CPU_FEATURES+=(crc); fi
+if grep -Eq '(^|[[:space:]])aes([[:space:]]|$)' <<<"$FEATURES"; then CPU_FEATURES+=(crypto); fi
+CPU_FEATURES_CSV="$(IFS=,; echo "${CPU_FEATURES[*]}")"
 
-echo "qualified physical Android candidate: abi=$ABI api=$API page_size=$PAGE_SIZE bti=$BTI pac=$PAC id_hash=${ID_HASH:0:12}..."
+echo "qualified physical Android candidate: abi=$ABI api=$API page_size=$PAGE_SIZE bti=$BTI pac=$PAC features=${CPU_FEATURES_CSV:-base} id_hash=${ID_HASH:0:12}..."
 
 if [[ -n "$JSON_OUT" ]]; then
   umask 077
-  ID_HASH="$ID_HASH" ABI="$ABI" API="$API" PAGE_SIZE="$PAGE_SIZE" BTI="$BTI" PAC="$PAC" \
+  ID_HASH="$ID_HASH" ABI="$ABI" API="$API" PAGE_SIZE="$PAGE_SIZE" BTI="$BTI" PAC="$PAC" CPU_FEATURES_CSV="$CPU_FEATURES_CSV" \
   python3 - "$JSON_OUT" <<'PY'
 import json, os, pathlib, sys
 out = pathlib.Path(sys.argv[1])
+features = [item for item in os.environ.get("CPU_FEATURES_CSV", "").split(",") if item]
 data = {
     "id_hash": os.environ["ID_HASH"],
     "physical": True,
@@ -70,6 +76,7 @@ data = {
     "page_size": int(os.environ["PAGE_SIZE"]),
     "bti": os.environ["BTI"] == "true",
     "pac": os.environ["PAC"] == "true",
+    "cpu_features": sorted(features),
 }
 out.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n")
 out.chmod(0o600)
