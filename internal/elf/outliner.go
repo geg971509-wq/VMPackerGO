@@ -110,7 +110,14 @@ func resolveOutlinedTailHelper(input []byte, meta *elfMetadata, symbols *symbolI
 	return outlinedTailHelper{name: name, address: symbol.addr, raws: raws}, true, nil
 }
 
+// configureOutlinedTailInlines is retained for focused outliner tests. Product
+// translation uses configureExternalTailTransfers with the complete immutable
+// set of selected entry addresses.
 func configureOutlinedTailInlines(input []byte, meta *elfMetadata, symbols *symbolIndex, selection Selection, instructions []vm.Instruction, translator *arm64.Translator) error {
+	return configureExternalTailTransfers(input, meta, symbols, selection, instructions, translator, nil)
+}
+
+func configureExternalTailTransfers(input []byte, meta *elfMetadata, symbols *symbolIndex, selection Selection, instructions []vm.Instruction, translator *arm64.Translator, packedTargets map[uint64]struct{}) error {
 	for _, inst := range instructions {
 		if arm64.Op(inst.Op) != arm64.B {
 			continue
@@ -126,6 +133,14 @@ func configureOutlinedTailInlines(input []byte, meta *elfMetadata, symbols *symb
 		if target >= selection.Address && target < selection.End {
 			continue
 		}
+
+		if _, selected := packedTargets[target]; selected {
+			if err := translator.SetPackedTailTransfer(inst.Offset); err != nil {
+				return fmt.Errorf("packed tail target 0x%X: %w", target, err)
+			}
+			continue
+		}
+
 		names, err := symbols.directTransferNames(branchSite, target)
 		if err != nil {
 			return err
@@ -135,7 +150,7 @@ func configureOutlinedTailInlines(input []byte, meta *elfMetadata, symbols *symb
 			return err
 		}
 		if !matched {
-			return fmt.Errorf("external unconditional branch at 0x%X to 0x%X is not a validated compiler outlined helper", branchSite, target)
+			return fmt.Errorf("external unconditional branch at 0x%X to 0x%X is neither a selected packed tail target nor a validated compiler outlined helper", branchSite, target)
 		}
 		if err := translator.SetOutlinedTailInline(inst.Offset, helper.raws); err != nil {
 			return fmt.Errorf("outlined helper %q: %w", helper.name, err)
