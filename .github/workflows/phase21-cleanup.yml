@@ -27,6 +27,7 @@ jobs:
           python3 scripts/phase21_cleanup.py
           gofmt -w internal/arch/arm64/compiler_corpus_test.go
           git diff --check
+          unset ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME
           go test -count=1 ./internal/arch/arm64 ./internal/elf
           go vet ./internal/arch/arm64 ./internal/elf
       - name: Commit clean product diff
