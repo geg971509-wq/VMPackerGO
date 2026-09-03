@@ -50,6 +50,10 @@ Each baseline/packed result is:
 
 `signal` is `null` or a non-empty signal name. Hashes are produced after the harness's documented deterministic normalization (for example CRLF normalization); normalization must be identical for baseline and packed execution. `side_effect_sha256` hashes a deterministic side-effect bundle, even when that bundle is empty.
 
+For ordinary demo and semantic-coverage executions, equivalence alone is not sufficient: every baseline/packed attempt must be identical, exit with code `0`, and have `signal: null`. A pair of identical crashes or identical non-zero exits is not passing release evidence.
+
+The sole inverse case is `malformed_reject`. It records deterministic rejection: baseline/packed rejection metadata must match, every attempt must have a non-zero exit code and `signal: null`, and the run must not carry any success-coverage tag.
+
 ## Demo run
 
 A demo run contains:
@@ -64,7 +68,7 @@ A demo run contains:
 }
 ```
 
-At least three attempts are required. Every attempt must have byte-for-byte equivalent normalized baseline and packed result metadata. Every ID in `demo/manifest.json` must have a passing run on both a 4 KiB and a 16 KiB physical device.
+At least three attempts are required. Every attempt must have byte-for-byte equivalent normalized baseline and packed result metadata and must complete successfully. Every ID in `demo/manifest.json` must have a passing run on both a 4 KiB and a 16 KiB physical device.
 
 ## Coverage run
 
@@ -87,7 +91,7 @@ Across all passing coverage runs the evidence must contain these tags:
 - `exception_throw`, `exception_catch`, `exception_destructor`, `exception_rethrow`;
 - `malformed_reject`.
 
-A coverage run tagged `atomics_contention` additionally records `threads >= 2` and `iterations >= 1`; its execution results still must match baseline and packed behavior. A malformed-reject case records the deterministic rejection behavior as its baseline/packed comparison contract.
+Tags within one run must be unique. A coverage run tagged `atomics_contention` additionally records `threads >= 2` and `iterations >= 1`; its executions must succeed and match baseline/packed behavior. A `malformed_reject` run must contain only that tag and records deterministic non-zero rejection rather than successful execution.
 
 ## Security/privacy
 
