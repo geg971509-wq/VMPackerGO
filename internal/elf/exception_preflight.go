@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	"github.com/vmpacker/internal/unwind"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/unwind"
 )
 
 type PreparedExceptionRoute struct {

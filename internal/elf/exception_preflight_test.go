@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	"github.com/vmpacker/internal/unwind"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/unwind"
 )
 
 func exceptionFixture() (Selection, *arm64.TranslateResult, *unwind.CIE, *unwind.FDE, *unwind.LSDA) {

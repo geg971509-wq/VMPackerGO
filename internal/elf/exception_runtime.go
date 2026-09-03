@@ -3,7 +3,7 @@ package elf
 import (
 	"fmt"
 
-	vmruntime "github.com/vmpacker/internal/runtime"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
 )
 
 // RuntimeExceptionInvokes converts analyzed unwind plans and final reversed

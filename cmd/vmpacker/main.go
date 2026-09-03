@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/vmpacker/internal/app"
+	"github.com/geg971509-wq/VMPackerGO/internal/app"
 )
 
 func main() {

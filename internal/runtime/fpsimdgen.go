@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
 )
 
 func generateFPSIMDThunks(instructions []uint32) (header, assembly []byte, normalized []uint32, err error) {

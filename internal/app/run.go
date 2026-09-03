@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 
-	elfpacker "github.com/vmpacker/internal/elf"
-	"github.com/vmpacker/internal/publish"
-	"github.com/vmpacker/internal/report"
-	vmruntime "github.com/vmpacker/internal/runtime"
-	"github.com/vmpacker/internal/vm"
+	elfpacker "github.com/geg971509-wq/VMPackerGO/internal/elf"
+	"github.com/geg971509-wq/VMPackerGO/internal/publish"
+	"github.com/geg971509-wq/VMPackerGO/internal/report"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 type Processor func(elfpacker.Request) (elfpacker.Result, error)

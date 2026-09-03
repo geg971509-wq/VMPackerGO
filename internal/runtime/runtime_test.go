@@ -12,8 +12,8 @@ import (
 
 	"debug/elf"
 
-	"github.com/vmpacker/internal/unwind"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/unwind"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 func TestBuildUsesExactNDKToolsAndCleansPrivateExtraction(t *testing.T) {

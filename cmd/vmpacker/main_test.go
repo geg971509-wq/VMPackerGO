@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/vmpacker/internal/app"
+	"github.com/geg971509-wq/VMPackerGO/internal/app"
 )
 
 func TestDefaultVersion(t *testing.T) {

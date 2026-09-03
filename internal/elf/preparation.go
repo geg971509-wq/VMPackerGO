@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	vmruntime "github.com/vmpacker/internal/runtime"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 type PreparedFunction struct {

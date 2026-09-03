@@ -9,7 +9,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 var supportedRelocations = map[elf.R_AARCH64]bool{

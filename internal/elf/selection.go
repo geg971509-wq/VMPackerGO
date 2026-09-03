@@ -6,8 +6,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/vmpacker/internal/abi"
-	"github.com/vmpacker/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/abi"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
 )
 
 const (

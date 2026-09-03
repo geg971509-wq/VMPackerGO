@@ -1,6 +1,6 @@
 package arm64
 
-import "github.com/vmpacker/internal/vm"
+import "github.com/geg971509-wq/VMPackerGO/internal/vm"
 
 const (
 	caspMask  uint32 = 0xBFA07C00

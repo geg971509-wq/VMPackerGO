@@ -1,6 +1,6 @@
 package arm64
 
-import "github.com/vmpacker/internal/vm"
+import "github.com/geg971509-wq/VMPackerGO/internal/vm"
 
 // ============================================================
 // 数据处理（寄存器）模式表

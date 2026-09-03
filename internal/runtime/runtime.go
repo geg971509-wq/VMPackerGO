@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 const (

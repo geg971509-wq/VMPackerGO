@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 const maxFinalBytecodeSize = 256 * 1024

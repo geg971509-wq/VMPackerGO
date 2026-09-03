@@ -3,7 +3,7 @@ package arm64
 import (
 	"testing"
 
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 // 使用真实 objdump 反汇编中的指令编码做 golden test

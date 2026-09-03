@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vmpacker/internal/abi"
-	elfpacker "github.com/vmpacker/internal/elf"
+	"github.com/geg971509-wq/VMPackerGO/internal/abi"
+	elfpacker "github.com/geg971509-wq/VMPackerGO/internal/elf"
 )
 
 func TestSuccessGolden(t *testing.T) {

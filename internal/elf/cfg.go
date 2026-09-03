@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/vmpacker/internal/arch/arm64"
-	"github.com/vmpacker/internal/vm"
+	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
+	"github.com/geg971509-wq/VMPackerGO/internal/vm"
 )
 
 const maxInferredInstructions = 4096
