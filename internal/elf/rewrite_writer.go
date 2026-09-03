@@ -98,11 +98,10 @@ func encodePlannedProgramHeaderAt(table []byte, index int, program plannedProgra
 	return nil
 }
 
-// validateAndroidLoadedProgramHeaders mirrors the Android linker64 loaded-PHDR
-// invariant. The complete PHDR table must be backed by one PT_LOAD in both
-// file and virtual address space, and both views must use the same affine
-// p_offset -> p_vaddr mapping. This rejects host-parseable artifacts that
-// Android would later reject with "loaded phdr ... not in loadable segment".
+// validateAndroidLoadedProgramHeaders mirrors the Android linker64 PHDR
+// preflight and loaded-PHDR invariant. The table must satisfy bionic's size
+// and alignment limits, then be backed by one PT_LOAD in both file and
+// virtual-address space with one affine p_offset -> p_vaddr mapping.
 func validateAndroidLoadedProgramHeaders(artifact []byte) error {
 	if len(artifact) < elf64HeaderSize {
 		return fmt.Errorf("final ELF header is truncated")
@@ -113,6 +112,12 @@ func validateAndroidLoadedProgramHeaders(artifact []byte) error {
 	phnum := bo.Uint16(artifact[56:58])
 	if phentsize != elf64ProgramSize || phnum == 0 {
 		return fmt.Errorf("final program-header table is unavailable")
+	}
+	if uint64(phnum) > 65536/uint64(phentsize) {
+		return fmt.Errorf("final program-header table exceeds Android 64KiB limit")
+	}
+	if phoff == 0 || phoff%8 != 0 {
+		return fmt.Errorf("final program-header offset 0x%x is not Android-compatible", phoff)
 	}
 	tableSize, ok := checkedMul(uint64(phnum), uint64(phentsize))
 	if !ok {
