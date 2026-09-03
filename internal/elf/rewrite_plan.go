@@ -720,6 +720,9 @@ func (planner *rewritePlanner) writeRuntimeGlobal(name string, value uint64) err
 }
 
 func (planner *rewritePlanner) validate() error {
+	if err := validateRewriteBudget(uint64(len(planner.req.Input)), planner.plan.segments); err != nil {
+		return err
+	}
 	for i, segment := range planner.plan.segments {
 		if segment.flags&elf.PF_W != 0 && segment.flags&elf.PF_X != 0 {
 			return fmt.Errorf("planned segment %d violates W^X", i)
