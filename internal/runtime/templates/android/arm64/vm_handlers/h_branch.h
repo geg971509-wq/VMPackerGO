@@ -1,12 +1,5 @@
 /*
- * h_branch.h — 分支指令 handler
- *
- * 所有分支指令编码 [5B: op | target32]
- * 返回 0 表示 pc 已被直接设置 (不需要外部 += adv)
- *
- * reverse 模式: fall-through 时不手动设置 pc，
- * 让 DISPATCH 自动递减定位下一条指令。
- * 条件成立时 pc = target (已被 packer 重映射到反转后偏移)。
+ * h_branch.h — validated VM control-flow handlers.
  */
 #ifndef H_BRANCH_H
 #define H_BRANCH_H
@@ -14,177 +7,206 @@
 #include "../vm_decode.h"
 #include "../vm_types.h"
 
-/*
- * BRANCH_FALLTHROUGH: 条件不成立时的 fall-through 处理
- * 正向: pc += 5 (跳过当前 5 字节分支指令)
- * 反向: 不改 pc, 返回 0 让 DISPATCH 自动递减
- */
-#define BRANCH_FALLTHROUGH(vm) \
-  do { \
-    if (!(vm)->reverse) (vm)->pc += 5; \
-  } while(0)
+#define BRANCH_FALLTHROUGH(vm, size)                                           \
+  do {                                                                         \
+    if (!(vm)->reverse)                                                        \
+      (vm)->pc += (size);                                                      \
+  } while (0)
 
-/*
- * BRANCH_TARGET_VALID: 验证分支目标在字节码范围内
- * 无效目标时 fall-through (安全降级, 不崩溃)
- */
-#define BRANCH_TARGET_VALID(vm, t) ((t) < (vm)->bc_len)
+static inline int vm_branch_target_valid(vm_ctx_t *vm, u32 target) {
+  if (target < vm->bc_len)
+    return 1;
+  vm_fault_set(vm, VM_FAULT_CONTROL);
+  return 0;
+}
 
-/* B target (无条件跳转) */
 static inline u32 h_jmp(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if (BRANCH_TARGET_VALID(vm, t))
-    vm->pc = t;
-  else
-    BRANCH_FALLTHROUGH(vm); /* 无效目标: 安全 fall-through */
-  return 0; /* pc 已设置 */
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (vm_branch_target_valid(vm, target))
+    vm->pc = target;
+  return 0;
 }
 
-/* B.EQ target (ZF=1) */
 static inline u32 h_je(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if ((vm->FL & FL_Z) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (vm->FL & FL_Z)
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.NE target (ZF=0) */
 static inline u32 h_jne(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if (!(vm->FL & FL_Z) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(vm->FL & FL_Z))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.LT target (SF=1, 有符号小于) */
 static inline u32 h_jl(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if (!!(vm->FL & FL_N) != !!(vm->FL & FL_V) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!!(vm->FL & FL_N) != !!(vm->FL & FL_V))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.GE target (SF=0, 有符号大于等于) */
 static inline u32 h_jge(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if (!!(vm->FL & FL_N) == !!(vm->FL & FL_V) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!!(vm->FL & FL_N) == !!(vm->FL & FL_V))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.GT target (!ZF && !SF) */
 static inline u32 h_jgt(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if (!(vm->FL & FL_Z) && (!!(vm->FL & FL_N) == !!(vm->FL & FL_V)) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(vm->FL & FL_Z) &&
+      (!!(vm->FL & FL_N) == !!(vm->FL & FL_V)))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.LE target (ZF || SF) */
 static inline u32 h_jle(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if ((vm->FL & FL_Z) || (!!(vm->FL & FL_N) != !!(vm->FL & FL_V))) {
-    if (BRANCH_TARGET_VALID(vm, t)) vm->pc = t; else BRANCH_FALLTHROUGH(vm);
-  }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if ((vm->FL & FL_Z) ||
+      (!!(vm->FL & FL_N) != !!(vm->FL & FL_V)))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.CC target (CF=1, 无符号小于) */
 static inline u32 h_jb(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if (!(vm->FL & FL_C) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(vm->FL & FL_C))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.CS target (CF=0, 无符号大于等于) */
 static inline u32 h_jae(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if ((vm->FL & FL_C) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (vm->FL & FL_C)
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.LS target (CF||ZF, 无符号小于等于) */
 static inline u32 h_jbe(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if ((!(vm->FL & FL_C) || (vm->FL & FL_Z)) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(vm->FL & FL_C) || (vm->FL & FL_Z))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* B.HI target (!CF&&!ZF, 无符号大于) */
 static inline u32 h_ja(vm_ctx_t *vm) {
-  u32 t = rd32(&vm->bc[vm->pc + 1]);
-  if ((vm->FL & FL_C) && !(vm->FL & FL_Z) && BRANCH_TARGET_VALID(vm, t)) { vm->pc = t; }
-  else { BRANCH_FALLTHROUGH(vm); }
+  u32 target = rd32(&vm->bc[vm->pc + 1]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if ((vm->FL & FL_C) && !(vm->FL & FL_Z))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 5);
   return 0;
 }
 
-/* TBZ Xt, #bit, target  [7B: op | reg | bit | target32]
- * 测试寄存器指定位是否为零，为零则跳转 */
 static inline u32 h_tbz(vm_ctx_t *vm) {
   u8 reg = vm->bc[vm->pc + 1];
   u8 bit = vm->bc[vm->pc + 2];
-  u32 t = rd32(&vm->bc[vm->pc + 3]);
-  if (!(vm->R[reg & 31] & ((u64)1 << (bit & 63))) && BRANCH_TARGET_VALID(vm, t)) {
-    vm->pc = t;
-  } else {
-    if (!(vm)->reverse) (vm)->pc += 7;
-  }
+  u32 target = rd32(&vm->bc[vm->pc + 3]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(vm->R[reg & 31] & ((u64)1 << (bit & 63))))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 7);
   return 0;
 }
 
-/* TBNZ Xt, #bit, target  [7B: op | reg | bit | target32]
- * 测试寄存器指定位是否非零，非零则跳转 */
 static inline u32 h_tbnz(vm_ctx_t *vm) {
   u8 reg = vm->bc[vm->pc + 1];
   u8 bit = vm->bc[vm->pc + 2];
-  u32 t = rd32(&vm->bc[vm->pc + 3]);
-  if ((vm->R[reg & 31] & ((u64)1 << (bit & 63))) && BRANCH_TARGET_VALID(vm, t)) {
-    vm->pc = t;
-  } else {
-    if (!(vm)->reverse) (vm)->pc += 7;
-  }
+  u32 target = rd32(&vm->bc[vm->pc + 3]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (vm->R[reg & 31] & ((u64)1 << (bit & 63)))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 7);
   return 0;
 }
 
-/* B.cond with all architectural condition codes.
- * Encoding: [op | cond | target32]. */
 static inline u32 h_jcond(vm_ctx_t *vm) {
   u8 cond = vm->bc[vm->pc + 1] & 0xFu;
-  u32 t = rd32(&vm->bc[vm->pc + 2]);
-  if (vm_cond_holds(vm, cond) && BRANCH_TARGET_VALID(vm, t))
-    vm->pc = t;
-  else if (!vm->reverse)
-    vm->pc += 6;
+  u32 target = rd32(&vm->bc[vm->pc + 2]);
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (vm_cond_holds(vm, cond))
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 6);
   return 0;
 }
 
-/* CBZ/CBNZ do not modify NZCV. Encoding: [op | reg | target32]. */
 static inline u32 h_cbz(vm_ctx_t *vm) {
   u8 reg = vm->bc[vm->pc + 1];
-  u32 t = rd32(&vm->bc[vm->pc + 2]);
+  u32 target = rd32(&vm->bc[vm->pc + 2]);
   u64 value = vm->R[reg & 31];
-  if (!(reg & 0x80u)) value &= 0xFFFFFFFFULL;
-  if (value == 0 && BRANCH_TARGET_VALID(vm, t))
-    vm->pc = t;
-  else if (!vm->reverse)
-    vm->pc += 6;
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(reg & 0x80u))
+    value &= 0xFFFFFFFFULL;
+  if (value == 0)
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 6);
   return 0;
 }
 
 static inline u32 h_cbnz(vm_ctx_t *vm) {
   u8 reg = vm->bc[vm->pc + 1];
-  u32 t = rd32(&vm->bc[vm->pc + 2]);
+  u32 target = rd32(&vm->bc[vm->pc + 2]);
   u64 value = vm->R[reg & 31];
-  if (!(reg & 0x80u)) value &= 0xFFFFFFFFULL;
-  if (value != 0 && BRANCH_TARGET_VALID(vm, t))
-    vm->pc = t;
-  else if (!vm->reverse)
-    vm->pc += 6;
+  if (!vm_branch_target_valid(vm, target))
+    return 0;
+  if (!(reg & 0x80u))
+    value &= 0xFFFFFFFFULL;
+  if (value != 0)
+    vm->pc = target;
+  else
+    BRANCH_FALLTHROUGH(vm, 6);
   return 0;
 }
+
+#undef BRANCH_FALLTHROUGH
 
 #endif /* H_BRANCH_H */
