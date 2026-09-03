@@ -200,9 +200,6 @@ func (preparation *TranslationPreparation) ValidateRuntimeImage(image *vmruntime
 	if preparation == nil {
 		return fmt.Errorf("translation preparation is required")
 	}
-	if err := preparation.ValidateRuntimeRequirements(); err != nil {
-		return err
-	}
 	if image == nil {
 		return fmt.Errorf("runtime image is required")
 	}
@@ -214,6 +211,9 @@ func (preparation *TranslationPreparation) ValidateRuntimeImage(image *vmruntime
 	}
 	if !slices.Equal(preparation.FPSIMDInstructions, image.FPSIMDInstructions) {
 		return fmt.Errorf("runtime image FP/SIMD requirements mismatch")
+	}
+	if err := preparation.validateRuntimeExceptionInvokes(image); err != nil {
+		return err
 	}
 	return nil
 }
