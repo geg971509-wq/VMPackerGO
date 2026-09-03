@@ -11,6 +11,7 @@ import (
 
 	"github.com/vmpacker/internal/arch/arm64"
 	vmruntime "github.com/vmpacker/internal/runtime"
+	"github.com/vmpacker/internal/unwind"
 	"github.com/vmpacker/internal/vm"
 )
 
@@ -48,6 +49,17 @@ type runtimeSymbolPlan struct {
 	name  string
 	vaddr uint64
 	size  uint64
+}
+
+type gnuEHFramePlan struct {
+	programIndex    int
+	original        *unwind.FrameHeader
+	runtimeFDECount int
+	segmentOffset   uint64
+	fileOffset      uint64
+	vaddr           uint64
+	size            uint64
+	header          []byte
 }
 
 type functionRewritePlan struct {
@@ -89,15 +101,16 @@ type programHeaderMutation struct {
 }
 
 type programHeaderPlan struct {
-	phoffBefore uint64
-	phoffAfter  uint64
-	phdrTableVA uint64
-	phnumBefore uint16
-	phnumAfter  uint16
-	relocated   bool
-	tableData   []byte
-	newLoads    []programHeaderMutation
-	phdrUpdate  *programHeaderMutation
+	phoffBefore      uint64
+	phoffAfter       uint64
+	phdrTableVA      uint64
+	phnumBefore      uint16
+	phnumAfter       uint16
+	relocated        bool
+	tableData        []byte
+	newLoads         []programHeaderMutation
+	phdrUpdate       *programHeaderMutation
+	gnuEHFrameUpdate *programHeaderMutation
 }
 
 type RewritePlan struct {
@@ -106,6 +119,7 @@ type RewritePlan struct {
 	symbols         []runtimeSymbolPlan
 	functions       []functionRewritePlan
 	tokenTableVA    uint64
+	gnuEHFrame      *gnuEHFramePlan
 	programHeaders  programHeaderPlan
 }
 
@@ -163,6 +177,9 @@ func buildRewritePlan(req Request, analysis Analysis, preparation *TranslationPr
 	if err := planner.reserveRuntimeLayout(); err != nil {
 		return nil, err
 	}
+	if err := planner.reserveGNUUnwindIndex(); err != nil {
+		return nil, err
+	}
 	if err := planner.placeSegments(); err != nil {
 		return nil, err
 	}
@@ -175,10 +192,13 @@ func buildRewritePlan(req Request, analysis Analysis, preparation *TranslationPr
 	if err := planner.applyRuntimeRelocations(); err != nil {
 		return nil, err
 	}
+	if err := planner.materializeGNUUnwindIndex(); err != nil {
+		return nil, err
+	}
 	if err := planner.finalizeRuntimeGlobalsAndFunctions(); err != nil {
 		return nil, err
 	}
-	phdrs, err := planProgramHeaders(req.Input, meta, planner.plan.segments)
+	phdrs, err := planProgramHeaders(req.Input, meta, planner.plan.segments, planner.plan.gnuEHFrame)
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +307,159 @@ func (planner *rewritePlanner) reserveRuntimeLayout() error {
 	return nil
 }
 
+func (planner *rewritePlanner) reserveGNUUnwindIndex() error {
+	index, fileOffset, vaddr, size, found, err := findGNUUnwindProgram(planner.req.Input)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if fileOffset > uint64(len(planner.req.Input)) || size > uint64(len(planner.req.Input))-fileOffset {
+		return fmt.Errorf("PT_GNU_EH_FRAME exceeds input file")
+	}
+	original, err := unwind.ParseEHFrameHeader(planner.req.Input[fileOffset:fileOffset+size], vaddr, binary.LittleEndian, 8)
+	if err != nil {
+		return fmt.Errorf("parse target GNU unwind index: %w", err)
+	}
+	runtimeData, _, err := runtimeEHFrameSection(planner.image)
+	if err != nil {
+		return err
+	}
+	runtimeFrame, err := unwind.ParseEHFrame(runtimeData, 0, binary.LittleEndian, 8)
+	if err != nil {
+		return fmt.Errorf("parse runtime .eh_frame structure: %w", err)
+	}
+	if len(runtimeFrame.FDEs) == 0 {
+		return fmt.Errorf("runtime .eh_frame has no FDEs for GNU unwind integration")
+	}
+	count := len(original.Entries) + len(runtimeFrame.FDEs)
+	if count > math.MaxUint32 || count > (math.MaxInt-12)/8 {
+		return fmt.Errorf("combined GNU unwind index is too large")
+	}
+	headerSize := 12 + count*8
+	off, err := growAligned(&planner.plan.segments[rewriteSegmentR].data, 4, uint64(headerSize))
+	if err != nil {
+		return fmt.Errorf("reserve GNU unwind index: %w", err)
+	}
+	planner.plan.gnuEHFrame = &gnuEHFramePlan{
+		programIndex: index, original: original, runtimeFDECount: len(runtimeFrame.FDEs),
+		segmentOffset: uint64(off), size: uint64(headerSize),
+	}
+	return nil
+}
+
+func (planner *rewritePlanner) materializeGNUUnwindIndex() error {
+	plan := planner.plan.gnuEHFrame
+	if plan == nil {
+		return nil
+	}
+	_, section, err := runtimeEHFrameSection(planner.image)
+	if err != nil {
+		return err
+	}
+	planIndex, ok := planner.sectionPlanByIndex[section.Index]
+	if !ok {
+		return fmt.Errorf("runtime .eh_frame is not in planned allocatable storage")
+	}
+	sectionPlan := planner.plan.runtimeSections[planIndex]
+	segment := &planner.plan.segments[sectionPlan.segment]
+	if sectionPlan.segmentOffset > uint64(len(segment.data)) || sectionPlan.size > uint64(len(segment.data))-sectionPlan.segmentOffset {
+		return fmt.Errorf("planned runtime .eh_frame exceeds read-only segment")
+	}
+	frameBytes := segment.data[sectionPlan.segmentOffset : sectionPlan.segmentOffset+sectionPlan.size]
+	frame, err := unwind.ParseEHFrame(frameBytes, sectionPlan.vaddr, binary.LittleEndian, 8)
+	if err != nil {
+		return fmt.Errorf("parse relocated runtime .eh_frame: %w", err)
+	}
+	if len(frame.FDEs) != plan.runtimeFDECount {
+		return fmt.Errorf("runtime FDE count changed from %d to %d after relocation", plan.runtimeFDECount, len(frame.FDEs))
+	}
+	entries := append([]unwind.HeaderEntry(nil), plan.original.Entries...)
+	for _, fde := range frame.FDEs {
+		fdeVA, ok := checkedAdd(sectionPlan.vaddr, fde.Offset)
+		if !ok {
+			return fmt.Errorf("runtime FDE address overflows")
+		}
+		entries = append(entries, unwind.HeaderEntry{InitialLocation: fde.InitialLocation, FDEAddress: fdeVA})
+	}
+	header, err := unwind.BuildEHFrameHeader(plan.vaddr, plan.original.EHFrameAddress, entries)
+	if err != nil {
+		return fmt.Errorf("build final GNU unwind index: %w", err)
+	}
+	if uint64(len(header)) != plan.size {
+		return fmt.Errorf("final GNU unwind index size changed from %d to %d", plan.size, len(header))
+	}
+	ro := &planner.plan.segments[rewriteSegmentR]
+	if plan.segmentOffset > uint64(len(ro.data)) || plan.size > uint64(len(ro.data))-plan.segmentOffset {
+		return fmt.Errorf("final GNU unwind index exceeds read-only segment")
+	}
+	copy(ro.data[plan.segmentOffset:plan.segmentOffset+plan.size], header)
+	plan.header = append([]byte(nil), header...)
+	return nil
+}
+
+func runtimeEHFrameSection(image *vmruntime.Image) ([]byte, vmruntime.Section, error) {
+	if image == nil {
+		return nil, vmruntime.Section{}, fmt.Errorf("runtime image is required")
+	}
+	found := false
+	var section vmruntime.Section
+	for _, candidate := range image.Sections {
+		if candidate.Name != ".eh_frame" {
+			continue
+		}
+		if found {
+			return nil, vmruntime.Section{}, fmt.Errorf("runtime has duplicate .eh_frame sections")
+		}
+		found = true
+		section = candidate
+	}
+	if !found || section.NOBITS || section.Flags&elf.SHF_ALLOC == 0 || len(section.Data) == 0 || uint64(len(section.Data)) != section.Size {
+		return nil, vmruntime.Section{}, fmt.Errorf("runtime .eh_frame is unavailable for GNU unwind integration")
+	}
+	return section.Data, section, nil
+}
+
+func findGNUUnwindProgram(input []byte) (index int, fileOffset, vaddr, size uint64, found bool, err error) {
+	if len(input) < elf64HeaderSize {
+		return 0, 0, 0, 0, false, fmt.Errorf("ELF header is truncated")
+	}
+	bo := binary.LittleEndian
+	phoff := bo.Uint64(input[32:40])
+	phentsize := uint64(bo.Uint16(input[54:56]))
+	phnum := uint64(bo.Uint16(input[56:58]))
+	if phnum == 0 {
+		return 0, 0, 0, 0, false, nil
+	}
+	if phentsize != elf64ProgramSize {
+		return 0, 0, 0, 0, false, fmt.Errorf("invalid program-header entry size for GNU unwind index")
+	}
+	for i := uint64(0); i < phnum; i++ {
+		off := phoff + i*phentsize
+		if off > uint64(len(input)) || phentsize > uint64(len(input))-off {
+			return 0, 0, 0, 0, false, fmt.Errorf("program header table is truncated")
+		}
+		entry := input[off : off+phentsize]
+		if elf.ProgType(bo.Uint32(entry[0:4])) != elf.PT_GNU_EH_FRAME {
+			continue
+		}
+		if found {
+			return 0, 0, 0, 0, false, fmt.Errorf("multiple PT_GNU_EH_FRAME entries are unsupported")
+		}
+		found = true
+		index = int(i)
+		fileOffset = bo.Uint64(entry[8:16])
+		vaddr = bo.Uint64(entry[16:24])
+		size = bo.Uint64(entry[32:40])
+		memsz := bo.Uint64(entry[40:48])
+		if size == 0 || memsz != size {
+			return 0, 0, 0, 0, false, fmt.Errorf("PT_GNU_EH_FRAME has invalid size")
+		}
+	}
+	return index, fileOffset, vaddr, size, found, nil
+}
+
 func (planner *rewritePlanner) placeSegments() error {
 	fileCursor, ok := alignUpChecked(uint64(len(planner.req.Input)), rewriteLoadAlignment)
 	if !ok {
@@ -334,6 +507,11 @@ func (planner *rewritePlanner) placeSegments() error {
 		section.vaddr = planner.plan.segments[section.segment].vaddr + section.segmentOffset
 	}
 	planner.plan.tokenTableVA = planner.plan.segments[rewriteSegmentR].vaddr + planner.tokenTableOffset
+	if planner.plan.gnuEHFrame != nil {
+		segment := planner.plan.segments[rewriteSegmentR]
+		planner.plan.gnuEHFrame.fileOffset = segment.fileOffset + planner.plan.gnuEHFrame.segmentOffset
+		planner.plan.gnuEHFrame.vaddr = segment.vaddr + planner.plan.gnuEHFrame.segmentOffset
+	}
 	for i := range planner.plan.functions {
 		planner.plan.functions[i].bytecodeVA = planner.plan.segments[rewriteSegmentR].vaddr + planner.plan.functions[i].bytecodeSegmentOffset
 	}
@@ -564,6 +742,16 @@ func (planner *rewritePlanner) validate() error {
 	if len(planner.plan.functions) != len(planner.analysis.Selections) {
 		return fmt.Errorf("rewrite plan function count does not match analysis")
 	}
+	if planner.plan.gnuEHFrame != nil {
+		eh := planner.plan.gnuEHFrame
+		ro := planner.plan.segments[rewriteSegmentR]
+		if len(eh.header) == 0 || uint64(len(eh.header)) != eh.size || eh.fileOffset < ro.fileOffset || eh.fileOffset+eh.size > ro.fileOffset+ro.fileSize || eh.vaddr < ro.vaddr || eh.vaddr+eh.size > ro.vaddr+ro.memSize {
+			return fmt.Errorf("planned GNU unwind index is not contained by the read-only runtime load")
+		}
+		if planner.plan.programHeaders.gnuEHFrameUpdate == nil || planner.plan.programHeaders.gnuEHFrameUpdate.index != eh.programIndex {
+			return fmt.Errorf("planned PT_GNU_EH_FRAME update is missing")
+		}
+	}
 	return nil
 }
 
@@ -692,7 +880,7 @@ func buildPlannedTokenTrampoline(input []byte, selection Selection, translation 
 	return patch, nil
 }
 
-func planProgramHeaders(input []byte, meta *elfMetadata, segments []rewriteSegment) (programHeaderPlan, error) {
+func planProgramHeaders(input []byte, meta *elfMetadata, segments []rewriteSegment, gnuEHFrames ...*gnuEHFramePlan) (programHeaderPlan, error) {
 	if len(input) < elf64HeaderSize {
 		return programHeaderPlan{}, fmt.Errorf("ELF header is truncated")
 	}
@@ -780,6 +968,13 @@ func planProgramHeaders(input []byte, meta *elfMetadata, segments []rewriteSegme
 
 	finalPrograms := make([]plannedProgramHeader, int(newPhnum))
 	copy(finalPrograms, programs)
+	var gnuEHFrame *gnuEHFramePlan
+	if len(gnuEHFrames) > 1 {
+		return programHeaderPlan{}, fmt.Errorf("multiple GNU unwind replacement plans are unsupported")
+	}
+	if len(gnuEHFrames) == 1 {
+		gnuEHFrame = gnuEHFrames[0]
+	}
 	slots := append([]int(nil), reusable...)
 	for i := 0; i < appendCount; i++ {
 		slots = append(slots, int(phnum)+i)
@@ -798,6 +993,22 @@ func planProgramHeaders(input []byte, meta *elfMetadata, segments []rewriteSegme
 		}
 		plan.newLoads = append(plan.newLoads, mutation)
 		finalPrograms[slots[i]] = mutation.header
+	}
+	if gnuEHFrame != nil {
+		if gnuEHFrame.programIndex < 0 || gnuEHFrame.programIndex >= len(programs) || programs[gnuEHFrame.programIndex].type_ != elf.PT_GNU_EH_FRAME {
+			return programHeaderPlan{}, fmt.Errorf("GNU unwind replacement does not match the original program header")
+		}
+		program := programs[gnuEHFrame.programIndex]
+		program.flags = elf.PF_R
+		program.off = gnuEHFrame.fileOffset
+		program.vaddr = gnuEHFrame.vaddr
+		program.paddr = gnuEHFrame.vaddr
+		program.filesz = gnuEHFrame.size
+		program.memsz = gnuEHFrame.size
+		program.align = 4
+		mutation := programHeaderMutation{index: gnuEHFrame.programIndex, header: program}
+		plan.gnuEHFrameUpdate = &mutation
+		finalPrograms[gnuEHFrame.programIndex] = program
 	}
 	if appendCount != 0 {
 		var phdrIndex = -1

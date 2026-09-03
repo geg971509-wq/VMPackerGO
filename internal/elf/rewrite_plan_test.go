@@ -12,6 +12,7 @@ import (
 
 	"github.com/vmpacker/internal/arch/arm64"
 	vmruntime "github.com/vmpacker/internal/runtime"
+	"github.com/vmpacker/internal/unwind"
 	"github.com/vmpacker/internal/vm"
 )
 
@@ -93,6 +94,74 @@ func TestRewritePlanBuildsRuntimeLayoutRelocationsBytecodeAndTrampoline(t *testi
 	}
 }
 
+func TestRewritePlanMergesRuntimeFDEsIntoExistingGNUUnwindIndex(t *testing.T) {
+	fixture := buildELFFixture(fixtureOptions{dynamic: true})
+	fixture = addGNUUnwindHeaderFixture(t, fixture)
+	request, analysis, preparation := rewritePlanPreparation(t, fixture, false)
+	request.RuntimeImage = rewritePlanRuntimeImageWithFDE(t, request.Opcodes)
+
+	plan, err := buildRewritePlan(request, analysis, preparation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.gnuEHFrame == nil || plan.programHeaders.gnuEHFrameUpdate == nil {
+		t.Fatalf("missing GNU unwind plan: %+v", plan.gnuEHFrame)
+	}
+	header, err := unwind.ParseEHFrameHeader(plan.gnuEHFrame.header, plan.gnuEHFrame.vaddr, binary.LittleEndian, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vmNative := mustPlannedSymbolVA(t, plan, "vm_native_call")
+	if len(header.Entries) != 2 || header.Entries[0].InitialLocation != 0x1200 || header.Entries[1].InitialLocation != vmNative {
+		t.Fatalf("merged header=%+v vm_native=0x%x", header, vmNative)
+	}
+	fdeFound := false
+	for _, entry := range header.Entries {
+		if entry.InitialLocation == vmNative {
+			fdeFound = entry.FDEAddress >= plan.segments[rewriteSegmentR].vaddr && entry.FDEAddress < plan.segments[rewriteSegmentR].vaddr+plan.segments[rewriteSegmentR].memSize
+		}
+	}
+	if !fdeFound {
+		t.Fatalf("runtime FDE was not indexed in appended R load: %+v", header.Entries)
+	}
+	update := plan.programHeaders.gnuEHFrameUpdate.header
+	if update.type_ != elf.PT_GNU_EH_FRAME || update.off != plan.gnuEHFrame.fileOffset || update.vaddr != plan.gnuEHFrame.vaddr || update.filesz != plan.gnuEHFrame.size {
+		t.Fatalf("PT_GNU_EH_FRAME update=%+v unwind=%+v", update, plan.gnuEHFrame)
+	}
+}
+
+func TestRewritePlanWithoutGNUUnwindHeaderKeepsExistingBehavior(t *testing.T) {
+	fixture := buildELFFixture(fixtureOptions{dynamic: true})
+	request, analysis, preparation := rewritePlanPreparation(t, fixture, false)
+	request.RuntimeImage = rewritePlanRuntimeImageWithFDE(t, request.Opcodes)
+	plan, err := buildRewritePlan(request, analysis, preparation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.gnuEHFrame != nil || plan.programHeaders.gnuEHFrameUpdate != nil {
+		t.Fatalf("unexpected GNU unwind plan=%+v update=%+v", plan.gnuEHFrame, plan.programHeaders.gnuEHFrameUpdate)
+	}
+}
+
+func TestRewritePlanRejectsDuplicateGNUUnwindProgramHeaders(t *testing.T) {
+	fixture := buildELFFixture(fixtureOptions{dynamic: true})
+	fixture = addGNUUnwindHeaderFixture(t, fixture)
+	bo := binary.LittleEndian
+	phnum := int(bo.Uint16(fixture.data[56:58]))
+	if fixture.phoff+(phnum+1)*elf64ProgramSize > 0x180 {
+		t.Fatal("fixture has no PHDR slack for duplicate GNU EH header")
+	}
+	first := fixture.phoff + (phnum-1)*elf64ProgramSize
+	second := fixture.phoff + phnum*elf64ProgramSize
+	copy(fixture.data[second:second+elf64ProgramSize], fixture.data[first:first+elf64ProgramSize])
+	bo.PutUint16(fixture.data[56:58], uint16(phnum+1))
+	request, analysis, preparation := rewritePlanPreparation(t, fixture, false)
+	request.RuntimeImage = rewritePlanRuntimeImageWithFDE(t, request.Opcodes)
+	if _, err := buildRewritePlan(request, analysis, preparation); err == nil || !strings.Contains(err.Error(), "multiple PT_GNU_EH_FRAME") {
+		t.Fatalf("duplicate GNU EH err=%v", err)
+	}
+}
+
 func TestRewritePlanAcceptsInstalledExactR29RuntimeImage(t *testing.T) {
 	root := os.Getenv("ANDROID_NDK")
 	if root == "" {
@@ -103,6 +172,7 @@ func TestRewritePlanAcceptsInstalledExactR29RuntimeImage(t *testing.T) {
 	}
 
 	fixture := buildELFFixture(fixtureOptions{dynamic: true})
+	fixture = addGNUUnwindHeaderFixture(t, fixture)
 	request, analysis, preparation := rewritePlanPreparation(t, fixture, false)
 	image, err := vmruntime.Build(context.Background(), vmruntime.BuildConfig{
 		NDKDir: root, Opcodes: request.Opcodes,
@@ -118,8 +188,23 @@ func TestRewritePlanAcceptsInstalledExactR29RuntimeImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build rewrite plan with exact-r29 runtime: %v", err)
 	}
-	if len(plan.segments) != 3 || len(plan.programHeaders.newLoads) != 3 {
-		t.Fatalf("incomplete exact-r29 rewrite plan: segments=%d loads=%d", len(plan.segments), len(plan.programHeaders.newLoads))
+	if len(plan.segments) != 3 || len(plan.programHeaders.newLoads) != 3 || plan.gnuEHFrame == nil || plan.programHeaders.gnuEHFrameUpdate == nil {
+		t.Fatalf("incomplete exact-r29 rewrite plan: segments=%d loads=%d unwind=%+v", len(plan.segments), len(plan.programHeaders.newLoads), plan.gnuEHFrame)
+	}
+	header, err := unwind.ParseEHFrameHeader(plan.gnuEHFrame.header, plan.gnuEHFrame.vaddr, binary.LittleEndian, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[uint64]bool{mustPlannedSymbolVA(t, plan, "vm_entry_token"): false, mustPlannedSymbolVA(t, plan, "vm_native_call"): false}
+	for _, entry := range header.Entries {
+		if _, ok := want[entry.InitialLocation]; ok {
+			want[entry.InitialLocation] = true
+		}
+	}
+	for address, found := range want {
+		if !found {
+			t.Fatalf("exact-r29 GNU unwind index lacks runtime FDE initial location 0x%x", address)
+		}
 	}
 }
 
@@ -424,6 +509,64 @@ func TestProcessAnalyzedRejectsAnalysisForDifferentInput(t *testing.T) {
 	if !bytes.Equal(request.Input, before) {
 		t.Fatal("input provenance failure mutated input")
 	}
+}
+
+func addGNUUnwindHeaderFixture(t *testing.T, fixture elfFixture) elfFixture {
+	t.Helper()
+	const headerOffset = 0x1c0
+	const headerVA = 0x11c0
+	data, err := unwind.BuildEHFrameHeader(headerVA, 0x1180, []unwind.HeaderEntry{{InitialLocation: 0x1200, FDEAddress: 0x1190}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headerOffset+len(data) > len(fixture.data) || headerOffset < fixture.phoff {
+		t.Fatal("fixture has no space for GNU EH frame header")
+	}
+	copy(fixture.data[headerOffset:headerOffset+len(data)], data)
+	bo := binary.LittleEndian
+	phnum := int(bo.Uint16(fixture.data[56:58]))
+	entry := fixture.phoff + phnum*elf64ProgramSize
+	if entry+elf64ProgramSize > 0x180 {
+		t.Fatal("fixture has no PHDR slack for GNU EH frame header")
+	}
+	bo.PutUint32(fixture.data[entry:entry+4], uint32(elf.PT_GNU_EH_FRAME))
+	bo.PutUint32(fixture.data[entry+4:entry+8], uint32(elf.PF_R))
+	bo.PutUint64(fixture.data[entry+8:entry+16], headerOffset)
+	bo.PutUint64(fixture.data[entry+16:entry+24], headerVA)
+	bo.PutUint64(fixture.data[entry+24:entry+32], headerVA)
+	bo.PutUint64(fixture.data[entry+32:entry+40], uint64(len(data)))
+	bo.PutUint64(fixture.data[entry+40:entry+48], uint64(len(data)))
+	bo.PutUint64(fixture.data[entry+48:entry+56], 4)
+	bo.PutUint16(fixture.data[56:58], uint16(phnum+1))
+	return fixture
+}
+
+func rewritePlanRuntimeImageWithFDE(t *testing.T, opcodes vm.OpcodeMap) *vmruntime.Image {
+	t.Helper()
+	image := rewritePlanRuntimeImage(t, opcodes)
+	cieContent := []byte{1, 'z', 'R', 0, 1, 0x78, 30, 1, unwind.PEPcrel | unwind.PESdata4, 0x0c}
+	cieBody := append([]byte{0, 0, 0, 0}, cieContent...)
+	frame := appendTestEHLength(nil, cieBody)
+	fdeOffset := len(frame)
+	idFieldOffset := fdeOffset + 4
+	fdeBody := make([]byte, 4)
+	binary.LittleEndian.PutUint32(fdeBody, uint32(idFieldOffset))
+	fdeBody = append(fdeBody, 0, 0, 0, 0) // R_AARCH64_PREL32 -> vm_native_call
+	fdeBody = binary.LittleEndian.AppendUint32(fdeBody, 4)
+	fdeBody = append(fdeBody, 0, 0x0c)
+	frame = appendTestEHLength(frame, fdeBody)
+	frame = append(frame, 0, 0, 0, 0)
+	image.Sections[4].Data = frame
+	image.Sections[4].Size = uint64(len(frame))
+	image.Relocations = append(image.Relocations, vmruntime.Relocation{
+		TargetIndex: 4, Offset: uint64(fdeOffset + 8), Type: elf.R_AARCH64_PREL32, SymbolIndex: 3,
+	})
+	return image
+}
+
+func appendTestEHLength(dst, body []byte) []byte {
+	dst = binary.LittleEndian.AppendUint32(dst, uint32(len(body)))
+	return append(dst, body...)
 }
 
 func rewritePlanPreparation(t *testing.T, fixture elfFixture, wantBTI bool) (Request, Analysis, *TranslationPreparation) {
