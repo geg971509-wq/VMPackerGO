@@ -1,0 +1,247 @@
+name: Productization one-shot patch
+
+on:
+  push:
+    branches:
+      - codex/productization-closure-20260903
+    paths:
+      - .github/workflows/productization-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: codex/productization-closure-20260903
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Close zero-route and runtime requirement gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old!r}")
+              file.write_text(text.replace(old, new, count))
+
+          replace_exact(
+              "internal/elf/exception_preflight.go",
+              '''func (preparation *TranslationPreparation) ValidateRuntimeRequirements() error {
+          	if preparation == nil {
+          		return fmt.Errorf("translation preparation is required")
+          	}
+          	if len(preparation.ExceptionBridges) == 0 {
+          		return nil
+          	}
+          	bridge := preparation.ExceptionBridges[0]
+          	thunks := 0
+          	if bridge.Plan != nil {
+          		thunks = len(bridge.Plan.Thunks)
+          	}
+          	return fmt.Errorf("function %q requires %d C++ exception landing bridge(s); runtime exception bridge is not integrated", bridge.Selection.Name, thunks)
+          }
+          ''',
+              '''func (preparation *TranslationPreparation) ValidateRuntimeRequirements() error {
+          	if preparation == nil {
+          		return fmt.Errorf("translation preparation is required")
+          	}
+          	_, err := preparation.RuntimeExceptionInvokes()
+          	return err
+          }
+          ''',
+          )
+
+          replace_exact(
+              "internal/elf/exception_preflight_test.go",
+              '''func TestPendingExceptionBridgeBlocksRuntimeValidation(t *testing.T) {
+          	selection, translation, cie, fde, lsda := exceptionFixture()
+          	bridge, err := planPreparedExceptionBridge(selection, translation, cie, fde, lsda)
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	preparation := &TranslationPreparation{ExceptionBridges: []PreparedExceptionBridge{*bridge}}
+          	if err := preparation.ValidateRuntimeRequirements(); err == nil || !strings.Contains(err.Error(), "runtime exception bridge is not integrated") {
+          		t.Fatalf("pending bridge err=%v", err)
+          	}
+          	if err := preparation.ValidateRuntimeImage(nil); err == nil || !strings.Contains(err.Error(), "runtime exception bridge is not integrated") {
+          		t.Fatalf("runtime validation err=%v", err)
+          	}
+          	if err := (&TranslationPreparation{}).ValidateRuntimeRequirements(); err != nil {
+          		t.Fatalf("empty requirements: %v", err)
+          	}
+          }
+          ''',
+              '''func TestExceptionBridgeRuntimeRequirementsValidateCompletedRoutes(t *testing.T) {
+          	selection, translation, cie, fde, lsda := exceptionFixture()
+          	bridge, err := planPreparedExceptionBridge(selection, translation, cie, fde, lsda)
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	bridge.Routes = make([]PreparedExceptionRoute, len(bridge.Plan.Thunks))
+          	for index, thunk := range bridge.Plan.Thunks {
+          		bridge.Routes[index] = PreparedExceptionRoute{
+          			ThunkID: thunk.ID, FinalVMCallOffset: uint32(64 + index*8),
+          			FinalVMLandingOffset: uint32(32 + index*8),
+          		}
+          	}
+          	preparation := &TranslationPreparation{ExceptionBridges: []PreparedExceptionBridge{*bridge}}
+          	if err := preparation.ValidateRuntimeRequirements(); err != nil {
+          		t.Fatalf("completed bridge requirements: %v", err)
+          	}
+          	if err := preparation.ValidateRuntimeImage(nil); err == nil || !strings.Contains(err.Error(), "runtime image is required") {
+          		t.Fatalf("runtime validation err=%v", err)
+          	}
+
+          	incomplete := *bridge
+          	incomplete.Routes = nil
+          	if err := (&TranslationPreparation{ExceptionBridges: []PreparedExceptionBridge{incomplete}}).ValidateRuntimeRequirements(); err == nil || !strings.Contains(err.Error(), "final routes") {
+          		t.Fatalf("incomplete bridge err=%v", err)
+          	}
+          	if err := (&TranslationPreparation{}).ValidateRuntimeRequirements(); err != nil {
+          		t.Fatalf("empty requirements: %v", err)
+          	}
+          }
+          ''',
+          )
+
+          path = Path("internal/runtime/invokegen.go")
+          text = path.read_text()
+
+          old = '''\tsource.WriteString(".section .rodata.invoke_routes,\\\"a\\\",%progbits\\n.p2align 3\\n.global vm_invoke_routes\\n.hidden vm_invoke_routes\\n.type vm_invoke_routes, %object\\nvm_invoke_routes:\\n")
+          \tfor _, item := range normalized {
+          \t\tfmt.Fprintf(&source, ".xword 0x%x\\n.word 0x%x\\n.word 0x%x\\n.word %s - .\\n.word 0\\n", item.FunctionAddress, item.FinalVMCallOffset, item.FinalVMLandingOffset, item.ThunkSymbol)
+          \t}
+          \tsource.WriteString(".size vm_invoke_routes, .-vm_invoke_routes\\n.p2align 3\\n.global vm_invoke_route_count\\n.hidden vm_invoke_route_count\\n.type vm_invoke_route_count, %object\\nvm_invoke_route_count:\\n")
+          \tfmt.Fprintf(&source, ".xword %d\\n.size vm_invoke_route_count, .-vm_invoke_route_count\\n", len(normalized))
+          \tsource.WriteString(".section .note.gnu.property,\\\"a\\\",%note\\n.p2align 3\\n.long 4\\n.long 16\\n.long 5\\n.asciz \\\"GNU\\\"\\n.p2align 3\\n.long 0xc0000000\\n.long 4\\n.long 3\\n.long 0\\n.section .note.GNU-stack,\\\"\\\",%progbits\\n")
+          '''
+          new = '''\tif len(normalized) != 0 {
+          \t\tsource.WriteString(".section .rodata.invoke_routes,\\\"a\\\",%progbits\\n.p2align 3\\n.global vm_invoke_routes\\n.hidden vm_invoke_routes\\n.type vm_invoke_routes, %object\\nvm_invoke_routes:\\n")
+          \t\tfor _, item := range normalized {
+          \t\t\tfmt.Fprintf(&source, ".xword 0x%x\\n.word 0x%x\\n.word 0x%x\\n.word %s - .\\n.word 0\\n", item.FunctionAddress, item.FinalVMCallOffset, item.FinalVMLandingOffset, item.ThunkSymbol)
+          \t\t}
+          \t\tsource.WriteString(".size vm_invoke_routes, .-vm_invoke_routes\\n.p2align 3\\n.global vm_invoke_route_count\\n.hidden vm_invoke_route_count\\n.type vm_invoke_route_count, %object\\nvm_invoke_route_count:\\n")
+          \t\tfmt.Fprintf(&source, ".xword %d\\n.size vm_invoke_route_count, .-vm_invoke_route_count\\n", len(normalized))
+          \t}
+          \tsource.WriteString(".section .note.gnu.property,\\\"a\\\",%note\\n.p2align 3\\n.long 4\\n.long 16\\n.long 5\\n.asciz \\\"GNU\\\"\\n.p2align 3\\n.long 0xc0000000\\n.long 4\\n.long 3\\n.long 0\\n.section .note.GNU-stack,\\\"\\\",%progbits\\n")
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("invokegen.go: route table assembly block changed")
+          text = text.replace(old, new, 1)
+
+          old = '''\theader.WriteString("_Static_assert(sizeof(vm_invoke_route_t) == 24, \\\"invoke route ABI\\\");\\n")
+          \theader.WriteString("extern const vm_invoke_route_t vm_invoke_routes[];\\nextern const u64 vm_invoke_route_count;\\n")
+          \tfmt.Fprintf(&header, "#define VM_INVOKE_ROUTE_COUNT %du\\n", routeCount)
+          \theader.WriteString("#define VM_INVOKE_NONE 0\\n#define VM_INVOKE_NORMAL 1\\n#define VM_INVOKE_LANDING 2\\n#define VM_INVOKE_ERROR -1\\n\\n")
+          \theader.WriteString("typedef int (*vm_invoke_fn)(vm_ctx_t *, u64);\\n\\n")
+          '''
+          new = '''\theader.WriteString("_Static_assert(sizeof(vm_invoke_route_t) == 24, \\\"invoke route ABI\\\");\\n")
+          \tfmt.Fprintf(&header, "#define VM_INVOKE_ROUTE_COUNT %du\\n", routeCount)
+          \theader.WriteString("#define VM_INVOKE_NONE 0\\n#define VM_INVOKE_NORMAL 1\\n#define VM_INVOKE_LANDING 2\\n#define VM_INVOKE_ERROR -1\\n\\n")
+          \tif routeCount == 0 {
+          \t\theader.WriteString(`static inline int vm_try_exception_invoke(vm_ctx_t *vm, u64 target,
+                                                    u32 call_vm_offset) {
+            (void)vm;
+            (void)target;
+            (void)call_vm_offset;
+            return VM_INVOKE_NONE;
+          }
+
+          #endif /* VM_INVOKE_H */
+          `)
+          \t\treturn header.String()
+          \t}
+          \theader.WriteString("extern const vm_invoke_route_t vm_invoke_routes[] __attribute__((visibility(\\\"hidden\\\")));\\n")
+          \theader.WriteString("extern const u64 vm_invoke_route_count __attribute__((visibility(\\\"hidden\\\")));\\n")
+          \theader.WriteString("typedef int (*vm_invoke_fn)(vm_ctx_t *, u64);\\n\\n")
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("invokegen.go: header declaration block changed")
+          text = text.replace(old, new, 1)
+
+          old = '''func validateExceptionInvokeImage(image *Image, invokes []ExceptionInvokeImage) error {
+          \tif image == nil {
+          \t\treturn fmt.Errorf("runtime image is required for exception invoke validation")
+          \t}
+          '''
+          new = '''func validateExceptionInvokeImage(image *Image, invokes []ExceptionInvokeImage) error {
+          \tif image == nil {
+          \t\treturn fmt.Errorf("runtime image is required for exception invoke validation")
+          \t}
+          \tif len(invokes) == 0 {
+          \t\treturn nil
+          \t}
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("invokegen.go: validation entry changed")
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path("internal/runtime/runtime_test.go")
+          text = path.read_text()
+          replacements = {
+              '"vm_personality_anchor_0000000000001000"': '"vm_personality_bridge_0000000000001000"',
+              '".cfi_personality 0x9b"': '".cfi_personality 0x1b"',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"runtime_test.go: expected one {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+          cat > internal/runtime/invoke_zero_routes_test.go <<'EOF'
+          package runtime
+
+          import (
+          	"strings"
+          	"testing"
+          )
+
+          func TestExceptionInvokeGeneratorOmitsZeroRouteRuntimeSymbols(t *testing.T) {
+          	header, assembly, invokes, err := generateExceptionInvokeThunks(nil)
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	if len(invokes) != 0 {
+          		t.Fatalf("invokes=%+v", invokes)
+          	}
+          	headerText := string(header)
+          	if !strings.Contains(headerText, "return VM_INVOKE_NONE;") {
+          		t.Fatal("zero-route header does not compile to a no-op invoke lookup")
+          	}
+          	for _, forbidden := range []string{"extern const vm_invoke_route_t", "extern const u64 vm_invoke_route_count"} {
+          		if strings.Contains(headerText, forbidden) {
+          			t.Fatalf("zero-route header retains runtime symbol %q", forbidden)
+          		}
+          	}
+          	if strings.Contains(string(assembly), "vm_invoke_routes") || strings.Contains(string(assembly), "vm_invoke_route_count") {
+          		t.Fatal("zero-route assembly emits empty route symbols")
+          	}
+          	if err := validateExceptionInvokeImage(&Image{}, nil); err != nil {
+          		t.Fatalf("zero-route image validation: %v", err)
+          	}
+          }
+          EOF
+
+          gofmt -w internal/elf/exception_preflight.go internal/elf/exception_preflight_test.go internal/runtime/invokegen.go internal/runtime/runtime_test.go internal/runtime/invoke_zero_routes_test.go
+      - name: Commit exception integration cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/elf/exception_preflight.go internal/elf/exception_preflight_test.go internal/runtime/invokegen.go internal/runtime/runtime_test.go internal/runtime/invoke_zero_routes_test.go
+          git commit -m "Close zero-route exception runtime validation"
+          git push origin HEAD:codex/productization-closure-20260903
