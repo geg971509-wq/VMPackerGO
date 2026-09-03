@@ -47,6 +47,9 @@ func TestPlanPreparedExceptionBridgeDetectsLocalLandingNativeCall(t *testing.T) 
 	if thunk.OriginalPC != 0x1004 || thunk.OriginalLandingPad != 0x1018 || thunk.VMCallOffset != 11 || thunk.VMLandingPad != 36 {
 		t.Fatalf("thunk=%+v", thunk)
 	}
+	if len(bridge.Routes) != 0 {
+		t.Fatalf("planPreparedExceptionBridge must not invent final routes before preparation integration: %+v", bridge.Routes)
+	}
 }
 
 func TestPlanPreparedExceptionBridgeAllowsUnwindThroughAndCallsOutsideEHRange(t *testing.T) {

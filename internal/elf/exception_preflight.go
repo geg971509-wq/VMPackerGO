@@ -12,9 +12,18 @@ import (
 	"github.com/vmpacker/internal/unwind"
 )
 
+type PreparedExceptionRoute struct {
+	ThunkID              uint32
+	OriginalCallPC       uint64
+	OriginalLandingPad   uint64
+	FinalVMCallOffset    uint32
+	FinalVMLandingOffset uint32
+}
+
 type PreparedExceptionBridge struct {
 	Selection Selection
 	Plan      *unwind.ExceptionBridgePlan
+	Routes    []PreparedExceptionRoute
 }
 
 func (preparation *TranslationPreparation) ValidateRuntimeRequirements() error {

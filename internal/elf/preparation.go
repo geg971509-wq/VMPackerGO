@@ -113,6 +113,9 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 	if err != nil {
 		return nil, err
 	}
+	if err := resolvePreparedExceptionRoutes(exceptionBridges, preparation.Functions, req.Opcodes); err != nil {
+		return nil, err
+	}
 	preparation.ExceptionBridges = exceptionBridges
 	return preparation, nil
 }
