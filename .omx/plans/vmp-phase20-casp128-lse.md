@@ -26,14 +26,16 @@ This avoids adding a synthetic fourth data register or a new generic instruction
 
 ### 2.2 Product policy
 
-CASP overrides only CAS validation through a small pair-specific validator:
+CASP is wired explicitly in the centralized instruction policy table through a pair-aware validator:
 
-- width must be 4 or 8 bytes per pair member;
+- scalar CAS continues through the existing generic atomic validator unchanged;
+- CASP width must be 4 or 8 bytes per pair member;
 - address register may be X0-X30/SP;
 - expected/result and replacement pair lows must be even, matching the ISA decode rule;
 - valid pair lows span X0-X30;
-- when a pair low is X30/W30, its implicit high member is encoding 31 (XZR/WZR): reads supply zero and result writes are discarded, never aliased to VM R31/SP;
-- scalar CAS continues through the existing generic atomic validator unchanged.
+- when a pair low is X30/W30, its implicit high member is encoding 31 (XZR/WZR): reads supply zero and result writes are discarded, never aliased to VM R31/SP.
+
+No package-init mutation is used to alter policy after construction.
 
 ### 2.3 Wire transport
 
@@ -57,13 +59,13 @@ A dedicated AAPCS64 helper returns the observed pair in X0/X1:
 
 `vm_atomic_pair_native(order, width, address, expected_lo, expected_hi, new_lo, new_hi)`
 
-The helper uses fixed legal even/odd scratch pairs X8/X9 and X10/X11 and executes only CASP-family instructions under `.arch_extension lse`. The VM handler validates kind/width/register pairs/alignment before the native call, materializes an implicit register-31 high member as zero, and discards its result writeback. Otherwise it writes the observed old pair back to `rm/rm+1`; replacement registers remain unchanged.
+The seven arguments occupy X0-X6. The helper uses fixed legal even/odd scratch pairs X8/X9 and X10/X11 and executes only CASP-family instructions under `.arch_extension lse`. The VM handler validates kind/width/register pairs/alignment before the native call, materializes an implicit register-31 high member as zero, and discards its result writeback. Otherwise it writes the observed old pair back to `rm/rm+1`; replacement registers remain unchanged.
 
 ## 3. Repair plan executed
 
 1. Add explicit CASP raw pattern before the scalar LSE patterns while retaining CAS semantic Op.
 2. Add `isCASPPair` and pair width decoding.
-3. Add isolated `casp_policy.go` so scalar atomic policy is not weakened.
+3. Add isolated pair validation while wiring CAS explicitly from the centralized policy table.
 4. Select `OpAtomic` kind 12 from `trAtomic` only for CASP raw encodings.
 5. Add pair return ABI and runtime handler branch for kind 12.
 6. Add W/X CASP/CASPA/CASPL/CASPAL native helper forms.
