@@ -184,7 +184,7 @@ func testExceptionInvokeConfig() ExceptionInvokeConfig {
 func TestGenerateExceptionInvokeThunksIsDeterministicAndUnwindReady(t *testing.T) {
 	cfg := testExceptionInvokeConfig()
 	before := cfg.Plan.Thunks[0]
-	assembly, got, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg})
+	_, assembly, got, err := generateExceptionInvokeThunks([]ExceptionInvokeConfig{cfg})
 	if err != nil {
 		t.Fatal(err)
 	}
