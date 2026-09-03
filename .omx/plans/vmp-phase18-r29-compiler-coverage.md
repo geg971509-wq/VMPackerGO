@@ -93,7 +93,7 @@ The first exact-r29 PR run is diagnostic by design. If it exposes gaps:
 - do not promote CASP/SVE/SME/MTE/crypto/system extensions merely because the compiler can emit them;
 - rerun the complete current-head/current-base Verification after every correction.
 
-## 5. First exact-r29 diagnostic findings and corrections
+## 5. Exact-r29 diagnostic findings and baseline corrections
 
 The first full PR run proved that the gate catches real product defects rather than merely measuring an abstract instruction count. The following ordinary compiler outputs were incorrectly rejected and are repaired in Phase 18:
 
@@ -106,17 +106,26 @@ The first full PR run proved that the gate catches real product defects rather t
 
 Focused ARM64 tests/vet pass for these repairs. Temporary repair workflows/scripts self-delete and are not part of the product diff.
 
-The same diagnostic run also exposed larger architecture boundaries that are **not** being hidden by the baseline fixes:
+## 6. Second-round closure and intentional boundaries
 
-- baseline 128-bit atomics use branch-bearing pair-exclusive loops (`CBZ`/`CBNZ`/`B.cond` inside the exclusive sequence), which require PC-relative control-flow relocation rather than a whitelist relaxation;
-- the LSE profile emits `CASP` / `CASPA` / `CASPL` / `CASPAL`, which need a first-class 128-bit pair atomic transport design;
-- exact Clang uses GPR↔D/Q lane moves for `__int128`; single-GPR-role forms are candidates for the existing FP/SIMD native-thunk architecture and must be validated separately;
-- a register-offset `LDR Q` appears in ordinary pair/struct traffic and requires two GPR address roles, beyond the existing one-scratch FP/SIMD thunk contract;
-- `-Oz` can use LLVM machine-outliner tail branches even with outline atomics disabled; external-function tail transfer must stay explicit rather than being misclassified as an in-function branch.
+After the baseline decoder/policy defects were removed, the second exact-r29 run concentrated the remaining ordinary compiler gaps into forms that can be audited against existing runtime mechanisms.
 
-The second exact-r29 run is used to measure these remaining boundaries after removing the confirmed baseline decoder/policy defects.
+Phase 18 safely closes the forms that fit the existing architecture:
 
-## 6. Exit criteria
+- exact-r29 `__int128` GPR↔D/Q transfer shapes are admitted through the existing FP/SIMD native-thunk path;
+- single GPR input/output forms keep the existing X9 scratch contract and preserve GPR/SIMD/FPCR/FPSR state semantics;
+- exact `LDR Qd, [Xn, Xm, LSL #4]` gains a bounded two-read-role remap through caller-saved X9/X10, while dynamic SP-indexed addressing remains rejected;
+- `SUBS(ext)` is admitted only as a branch-free exclusive-region body instruction because its register fields are safely remappable; this deliberately leaves the actual PC-relative loop branch as the fail-closed boundary.
+
+The remaining exact-r29 boundaries require independent architecture work and are therefore kept explicitly fail-closed rather than hidden:
+
+1. **branchful-exclusive** — baseline atomics whose exclusive region contains `B.cond` / `CBZ` / `CBNZ`; the raw native thunk cannot relocate PC-relative control flow;
+2. **casp128** — LSE-profile `CASP` / `CASPA` / `CASPL` / `CASPAL`; current scalar atomic transport cannot represent 128-bit expected/result/new register pairs;
+3. **machine-outliner** — `-Oz` tail `B` to exact observed `OUTLINED_FUNCTION_*` targets outside the selected function; inter-function tail-transfer relocation is not yet modeled.
+
+These are not broad mnemonic exemptions. The compiler gate accepts only exact observed r29 evidence for the CASP and outliner shapes, and branchful-exclusive classification requires an atomic corpus function plus the exact exclusive-region branch failure. Unit tests ensure unobserved CASP words and non-outliner external branches remain unexpected. The exact-r29 gate also requires all three intentional boundary classes to continue appearing; when later phases implement one of them, the stale expectation itself will fail and require removal.
+
+## 7. Exit criteria
 
 - compiler corpus and derivation are deterministic and exact-r29-bound;
 - real Decoder + whole-function Translator are the authority;
