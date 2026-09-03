@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"debug/elf"
 	"fmt"
 	"sort"
 	"strings"
@@ -126,6 +127,72 @@ func generateExceptionInvokeThunks(configs []ExceptionInvokeConfig) (assembly []
 	}
 	s.WriteString(".section .note.gnu.property,\"a\",%note\n.p2align 3\n.long 4\n.long 16\n.long 5\n.asciz \"GNU\"\n.p2align 3\n.long 0xc0000000\n.long 4\n.long 3\n.long 0\n.section .note.GNU-stack,\"\",%progbits\n")
 	return []byte(s.String()), normalized, nil
+}
+
+func validateExceptionInvokeImage(image *Image, invokes []ExceptionInvokeImage) error {
+	if len(invokes) == 0 {
+		return nil
+	}
+	if image == nil {
+		return fmt.Errorf("runtime image is required for exception invoke validation")
+	}
+	symbols := make(map[string]*Symbol, len(image.Symbols))
+	for index := range image.Symbols {
+		symbol := &image.Symbols[index]
+		if symbol.Name != "" {
+			symbols[symbol.Name] = symbol
+		}
+	}
+	validateStorage := func(name string, wantType byte, wantSize uint64, executable bool) error {
+		symbol := symbols[name]
+		if symbol == nil {
+			return fmt.Errorf("runtime is missing generated exception symbol %q", name)
+		}
+		if elf.ST_TYPE(symbol.Info) != wantType {
+			return fmt.Errorf("generated exception symbol %q has unexpected ELF type", name)
+		}
+		if wantSize != 0 && symbol.Size != wantSize {
+			return fmt.Errorf("generated exception symbol %q has size %d; want %d", name, symbol.Size, wantSize)
+		}
+		if int(symbol.Section) <= 0 || int(symbol.Section) >= len(image.Sections) {
+			return fmt.Errorf("generated exception symbol %q has invalid section", name)
+		}
+		section := image.Sections[symbol.Section]
+		if section.Flags&elf.SHF_ALLOC == 0 {
+			return fmt.Errorf("generated exception symbol %q is not allocatable", name)
+		}
+		if executable {
+			if section.Flags&elf.SHF_EXECINSTR == 0 {
+				return fmt.Errorf("generated exception function %q is not executable", name)
+			}
+		} else if section.Flags&elf.SHF_EXECINSTR != 0 {
+			return fmt.Errorf("generated exception object %q is executable", name)
+		}
+		return nil
+	}
+
+	seenAnchor := map[string]bool{}
+	for _, item := range invokes {
+		if item.EmittedPersonalityEncoding != exceptionInvokeCFIPersonalityEncoding {
+			return fmt.Errorf("generated exception invoke %q has unexpected personality encoding 0x%x", item.ThunkSymbol, item.EmittedPersonalityEncoding)
+		}
+		if err := validateStorage(item.ThunkSymbol, elf.STT_FUNC, 0, true); err != nil {
+			return err
+		}
+		if item.LSDA == nil || len(item.LSDA.Bytes) == 0 {
+			return fmt.Errorf("generated exception invoke %q has no LSDA metadata", item.ThunkSymbol)
+		}
+		if err := validateStorage(item.LSDASymbol, elf.STT_OBJECT, uint64(len(item.LSDA.Bytes)), false); err != nil {
+			return err
+		}
+		if !seenAnchor[item.PersonalityAnchor] {
+			if err := validateStorage(item.PersonalityAnchor, elf.STT_OBJECT, 8, false); err != nil {
+				return err
+			}
+			seenAnchor[item.PersonalityAnchor] = true
+		}
+	}
+	return nil
 }
 
 func emitAssemblyBytes(s *strings.Builder, data []byte) {
