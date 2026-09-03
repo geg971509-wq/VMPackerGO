@@ -28,7 +28,34 @@ type compilerCorpusKey struct {
 	Function     string
 }
 
+type compilerCoverageReport struct {
+	Unexpected       []string
+	Intentional      []string
+	IntentionalKinds map[string]int
+}
+
 const compilerCorpusHeader = "optimization\tprofile\tfunction\taddress\traw\tmnemonic\toperands"
+
+var exactR29CASPBoundaryRaws = map[uint32]bool{
+	0x48207d02: true, // O0 CASP
+	0x48607d02: true, // O0 CASPA
+	0x4820fd02: true, // O0 CASPL
+	0x4860fd02: true, // O0 CASPAL
+	0x48267c04: true, // O2/Oz CASP
+	0x48647c04: true, // O2/Oz CASPA
+	0x482afc02: true, // O2/Oz CASPL
+	0x4868fc0a: true, // O2/Oz CASPAL
+	0x486afc02: true, // O2/Oz CASPAL
+}
+
+var exactR29OutlinedTailRaws = map[uint32]bool{
+	0x14000050: true,
+	0x1400003b: true,
+	0x14000065: true,
+	0x14000045: true,
+	0x14000036: true,
+	0x14000054: true,
+}
 
 func parseCompilerCorpus(scanner *bufio.Scanner) ([]compilerCorpusRecord, error) {
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
@@ -111,8 +138,50 @@ func compilerRecordLabel(record compilerCorpusRecord) string {
 		record.Optimization, record.Profile, record.Function, record.Address, record.Raw, record.Mnemonic, operands)
 }
 
-func verifyCompilerCorpus(records []compilerCorpusRecord) []string {
-	groups, gaps := groupCompilerCorpus(records)
+func exactR29IntentionalBoundary(record compilerCorpusRecord, issue string) (string, bool) {
+	if record.Profile == "base" && strings.HasPrefix(record.Function, "vmp_atomic") {
+		op := Op(NewDecoder().Decode(record.Raw, 0).Op)
+		if isExclusiveLoadOp(op) && strings.Contains(issue, "exclusive region offset") &&
+			(strings.Contains(issue, "B.cond is not in the branch-free exclusive-body whitelist") ||
+				strings.Contains(issue, "CBZ is not in the branch-free exclusive-body whitelist") ||
+				strings.Contains(issue, "CBNZ is not in the branch-free exclusive-body whitelist")) {
+			return "branchful-exclusive", true
+		}
+		if isExclusiveStoreOp(op) && strings.Contains(issue, "requires a validated native thunk or relocation") {
+			return "branchful-exclusive", true
+		}
+	}
+
+	if record.Profile == "lse" && record.Function == "vmp_atomic128" && exactR29CASPBoundaryRaws[record.Raw] &&
+		(record.Mnemonic == "casp" || record.Mnemonic == "caspa" || record.Mnemonic == "caspl" || record.Mnemonic == "caspal") &&
+		strings.Contains(issue, "rejected by the product whitelist") {
+		return "casp128", true
+	}
+
+	if record.Optimization == "Oz" && strings.HasPrefix(record.Function, "vmp_atomic") &&
+		exactR29OutlinedTailRaws[record.Raw] && record.Mnemonic == "b" &&
+		strings.Contains(record.Operands, "OUTLINED_FUNCTION_") && strings.Contains(issue, "outside function range") {
+		return "machine-outliner", true
+	}
+	return "", false
+}
+
+func addCompilerIssue(report *compilerCoverageReport, record compilerCorpusRecord, issue string) {
+	line := compilerRecordLabel(record) + ": " + issue
+	if kind, ok := exactR29IntentionalBoundary(record, issue); ok {
+		if report.IntentionalKinds == nil {
+			report.IntentionalKinds = map[string]int{}
+		}
+		report.IntentionalKinds[kind]++
+		report.Intentional = append(report.Intentional, "["+kind+"] "+line)
+		return
+	}
+	report.Unexpected = append(report.Unexpected, line)
+}
+
+func classifyCompilerCorpus(records []compilerCorpusRecord) compilerCoverageReport {
+	groups, groupGaps := groupCompilerCorpus(records)
+	report := compilerCoverageReport{Unexpected: append([]string(nil), groupGaps...), IntentionalKinds: map[string]int{}}
 	keys := make([]compilerCorpusKey, 0, len(groups))
 	for key := range groups {
 		keys = append(keys, key)
@@ -136,7 +205,7 @@ func verifyCompilerCorpus(records []compilerCorpusRecord) []string {
 		start := group[0].Address
 		last := group[len(group)-1].Address
 		if last < start || last-start > uint64(int(^uint(0)>>1))-4 {
-			gaps = append(gaps, fmt.Sprintf("-%s/%s %s: function address span is not representable",
+			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: function address span is not representable",
 				key.Optimization, key.Profile, key.Function))
 			continue
 		}
@@ -152,69 +221,74 @@ func verifyCompilerCorpus(records []compilerCorpusRecord) []string {
 			op := Op(inst.Op)
 			rule, ok := instructionRules[op]
 			if !ok {
-				gaps = append(gaps, compilerRecordLabel(record)+": decoder result has no product policy rule")
+				report.Unexpected = append(report.Unexpected, compilerRecordLabel(record)+": decoder result has no product policy rule")
 				continue
 			}
 			switch rule.disposition {
-			case dispositionReject:
-				gaps = append(gaps, compilerRecordLabel(record)+": rejected by product policy as "+OpName(op))
+			case dispositionReject, dispositionNativeThunk:
+				// Whole-function translation below is authoritative. Rejected
+				// instructions are reported there with their exact source offset;
+				// native-thunk instructions may only be closed as validated regions.
 			case dispositionVirtual:
 				if rule.validate != nil {
 					if err := rule.validate(inst); err != nil {
-						gaps = append(gaps, compilerRecordLabel(record)+": product policy validation: "+err.Error())
+						report.Unexpected = append(report.Unexpected, compilerRecordLabel(record)+": product policy validation: "+err.Error())
 					}
 				}
-			case dispositionNativeThunk:
-				// Whole-function translation below is authoritative. A standalone
-				// exclusive instruction is unsupported, while a validated closed
-				// exclusive region is intentionally consumed as one native thunk.
 			default:
-				gaps = append(gaps, compilerRecordLabel(record)+": invalid product policy disposition")
+				report.Unexpected = append(report.Unexpected, compilerRecordLabel(record)+": invalid product policy disposition")
 			}
 		}
 
 		translator, err := NewTranslator(start, funcSize, vm.IdentityOpcodeMap())
 		if err != nil {
-			gaps = append(gaps, fmt.Sprintf("-%s/%s %s: construct translator: %v",
+			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: construct translator: %v",
 				key.Optimization, key.Profile, key.Function, err))
 			continue
 		}
 		result, err := translator.Translate(instructions)
 		if err != nil {
-			gaps = append(gaps, fmt.Sprintf("-%s/%s %s: whole-function translation: %v",
+			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: whole-function translation: %v",
 				key.Optimization, key.Profile, key.Function, err))
 			continue
 		}
 		for _, unsupported := range result.Unsupported {
 			if offset, ok := unsupportedOffset(unsupported); ok {
 				if record, found := byOffset[offset]; found {
-					gaps = append(gaps, compilerRecordLabel(record)+": translator: "+unsupported)
+					addCompilerIssue(&report, record, "translator: "+unsupported)
 					continue
 				}
 			}
-			gaps = append(gaps, fmt.Sprintf("-%s/%s %s: translator: %s",
+			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: translator: %s",
 				key.Optimization, key.Profile, key.Function, unsupported))
+		}
+
+		// Side metadata and source-map closure are product obligations only for
+		// functions that actually translated. Intentional fail-closed functions
+		// are rejected before any partial metadata can be consumed.
+		if len(result.Unsupported) != 0 {
+			continue
 		}
 		for _, region := range result.ExclusiveRegions {
 			if !region.Valid() {
-				gaps = append(gaps, fmt.Sprintf("-%s/%s %s: invalid exclusive-region content identity 0x%08x",
+				report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: invalid exclusive-region content identity 0x%08x",
 					key.Optimization, key.Profile, key.Function, region.ID))
 			}
 		}
 		for _, raw := range result.FPSIMDInstructions {
 			if err := ValidateFPSIMDInstruction(raw); err != nil {
-				gaps = append(gaps, fmt.Sprintf("-%s/%s %s: FP/SIMD side instruction %08x: %v",
+				report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: FP/SIMD side instruction %08x: %v",
 					key.Optimization, key.Profile, key.Function, raw, err))
 			}
 		}
 		if len(result.SourceMap) == 0 || result.SourceMap[len(result.SourceMap)-1].ARM64Offset != funcSize {
-			gaps = append(gaps, fmt.Sprintf("-%s/%s %s: translator source map does not terminate at function size 0x%x",
+			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: translator source map does not terminate at function size 0x%x",
 				key.Optimization, key.Profile, key.Function, funcSize))
 		} else {
 			previousARM, previousVM := -1, -1
 			for _, entry := range result.SourceMap {
 				if entry.ARM64Offset <= previousARM || entry.VMOffset < previousVM || entry.VMOffset > result.CodeLen {
-					gaps = append(gaps, fmt.Sprintf("-%s/%s %s: invalid source-map entry arm64=0x%x vm=0x%x",
+					report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: invalid source-map entry arm64=0x%x vm=0x%x",
 						key.Optimization, key.Profile, key.Function, entry.ARM64Offset, entry.VMOffset))
 					break
 				}
@@ -223,14 +297,24 @@ func verifyCompilerCorpus(records []compilerCorpusRecord) []string {
 		}
 	}
 
-	if len(gaps) == 0 {
+	report.Unexpected = sortedUniqueStrings(report.Unexpected)
+	report.Intentional = sortedUniqueStrings(report.Intentional)
+	return report
+}
+
+func verifyCompilerCorpus(records []compilerCorpusRecord) []string {
+	return classifyCompilerCorpus(records).Unexpected
+}
+
+func sortedUniqueStrings(values []string) []string {
+	if len(values) == 0 {
 		return nil
 	}
-	sort.Strings(gaps)
-	unique := gaps[:0]
-	for _, gap := range gaps {
-		if len(unique) == 0 || unique[len(unique)-1] != gap {
-			unique = append(unique, gap)
+	sort.Strings(values)
+	unique := values[:0]
+	for _, value := range values {
+		if len(unique) == 0 || unique[len(unique)-1] != value {
+			unique = append(unique, value)
 		}
 	}
 	return unique
@@ -278,6 +362,25 @@ func TestCompilerCorpusVerifierReportsRejectedInstruction(t *testing.T) {
 	gaps := verifyCompilerCorpus(records)
 	if len(gaps) == 0 || !strings.Contains(strings.Join(gaps, "\n"), "BRK") {
 		t.Fatalf("rejected instruction gaps=%v", gaps)
+	}
+}
+
+func TestCompilerIntentionalBoundaryRequiresExactEvidence(t *testing.T) {
+	casp := compilerCorpusRecord{Optimization: "O2", Profile: "lse", Function: "vmp_atomic128", Raw: 0x48267c04, Mnemonic: "casp"}
+	if kind, ok := exactR29IntentionalBoundary(casp, "translator: offset 0x0: UNKNOWN - rejected by the product whitelist"); !ok || kind != "casp128" {
+		t.Fatalf("exact CASP boundary kind=%q ok=%v", kind, ok)
+	}
+	casp.Raw ^= 1 << 16
+	if _, ok := exactR29IntentionalBoundary(casp, "translator: offset 0x0: UNKNOWN - rejected by the product whitelist"); ok {
+		t.Fatal("unobserved CASP raw was accepted as an intentional boundary")
+	}
+	outlined := compilerCorpusRecord{Optimization: "Oz", Profile: "base", Function: "vmp_atomic16", Raw: 0x14000050, Mnemonic: "b", Operands: "0x480 <OUTLINED_FUNCTION_0>"}
+	if kind, ok := exactR29IntentionalBoundary(outlined, "translator: offset 0x50: B - branch target is outside function range"); !ok || kind != "machine-outliner" {
+		t.Fatalf("exact outliner boundary kind=%q ok=%v", kind, ok)
+	}
+	outlined.Operands = "0x480 <some_other_symbol>"
+	if _, ok := exactR29IntentionalBoundary(outlined, "translator: offset 0x50: B - branch target is outside function range"); ok {
+		t.Fatal("non-outliner external branch was accepted as intentional")
 	}
 }
 
@@ -329,7 +432,14 @@ func TestExactR29CompilerCorpusCoverage(t *testing.T) {
 		}
 	}
 
-	if gaps := verifyCompilerCorpus(records); len(gaps) != 0 {
-		t.Fatalf("exact-r29 compiler coverage has %d unexpected gap(s):\n%s", len(gaps), strings.Join(gaps, "\n"))
+	report := classifyCompilerCorpus(records)
+	for _, kind := range []string{"branchful-exclusive", "casp128", "machine-outliner"} {
+		if report.IntentionalKinds[kind] == 0 {
+			t.Errorf("exact-r29 compiler corpus no longer exercises intentional boundary %q; audit and remove/update the expectation", kind)
+		}
+	}
+	if len(report.Unexpected) != 0 {
+		t.Fatalf("exact-r29 compiler coverage has %d unexpected gap(s) (%d intentional fail-closed record(s)):\n%s",
+			len(report.Unexpected), len(report.Intentional), strings.Join(report.Unexpected, "\n"))
 	}
 }
