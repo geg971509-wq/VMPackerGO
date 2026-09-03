@@ -154,6 +154,14 @@ func registerWidth(inst vm.Instruction) int {
 }
 
 func validateImmediateDataProcessing(inst vm.Instruction) error {
+	switch Op(inst.Op) {
+	case AND_IMM, ANDS_IMM, ORR_IMM, EOR_IMM:
+		// Logical immediates are unsigned register-width bit patterns. For
+		// 64-bit forms, a valid pattern with bit 63 set is represented in
+		// Instruction.Imm as a negative int64; the translator deliberately
+		// reinterprets it as uint64 when emitting the stack immediate.
+		return nil
+	}
 	if inst.Imm < 0 {
 		return fmt.Errorf("negative data-processing immediate")
 	}
@@ -204,14 +212,25 @@ func validateExtendedRegister(inst vm.Instruction) error {
 }
 
 func validateImmediateAddressing(inst vm.Instruction) error {
-	if inst.WB != 0 && inst.WB != 1 && inst.WB != 3 {
+	op := Op(inst.Op)
+	isPair := op == STP || op == LDP || op == LDPSW
+	switch inst.WB {
+	case 0, 1, 3:
+	case 2:
+		if !isPair {
+			return fmt.Errorf("address mode 2 is only valid for pair signed-offset addressing")
+		}
+	default:
 		return fmt.Errorf("address writeback mode %d is invalid", inst.WB)
 	}
-	if inst.WB != 0 && inst.Rn == inst.Rd {
+
+	// Pair mode 2 is signed-offset addressing, not writeback. Only pre/post
+	// indexed modes update Rn and therefore carry writeback-overlap rules.
+	writeback := inst.WB == 1 || inst.WB == 3
+	if writeback && inst.Rn == inst.Rd {
 		return fmt.Errorf("writeback base overlaps transfer register")
 	}
-	if (Op(inst.Op) == STP || Op(inst.Op) == LDP || Op(inst.Op) == LDPSW) &&
-		inst.WB != 0 && inst.Rn == inst.Rm {
+	if isPair && writeback && inst.Rn == inst.Rm {
 		return fmt.Errorf("pair writeback base overlaps second transfer register")
 	}
 	return nil

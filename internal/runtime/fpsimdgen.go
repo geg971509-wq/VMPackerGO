@@ -66,6 +66,9 @@ func generateFPSIMDThunks(instructions []uint32) (header, assembly []byte, norma
 		if plan.LoadReg >= 0 {
 			fmt.Fprintf(&s, "  ldr x9, [x16, #(VM_CTX_R + %d * 8)]\n", plan.LoadReg)
 		}
+		if plan.LoadReg2 >= 0 {
+			fmt.Fprintf(&s, "  ldr x10, [x16, #(VM_CTX_R + %d * 8)]\n", plan.LoadReg2)
+		}
 		fmt.Fprintf(&s, "  .inst 0x%08x\n", plan.Instruction)
 		if plan.StoreReg >= 0 {
 			fmt.Fprintf(&s, "  str x9, [x16, #(VM_CTX_R + %d * 8)]\n", plan.StoreReg)

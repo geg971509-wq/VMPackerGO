@@ -391,16 +391,18 @@ func postShiftedXZR3(f map[string]int64, inst *vm.Instruction) {
 	}
 }
 
-// postExtReg extended register: option→ShiftType, imm3→Shift, Rn=31→SP(保留), Rd=31→SP(保留), Rm→XZR
+// postExtReg extended register: option→ShiftType, imm3→Shift. Rn=31 is SP.
+// Rd=31 is SP for non-flag ADD/SUB, but XZR for ADDS/SUBS (CMP/CMN aliases).
 func postExtReg(f map[string]int64, inst *vm.Instruction) {
-	// Rd=31 在 extended register 中也是 SP (如 SUB SP, SP, Xm)，不做 XZR 替换
 	xzrReplace(&inst.Rm)
-	// Rn=31 在 extended register 中是 SP, 不做 XZR 替换
+	if Op(inst.Op) == ADDS_EXT || Op(inst.Op) == SUBS_EXT {
+		xzrReplace(&inst.Rd)
+	}
 	if option, ok := f["option"]; ok {
 		inst.ShiftType = int(option) // 0=UXTB..7=SXTX
 	}
 	if imm3, ok := f["imm3"]; ok {
-		inst.Shift = int(imm3) // 额外左移量 0-4
+		inst.Shift = int(imm3) // extra left shift 0-4
 	}
 }
 

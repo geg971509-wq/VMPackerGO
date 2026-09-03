@@ -21,7 +21,7 @@ var ldstPatterns = []InstrPattern{
 	// 匹配: bits[28:27]=01, bit26=0 → pair integer
 	// ================================================================
 	{
-		Name: "STP", Mask: 0x1C400000, Value: 0x08000000, Op: STP,
+		Name: "STP", Mask: 0x7C400000, Value: 0x28000000, Op: STP,
 		Fields: []FieldDef{
 			{Name: "sf", Hi: 31, Lo: 31},
 			{Name: "wb", Hi: 25, Lo: 23},
@@ -32,7 +32,7 @@ var ldstPatterns = []InstrPattern{
 		Post: postPair,
 	},
 	{
-		Name: "LDP", Mask: 0x1C400000, Value: 0x08400000, Op: LDP,
+		Name: "LDP", Mask: 0x7C400000, Value: 0x28400000, Op: LDP,
 		Fields: []FieldDef{
 			{Name: "sf", Hi: 31, Lo: 31},
 			{Name: "wb", Hi: 25, Lo: 23},
@@ -50,7 +50,7 @@ var ldstPatterns = []InstrPattern{
 	// Loads two 32-bit words, sign-extends them to 64-bit
 	// ================================================================
 	{
-		Name: "LDPSW", Mask: 0x7C400000, Value: 0x28400000, Op: LDPSW,
+		Name: "LDPSW", Mask: 0x7C400000, Value: 0x68400000, Op: LDPSW,
 		Fields: []FieldDef{
 			{Name: "wb", Hi: 25, Lo: 23},
 			{Name: "imm7", Hi: 21, Lo: 15, Signed: true},

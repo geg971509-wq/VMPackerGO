@@ -15,16 +15,23 @@ type fpSIMDRule struct {
 type FPSIMDThunkPlan struct {
 	Instruction uint32
 	LoadReg     int
+	LoadReg2    int
 	StoreReg    int
 	StackOffset uint64
 	StackSize   uint64
 }
 
 // fpSIMDRules is the executable whitelist derived from the exact NDK r29
-// compiler corpus at -O0/-O2/-Oz. Register fields are variable; operation,
+// compiler corpora at -O0/-O2/-Oz. Register fields are variable; operation,
 // shape, element width, and addressing form remain fixed.
 var fpSIMDRules = []fpSIMDRule{
 	{"FMOV S", 0xfffffc00, 0x1e204000, false, false, false, false},
+	{"FMOV D", 0xfffffc00, 0x1e604000, false, false, false, false},
+	{"FMOV X,D", 0xfffffc00, 0x9e660000, false, true, false, false},
+	{"FMOV D,X", 0xfffffc00, 0x9e670000, true, false, false, false},
+	{"MOV V.D[0],X", 0xfffffc00, 0x4e081c00, true, false, false, false},
+	{"MOV V.D[1],X", 0xfffffc00, 0x4e181c00, true, false, false, false},
+	{"MOV D,V.D[1]", 0xfffffc00, 0x5e180400, false, false, false, false},
 	{"FABS S", 0xfffffc00, 0x1e20c000, false, false, false, false},
 	{"FNEG S", 0xfffffc00, 0x1e214000, false, false, false, false},
 	{"FABS D", 0xfffffc00, 0x1e60c000, false, false, false, false},
@@ -63,6 +70,9 @@ var fpSIMDRules = []fpSIMDRule{
 	{"STR D", 0xffc00000, 0xfd000000, false, false, true, false},
 	{"LDR Q", 0xffc00000, 0x3dc00000, false, false, true, false},
 	{"STR Q", 0xffc00000, 0x3d800000, false, false, true, false},
+	// Exact register-offset form emitted by r29 for 16-byte pair/struct loads:
+	// LDR Qd, [Xn, Xm, LSL #4]. Rn and Rm are remapped independently.
+	{"LDR Q(reg)", 0xffe0fc00, 0x3ce07800, false, false, true, false},
 }
 
 func matchFPSIMD(raw uint32) (fpSIMDRule, bool) {
@@ -80,7 +90,7 @@ func ValidateFPSIMDInstruction(raw uint32) error {
 }
 
 func PlanFPSIMDThunk(raw uint32, scratch uint8) (FPSIMDThunkPlan, error) {
-	plan := FPSIMDThunkPlan{Instruction: raw, LoadReg: -1, StoreReg: -1}
+	plan := FPSIMDThunkPlan{Instruction: raw, LoadReg: -1, LoadReg2: -1, StoreReg: -1}
 	if scratch > 15 {
 		return plan, fmt.Errorf("FP/SIMD thunk scratch X%d is not caller-saved scratch X0-X15", scratch)
 	}
@@ -105,12 +115,27 @@ func PlanFPSIMDThunk(raw uint32, scratch uint8) (FPSIMDThunkPlan, error) {
 			plan.Instruction = (plan.Instruction &^ 31) | uint32(scratch)
 		}
 	}
+	indexedMemory := false
 	if rule.memoryBase {
 		roles++
 		rn := int((raw >> 5) & 31)
 		plan.LoadReg = rn
 		plan.Instruction = (plan.Instruction &^ (31 << 5)) | uint32(scratch)<<5
-		if rn == 31 {
+		if fpSIMDRegisterOffsetQ(raw) {
+			indexedMemory = true
+			roles++
+			if rn == 31 {
+				return plan, fmt.Errorf("%s dynamic SP-indexed addressing is not proven for thunk remapping", rule.name)
+			}
+			rm := int((raw >> 16) & 31)
+			if rm != 31 {
+				if scratch >= 15 {
+					return plan, fmt.Errorf("%s needs two caller-saved thunk scratch registers", rule.name)
+				}
+				plan.LoadReg2 = rm
+				plan.Instruction = (plan.Instruction &^ (31 << 16)) | uint32(scratch+1)<<16
+			}
+		} else if rn == 31 {
 			offset, size, ok := fpSIMDMemoryAccess(raw)
 			if !ok {
 				return plan, fmt.Errorf("%s SP addressing form is not proven for thunk remapping", rule.name)
@@ -119,10 +144,14 @@ func PlanFPSIMDThunk(raw uint32, scratch uint8) (FPSIMDThunkPlan, error) {
 			plan.StackSize = size
 		}
 	}
-	if roles > 1 {
+	if roles > 1 && !indexedMemory {
 		return plan, fmt.Errorf("%s uses multiple GPR operand roles that cannot share one thunk scratch", rule.name)
 	}
 	return plan, nil
+}
+
+func fpSIMDRegisterOffsetQ(raw uint32) bool {
+	return raw&0xffe0fc00 == 0x3ce07800
 }
 
 func fpSIMDMemoryAccess(raw uint32) (offset, size uint64, ok bool) {
