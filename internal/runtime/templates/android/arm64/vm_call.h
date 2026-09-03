@@ -60,6 +60,10 @@ static inline int vm_lookup_packed(vm_ctx_t *vm, u64 address,
   u32 count = (u32)count64;
   for (u32 i = 0; i < count; i++) {
     u64 size = table[i].func_size;
+    if (table[i].func_file_va > ~(u64)0 - bias) {
+      vm_fault_set(vm, VM_FAULT_DESCRIPTOR);
+      return -1;
+    }
     u64 lo = table[i].func_file_va + bias;
     if (size != 0 && address >= lo && address - lo < size) {
       if (func_id_out)
@@ -79,7 +83,7 @@ static inline int vm_parse_code(vm_ctx_t *vm, u8 *bc_buf, u32 total_len,
   }
 
   u32 func_size = rd32(&bc_buf[total_len - 4]);
-  u64 func_addr = rd64(&bc_buf[total_len - 12]);
+  u64 func_file_va = rd64(&bc_buf[total_len - 12]);
   u32 map_count = rd32(&bc_buf[total_len - 16]);
   u32 opcode_key = rd32(&bc_buf[total_len - 20]);
   u8 reverse = bc_buf[total_len - 21];
@@ -103,9 +107,14 @@ static inline int vm_parse_code(vm_ctx_t *vm, u8 *bc_buf, u32 total_len,
   for (u32 i = 0; i < map_count; i++) {
     u32 arm_offset = map[i].arm64_off;
     u32 vm_offset = map[i].vm_off;
-    if (arm_offset > func_size || vm_offset >= code_len ||
-        (i == 0 && (arm_offset != 0 || vm_offset != 0)) ||
-        (i != 0 && (arm_offset <= previous_arm || vm_offset < previous_vm))) {
+    int vm_valid = reverse ? (vm_offset != 0 && vm_offset <= code_len)
+                           : (vm_offset < code_len);
+    if (arm_offset > func_size || !vm_valid ||
+        (i == 0 && (arm_offset != 0 ||
+                    vm_offset != (reverse ? code_len : 0))) ||
+        (i != 0 && arm_offset <= previous_arm) ||
+        (i != 0 && !reverse && vm_offset < previous_vm) ||
+        (i != 0 && reverse && vm_offset > previous_vm)) {
       vm_fault_set(vm, VM_FAULT_DESCRIPTOR);
       return 0;
     }
@@ -117,13 +126,18 @@ static inline int vm_parse_code(vm_ctx_t *vm, u8 *bc_buf, u32 total_len,
     return 0;
   }
 
+  u64 bias;
+  if (!vm_file_bias(vm, &bias) || func_file_va > ~(u64)0 - bias) {
+    vm_fault_set(vm, VM_FAULT_DESCRIPTOR);
+    return 0;
+  }
+
   state->bc = bc_buf;
   state->bc_len = code_len;
   state->pc = reverse ? code_len : 0;
   state->oc_key = opcode_key;
   state->reverse = reverse;
-  state->func_addr = func_addr + (vm->image_anchor -
-                                  *(volatile u64 *)&_image_file_va);
+  state->func_addr = func_file_va + bias;
   state->func_size = func_size;
   state->addr_map = map;
   state->map_count = map_count;
