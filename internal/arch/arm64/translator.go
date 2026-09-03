@@ -71,23 +71,24 @@ type DebugEntry struct {
 
 // Translator ARM64 → VM 翻译器
 type Translator struct {
-	code               []byte        // 输出缓冲
-	labels             map[int]int   // ARM64偏移 → VM字节码位置 映射
-	fixups             []branchFixup // 待修补的分支目标
-	funcSize           int           // 原函数大小（字节）
-	funcAddr           uint64        // 原函数起始地址
-	opcodes            vm.OpcodeMap
-	unsupported        []string
-	decoder            *Decoder     // 解码器引用（用于名称查找）
-	debug              bool         // debug 模式
-	debugLog           []DebugEntry // debug 对照记录
-	relocations        []BytecodeRelocation
-	svcImmediates      map[uint16]bool
-	exclusiveRegions   map[uint32]vm.ExclusiveRegion
-	fpSIMDInstructions map[uint32]bool
-	nativeCallSites    []NativeCallSite
-	entryBTI           Op
-	hasEntryBTI        bool
+	code                []byte        // 输出缓冲
+	labels              map[int]int   // ARM64偏移 → VM字节码位置 映射
+	fixups              []branchFixup // 待修补的分支目标
+	funcSize            int           // 原函数大小（字节）
+	funcAddr            uint64        // 原函数起始地址
+	opcodes             vm.OpcodeMap
+	unsupported         []string
+	decoder             *Decoder     // 解码器引用（用于名称查找）
+	debug               bool         // debug 模式
+	debugLog            []DebugEntry // debug 对照记录
+	relocations         []BytecodeRelocation
+	svcImmediates       map[uint16]bool
+	exclusiveRegions    map[uint32]vm.ExclusiveRegion
+	fpSIMDInstructions  map[uint32]bool
+	nativeCallSites     []NativeCallSite
+	outlinedTailInlines map[int][]uint32
+	entryBTI            Op
+	hasEntryBTI         bool
 }
 
 type branchFixup struct {
@@ -102,15 +103,16 @@ func NewTranslator(funcAddr uint64, funcSize int, opcodes vm.OpcodeMap) (*Transl
 		return nil, fmt.Errorf("validate opcode map: %w", err)
 	}
 	return &Translator{
-		code:               make([]byte, 0, funcSize*4),
-		labels:             make(map[int]int),
-		funcAddr:           funcAddr,
-		funcSize:           funcSize,
-		opcodes:            opcodes,
-		decoder:            NewDecoder(),
-		svcImmediates:      make(map[uint16]bool),
-		exclusiveRegions:   make(map[uint32]vm.ExclusiveRegion),
-		fpSIMDInstructions: make(map[uint32]bool),
+		code:                make([]byte, 0, funcSize*4),
+		labels:              make(map[int]int),
+		funcAddr:            funcAddr,
+		funcSize:            funcSize,
+		opcodes:             opcodes,
+		decoder:             NewDecoder(),
+		svcImmediates:       make(map[uint16]bool),
+		exclusiveRegions:    make(map[uint32]vm.ExclusiveRegion),
+		fpSIMDInstructions:  make(map[uint32]bool),
+		outlinedTailInlines: make(map[int][]uint32),
 	}, nil
 }
 
@@ -446,7 +448,7 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	// ========== 分支 ==========
 
 	case B:
-		return 0, t.trBranch(inst)
+		return 0, t.trBranchOrOutlined(inst)
 	case B_COND:
 		return 0, t.trBranchCond(inst)
 	case CBZ:

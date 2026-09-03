@@ -29,21 +29,10 @@ type compilerCorpusKey struct {
 }
 
 type compilerCoverageReport struct {
-	Unexpected       []string
-	Intentional      []string
-	IntentionalKinds map[string]int
+	Unexpected []string
 }
 
 const compilerCorpusHeader = "optimization\tprofile\tfunction\taddress\traw\tmnemonic\toperands"
-
-var exactR29OutlinedTailRaws = map[uint32]bool{
-	0x14000050: true,
-	0x1400003b: true,
-	0x14000065: true,
-	0x14000045: true,
-	0x14000036: true,
-	0x14000054: true,
-}
 
 func parseCompilerCorpus(scanner *bufio.Scanner) ([]compilerCorpusRecord, error) {
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
@@ -126,31 +115,75 @@ func compilerRecordLabel(record compilerCorpusRecord) string {
 		record.Optimization, record.Profile, record.Function, record.Address, record.Raw, record.Mnemonic, operands)
 }
 
-func exactR29IntentionalBoundary(record compilerCorpusRecord, issue string) (string, bool) {
-	if record.Optimization == "Oz" && strings.HasPrefix(record.Function, "vmp_atomic") &&
-		exactR29OutlinedTailRaws[record.Raw] && record.Mnemonic == "b" &&
-		strings.Contains(record.Operands, "OUTLINED_FUNCTION_") && strings.Contains(issue, "outside function range") {
-		return "machine-outliner", true
-	}
-	return "", false
+func addCompilerIssue(report *compilerCoverageReport, record compilerCorpusRecord, issue string) {
+	report.Unexpected = append(report.Unexpected, compilerRecordLabel(record)+": "+issue)
 }
 
-func addCompilerIssue(report *compilerCoverageReport, record compilerCorpusRecord, issue string) {
-	line := compilerRecordLabel(record) + ": " + issue
-	if kind, ok := exactR29IntentionalBoundary(record, issue); ok {
-		if report.IntentionalKinds == nil {
-			report.IntentionalKinds = map[string]int{}
+func compilerAddressDelta(address uint64, delta int64) (uint64, bool) {
+	if delta >= 0 {
+		if uint64(delta) > ^uint64(0)-address {
+			return 0, false
 		}
-		report.IntentionalKinds[kind]++
-		report.Intentional = append(report.Intentional, "["+kind+"] "+line)
-		return
+		return address + uint64(delta), true
 	}
-	report.Unexpected = append(report.Unexpected, line)
+	amount := uint64(-(delta + 1)) + 1
+	if amount > address {
+		return 0, false
+	}
+	return address - amount, true
+}
+
+func configureCompilerOutlinedTailInlines(translator *Translator, key compilerCorpusKey, group []compilerCorpusRecord, groups map[compilerCorpusKey][]compilerCorpusRecord) error {
+	if len(group) == 0 {
+		return nil
+	}
+	start := group[0].Address
+	end := group[len(group)-1].Address + 4
+	decoder := NewDecoder()
+	for _, record := range group {
+		inst := decoder.Decode(record.Raw, int(record.Address-start))
+		if Op(inst.Op) != B {
+			continue
+		}
+		target, ok := compilerAddressDelta(record.Address, inst.Imm)
+		if !ok {
+			return fmt.Errorf("B at 0x%x target overflows", record.Address)
+		}
+		if target >= start && target < end {
+			continue
+		}
+		if record.Address+4 != end {
+			return fmt.Errorf("external B at 0x%x is not the function tail", record.Address)
+		}
+		var helperKey compilerCorpusKey
+		var helper []compilerCorpusRecord
+		for candidateKey, candidate := range groups {
+			if candidateKey.Optimization != key.Optimization || candidateKey.Profile != key.Profile ||
+				!strings.HasPrefix(candidateKey.Function, "OUTLINED_FUNCTION_") || len(candidate) == 0 || candidate[0].Address != target {
+				continue
+			}
+			if helper != nil {
+				return fmt.Errorf("external B at 0x%x has multiple outlined helpers at 0x%x", record.Address, target)
+			}
+			helperKey, helper = candidateKey, candidate
+		}
+		if helper == nil {
+			return fmt.Errorf("external B at 0x%x to 0x%x has no exact outlined helper", record.Address, target)
+		}
+		raws := make([]uint32, len(helper))
+		for i := range helper {
+			raws[i] = helper[i].Raw
+		}
+		if err := translator.SetOutlinedTailInline(int(record.Address-start), raws); err != nil {
+			return fmt.Errorf("%s: %w", helperKey.Function, err)
+		}
+	}
+	return nil
 }
 
 func classifyCompilerCorpus(records []compilerCorpusRecord) compilerCoverageReport {
 	groups, groupGaps := groupCompilerCorpus(records)
-	report := compilerCoverageReport{Unexpected: append([]string(nil), groupGaps...), IntentionalKinds: map[string]int{}}
+	report := compilerCoverageReport{Unexpected: append([]string(nil), groupGaps...)}
 	keys := make([]compilerCorpusKey, 0, len(groups))
 	for key := range groups {
 		keys = append(keys, key)
@@ -215,6 +248,11 @@ func classifyCompilerCorpus(records []compilerCorpusRecord) compilerCoverageRepo
 				key.Optimization, key.Profile, key.Function, err))
 			continue
 		}
+		if err := configureCompilerOutlinedTailInlines(translator, key, group, groups); err != nil {
+			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: outlined-tail configuration: %v",
+				key.Optimization, key.Profile, key.Function, err))
+			continue
+		}
 		result, err := translator.Translate(instructions)
 		if err != nil {
 			report.Unexpected = append(report.Unexpected, fmt.Sprintf("-%s/%s %s: whole-function translation: %v",
@@ -267,7 +305,6 @@ func classifyCompilerCorpus(records []compilerCorpusRecord) compilerCoverageRepo
 	}
 
 	report.Unexpected = sortedUniqueStrings(report.Unexpected)
-	report.Intentional = sortedUniqueStrings(report.Intentional)
 	return report
 }
 
@@ -320,6 +357,20 @@ func TestCompilerCorpusVerifierUsesWholeFunctionTranslation(t *testing.T) {
 	}
 }
 
+func TestCompilerCorpusVerifierClosesOutlinedTailHelper(t *testing.T) {
+	input := compilerCorpusHeader + "\n" +
+		"Oz\tbase\tcaller\t0\t14000002\tb\t0x8 <OUTLINED_FUNCTION_0>\n" +
+		"Oz\tbase\tOUTLINED_FUNCTION_0\t8\t4a0d0100\teor\tw0, w8, w13\n" +
+		"Oz\tbase\tOUTLINED_FUNCTION_0\tc\td65f03c0\tret\t\n"
+	records, err := parseCompilerCorpus(bufio.NewScanner(strings.NewReader(input)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gaps := verifyCompilerCorpus(records); len(gaps) != 0 {
+		t.Fatalf("outlined-tail corpus gaps=%v", gaps)
+	}
+}
+
 func TestCompilerCorpusVerifierReportsRejectedInstruction(t *testing.T) {
 	input := compilerCorpusHeader + "\n" +
 		"Oz\tlse\tbad\t0\td4200000\tbrk\t#0\n" +
@@ -331,17 +382,6 @@ func TestCompilerCorpusVerifierReportsRejectedInstruction(t *testing.T) {
 	gaps := verifyCompilerCorpus(records)
 	if len(gaps) == 0 || !strings.Contains(strings.Join(gaps, "\n"), "BRK") {
 		t.Fatalf("rejected instruction gaps=%v", gaps)
-	}
-}
-
-func TestCompilerIntentionalBoundaryRequiresExactEvidence(t *testing.T) {
-	outlined := compilerCorpusRecord{Optimization: "Oz", Profile: "base", Function: "vmp_atomic16", Raw: 0x14000050, Mnemonic: "b", Operands: "0x480 <OUTLINED_FUNCTION_0>"}
-	if kind, ok := exactR29IntentionalBoundary(outlined, "translator: offset 0x50: B - branch target is outside function range"); !ok || kind != "machine-outliner" {
-		t.Fatalf("exact outliner boundary kind=%q ok=%v", kind, ok)
-	}
-	outlined.Operands = "0x480 <some_other_symbol>"
-	if _, ok := exactR29IntentionalBoundary(outlined, "translator: offset 0x50: B - branch target is outside function range"); ok {
-		t.Fatal("non-outliner external branch was accepted as intentional")
 	}
 }
 
@@ -394,11 +434,8 @@ func TestExactR29CompilerCorpusCoverage(t *testing.T) {
 	}
 
 	report := classifyCompilerCorpus(records)
-	if report.IntentionalKinds["machine-outliner"] == 0 {
-		t.Errorf("exact-r29 compiler corpus no longer exercises intentional boundary %q; audit and remove/update the expectation", "machine-outliner")
-	}
 	if len(report.Unexpected) != 0 {
-		t.Fatalf("exact-r29 compiler coverage has %d unexpected gap(s) (%d intentional fail-closed record(s)):\n%s",
-			len(report.Unexpected), len(report.Intentional), strings.Join(report.Unexpected, "\n"))
+		t.Fatalf("exact-r29 compiler coverage has %d unexpected gap(s):\n%s",
+			len(report.Unexpected), strings.Join(report.Unexpected, "\n"))
 	}
 }
