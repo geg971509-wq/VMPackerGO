@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/phase16_exception_routes_patch.py
+          python3 scripts/phase16_exception_routes_repair.py
           gofmt -w \
             internal/elf/exception_preflight.go \
             internal/elf/preparation.go \
@@ -39,6 +40,7 @@ jobs:
           set -euo pipefail
           git rm \
             scripts/phase16_exception_routes_patch.py \
+            scripts/phase16_exception_routes_repair.py \
             .github/workflows/phase16-exception-routes-apply.yml \
             .omx/plans/vmp-phase16-exception-final-routes.audit \
             README_NONEXISTENT
