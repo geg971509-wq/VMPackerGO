@@ -146,6 +146,8 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 					preparation, prepareErr := elfpacker.PrepareTranslations(request, analysis)
 					if prepareErr != nil {
 						transformErr = prepareErr
+					} else if requirementsErr := preparation.ValidateRuntimeRequirements(); requirementsErr != nil {
+						transformErr = requirementsErr
 					} else {
 						builder := cfg.BuildRuntime
 						if builder == nil {
