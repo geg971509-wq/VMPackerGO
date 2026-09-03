@@ -12,7 +12,7 @@ MAC_PACKER  = $(DIST_DIR)/vmpacker-darwin-arm64
 
 ANDROID_BUILD_DIR ?= $(BUILD_DIR)/android
 
-.PHONY: all packer mac-cli test test-race vet contract release-contract verify \
+.PHONY: all packer mac-cli test test-race vet contract release-contract verify demo-cases evidence-self-test \
 	ndk-check runtime-integration android-device-check android-fixtures clean help
 
 all: packer
@@ -35,7 +35,14 @@ test-race:
 vet:
 	$(GO) vet ./...
 
-contract:
+demo-cases:
+	python3 scripts/validate-demo-cases.py
+
+evidence-self-test: demo-cases
+	python3 scripts/validate-device-evidence-test.py
+	python3 scripts/validate-release-evidence-test.py
+
+contract: evidence-self-test
 	bash scripts/check-contract.sh
 	bash scripts/check-contract-test.sh
 
@@ -54,7 +61,7 @@ runtime-integration: ndk-check
 	ANDROID_NDK="$(ANDROID_NDK)" $(GO) test -count=1 -run TestBuildInstalledExactR29Object ./internal/runtime
 
 android-device-check:
-	scripts/android-device-smoke.sh --check-only
+	scripts/android-device-check.sh --attest-physical
 
 android-fixtures: ndk-check
 	scripts/android-build-fixtures.sh "$(ANDROID_BUILD_DIR)"
@@ -73,5 +80,7 @@ help:
 		"make packer              Build the development CLI" \
 		"make mac-cli             Build the macOS ARM64 CLI" \
 		"make verify              Run Go, race, vet, and contract gates" \
+		"make demo-cases           Validate the exact 85-demo device case specification" \
+		"make evidence-self-test   Test device/release evidence validators" \
 		"make runtime-integration Build and validate the runtime with exact NDK r29" \
 		"make android-fixtures    Cross-compile Android ELF fixtures"
