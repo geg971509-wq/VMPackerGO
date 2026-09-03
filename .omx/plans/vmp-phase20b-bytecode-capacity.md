@@ -39,7 +39,8 @@ Runtime must reject an oversized descriptor instead of silently truncating `bc_l
 3. Change root and nested packed-function loading from clamp-to-limit to fail-closed rejection.
 4. Add Go regression proving 72,836 bytes is accepted and 262,145 bytes is rejected.
 5. Add runtime template regression proving the 256 KiB constant and reject-not-clamp behavior remain synchronized.
-6. Update product/development contract text from 64 KiB to 256 KiB; also correct the now-stale workflow runner note to macOS 15.
+6. Update the pre-existing bytecode boundary regression to the configured maximum rather than a stale 64 KiB literal.
+7. Update product/development contract text from 64 KiB to 256 KiB; also correct the now-stale workflow runner note to macOS 15.
 
 ## Merge policy
 
