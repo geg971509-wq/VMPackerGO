@@ -1,159 +1,104 @@
 # VMP Phase 20 — CASP Pair Atomic Closure
 
-## 1. Next-stage goal
+## 1. Goal
 
-Remove the exact-NDK-r29 `casp128` intentional fail-closed class by implementing architectural FEAT_LSE compare-and-swap-pair semantics without widening unrelated instruction support or destabilizing the existing scalar atomic transport.
+Remove the exact-NDK-r29 `casp128` intentional fail-closed class by implementing FEAT_LSE compare-and-swap-pair semantics without widening unrelated instruction support or changing the seven-byte `OpAtomic` wire contract.
 
-Phase 19 leaves two compiler-derived intentional boundaries: `casp128` and `machine-outliner`. CASP is the higher-priority next target because exact NDK r29 emits CASP/CASPA/CASPL/CASPAL for ordinary `__int128` C11 atomics under the LSE profile.
+Phase 19 left `casp128` and `machine-outliner` as the two compiler-derived intentional boundaries. CASP is addressed first because exact NDK r29 emits CASP/CASPA/CASPL/CASPAL for ordinary `__int128` atomics under the LSE profile.
 
-## 2. Architecture consensus
+## 2. Final architecture consensus
 
-### 2.1 Encoding and register representation
+### 2.1 Decoder representation
 
-CASP shares the CAS encoding class but uses NP=0 instead of the scalar-CAS NP=1 form. The relevant fields are:
+CASP shares the compare-and-swap semantic family with scalar CAS. The decoder therefore keeps `Op == CAS` and distinguishes pair CAS with the architectural raw encoding:
 
-- size bits [31:30]; CASP supports a pair of 32-bit words (`00`) or a pair of 64-bit doublewords (`01`);
-- acquire bit 22;
-- Rs bits [20:16], the low compare/result register;
-- release bit 15;
-- Rn bits [9:5], the address register/SP;
-- Rt bits [4:0], the low new-value register.
+- CASP pattern mask/value: `0xBFA07C00 / 0x08207C00`;
+- size `00` = W-register pair, 4-byte members;
+- size `01` = X-register pair, 8-byte members;
+- acquire = bit 22;
+- release = bit 15;
+- `Rm = Rs`, the expected/result pair low register;
+- `Rd = Rt`, the replacement pair low register;
+- `Rn` = address/SP;
+- high members are implicit `Rm+1` and `Rd+1`.
 
-The second compare/result and new-value registers are implicit contiguous partners `Rs+1` and `Rt+1`. Both pair bases must be even. Therefore CASP does not require adding a fourth explicit data-register field to `vm.Instruction`.
+This avoids adding a synthetic fourth data register or a new generic instruction enum solely for an encoding variant. A dedicated `isCASPPair` predicate keeps the distinction explicit wherever pair-specific policy or transport is required.
 
-For VMP's existing decoded representation:
+### 2.2 Product policy
 
-- `Rm = Rs` (expected value before execution; old memory value after execution);
-- `Rd = Rt` (new value pair source);
-- `Rn = address`;
-- `Shift = per-register width` (4 or 8 bytes).
+CASP overrides only CAS validation through a small pair-specific validator:
 
-### 2.2 Wire-format consensus
+- width must be 4 or 8 bytes per pair member;
+- address register may be X0-X30/SP;
+- expected/result and replacement pair lows must be even;
+- supported pair lows are conservatively bounded to X0-X28 so the implicit high member never becomes encoding 31;
+- scalar CAS continues through the existing generic atomic validator unchanged.
 
-Keep `vm.OpAtomic` at its existing fixed 7-byte wire size:
+The X30/X31 boundary remains fail-closed until independent architecture/assembler evidence proves the intended register-31 semantics. Exact-r29 compiler evidence does not require that relaxation.
+
+### 2.3 Wire transport
+
+`OpAtomic` remains exactly seven bytes:
 
 `op | kind | width | order | rd | rn | rm`
 
-Add atomic kind 12 for CASP. For kind 12:
+Kinds 0-11 remain unchanged. Pair CAS uses kind 12:
 
-- width is 4 or 8 bytes per pair member;
-- `rm/rm+1` is the expected/result pair;
-- `rd/rd+1` is the replacement pair;
-- `rn` is the address register.
+- `rm/rm+1` = expected/result pair;
+- `rd/rd+1` = replacement pair;
+- `rn` = address;
+- width = 4 or 8 bytes per member;
+- order = relaxed/acquire/release/acq_rel.
 
-No VM opcode number, opcode size, source-map accounting, or scalar atomic encoding changes are needed.
+No opcode-number, opcode-size, source-map or trailer change is introduced.
 
-### 2.3 Native ABI consensus
+### 2.4 Runtime ABI
 
-Do not force pair results through the existing scalar `vm_atomic_native`, whose ABI returns only X0.
+A dedicated AAPCS64 helper returns the observed pair in X0/X1:
 
-Add a dedicated native helper with an AAPCS64 two-register return value, conceptually:
+`vm_atomic_pair_native(order, width, address, expected_lo, expected_hi, new_lo, new_hi)`
 
-`pair vm_atomic_pair_native(order, width, address, expected_lo, expected_hi, new_lo, new_hi)`
+The helper uses fixed legal even/odd scratch pairs X8/X9 and X10/X11 and executes only CASP-family instructions under `.arch_extension lse`. The VM handler validates kind/width/register pairs/alignment before the native call and writes only the observed old pair back to `rm/rm+1`; replacement registers remain unchanged.
 
-The helper executes only CASP-family instructions and returns the observed old pair in X0/X1. It uses fixed even temporary register pairs for architectural CASP operands and keeps LSE isolated in the native helper exactly as the scalar helper does.
+## 3. Repair plan executed
 
-The C VM handler derives the implicit high registers, calls the pair helper, and writes the returned old pair back to `rm/rm+1`.
+1. Add explicit CASP raw pattern before the scalar LSE patterns while retaining CAS semantic Op.
+2. Add `isCASPPair` and pair width decoding.
+3. Add isolated `casp_policy.go` so scalar atomic policy is not weakened.
+4. Select `OpAtomic` kind 12 from `trAtomic` only for CASP raw encodings.
+5. Add pair return ABI and runtime handler branch for kind 12.
+6. Add W/X CASP/CASPA/CASPL/CASPAL native helper forms.
+7. Remove the `casp128` exact-r29 exemption and stale expectation; retain only `machine-outliner`.
+8. Add exact-r29/O0/O2/Oz CASP tests plus W-pair, malformed pair and wire-size tests.
+9. Add regression coverage for real STP/LDP signed-offset raw words that must keep `WB=2` as non-writeback addressing.
+10. Remove all temporary Phase 20 workflows and patch scripts before PR review.
 
-## 3. Corrected repair plan
+## 4. Verification policy
 
-### 3.1 Decoder
+The authoritative gate is the repository's existing PR `Verification` workflow on the exact candidate head and current `main`. It must pass:
 
-- add a distinct `CASP` Op;
-- add a CASP decoder pattern before/beside scalar CAS, with NP=0 fixed and only architectural CASP size forms accepted;
-- decode Rs to `Rm`, Rt to `Rd`, Rn normally;
-- set `Shift` to 4 or 8 bytes per pair member;
-- preserve memory-order bits for `atomicMemoryOrder`;
-- do not decode reserved size forms as CASP.
+- contract checks;
+- exact host/Android NDK `29.0.14206865` checks;
+- `go list ./...`;
+- full Go tests;
+- race tests;
+- exact-r29 FP/SIMD corpus;
+- exact-r29 whole-compiler corpus with no `casp128` allowance;
+- exact-r29 runtime build/validation;
+- `go vet ./...`;
+- macOS ARM64 CLI build.
 
-### 3.2 Product policy
+Only the exact verified head may be squash-merged. The resulting `main` push must pass the same Verification again. After that, `fix/call-vm-nested` is fast-forwarded to the exact `main` SHA and compared for zero ahead/behind.
 
-Add a CASP-specific validator rather than weakening generic scalar validation:
-
-- width must be 4 or 8;
-- Rn must be a valid X0-X30/SP address register;
-- Rs/Rt pair bases must be even and must name real contiguous GPR pairs (no register-31 pair member);
-- fail closed on odd or out-of-range pair bases;
-- preserve the architecture-defined overlap cases unless exact ISA constraints require rejection; do not invent restrictions merely for implementation convenience;
-- exact raw decoding and memory-order bits must remain self-consistent.
-
-### 3.3 Translator
-
-- map CASP to atomic kind 12;
-- keep existing 7-byte `OpAtomic` emission;
-- encode pair-low registers directly in `rm` and `rd`;
-- reuse existing Rn mapping/SP behavior;
-- use the CAS memory-order bit extraction (`acquire=bit22`, `release=bit15`);
-- make no change to scalar CAS/LDADD/SWP/min/max kinds 0–11.
-
-### 3.4 Runtime handler
-
-For atomic kind 12:
-
-- require width 4 or 8;
-- validate even pair bases and ensure both implicit high members are real GPRs;
-- read expected pair from `rm/rm+1`;
-- read replacement pair from `rd/rd+1`;
-- call `vm_atomic_pair_native`;
-- write observed old pair back to `rm/rm+1`;
-- for 32-bit CASP, zero-extend each returned W result through the existing VM GPR model;
-- leave replacement registers unchanged;
-- preserve the fixed handler length of 7 bytes.
-
-### 3.5 Native helper
-
-- isolate CASP instructions under `.arch_extension lse`;
-- dispatch relaxed/acquire/release/acq_rel to CASP/CASPA/CASPL/CASPAL;
-- support both architectural pair widths (W-pair and X-pair), even though exact-r29 `__int128` currently exercises X-pair;
-- copy expected and replacement values into fixed even/contiguous scratch pairs before executing CASP;
-- return the updated expected pair in X0/X1;
-- return deterministic zeroes/fail-safe behavior for invalid helper arguments only after the C handler has already faulted invalid bytecode.
-
-### 3.6 Tests
-
-Add focused tests for:
-
-- all four exact-r29 CASP order variants;
-- O0 and O2/Oz exact raw words from the compiler corpus;
-- decoder field extraction for Rs/Rt/Rn and implicit pair semantics;
-- W-pair and X-pair widths;
-- odd Rs/Rt pair bases rejected;
-- pair base that would consume register 31 rejected;
-- scalar CAS decoding remains distinct;
-- atomic order extraction for all four CASP variants;
-- emitted `OpAtomic` remains 7 bytes and uses kind 12;
-- runtime handler writes old pair only to the expected/result pair;
-- native assembly contains CASP/CASPA/CASPL/CASPAL W and X forms with fixed legal register pairs;
-- exact-r29 runtime object assembles/links with NDK 29;
-- malformed/reserved CASP encodings remain fail-closed.
-
-## 4. Phase 18/19 compiler gate update
-
-Delete only the exact-r29 `casp128` intentional boundary and its raw-word exemption after the real Decoder + whole-function Translator close the LSE `vmp_atomic128` corpus.
-
-Keep `machine-outliner` unchanged.
-
-The exact-r29 compiler gate must fail if any CASP record is still unsupported after Phase 20; it must not retain a fallback CASP whitelist.
-
-## 5. Execution and verification policy
-
-- implement from current verified `main`, never from the old Phase 18 plan branch;
-- temporary audit/repair workflows/scripts must be absent from the final diff;
-- focused Go tests/vet come first;
-- the authoritative merge gate is the current-head/current-`main` macOS Verification using exact NDK `29.0.14206865`;
-- required gates: contract checks, Go list, full tests, race, exact-r29 FP/SIMD corpus, exact-r29 whole-compiler corpus, exact-r29 runtime build, vet, macOS ARM64 CLI;
-- only the exact verified PR head may be squash-merged;
-- the resulting `main` push Verification must also pass;
-- after that, fast-forward the repository's current default integration ref `fix/call-vm-nested` to the resulting `main` SHA and verify 0 ahead / 0 behind.
-
-## 6. Exit criteria
+## 5. Exit criteria
 
 Phase 20 is complete only when:
 
-- CASP/CASPA/CASPL/CASPAL decode and execute with architectural pair semantics;
-- no general `Instruction` expansion or `OpAtomic` wire-size change was introduced;
-- scalar atomic behavior and kinds 0–11 are unchanged;
-- exact-r29 `casp128` intentional failures are zero and the exemption is removed;
-- `machine-outliner` remains the only compiler-derived intentional boundary from Phase 18;
-- all release gates pass on the exact PR head and again on merged `main`;
-- `main` and `fix/call-vm-nested` end content-identical.
+- compiler-emitted CASP/CASPA/CASPL/CASPAL close through Decoder -> policy -> Translator -> runtime;
+- `OpAtomic` remains seven bytes and scalar kinds 0-11 are unchanged;
+- the `casp128` intentional class is gone rather than broadened or renamed;
+- `machine-outliner` remains the only exact-r29 compiler-derived intentional boundary;
+- real signed-offset STP/LDP encodings remain accepted as `WB=2` non-writeback pairs;
+- temporary implementation/audit files are absent from the final diff;
+- exact-head PR Verification and post-merge `main` Verification both pass;
+- `main` and `fix/call-vm-nested` finish content-identical.
