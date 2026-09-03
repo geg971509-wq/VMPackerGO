@@ -26,8 +26,9 @@ type Instruction struct {
 	WB        int
 }
 
-// ExclusiveRegion is a complete, contiguous load-exclusive...store-exclusive
-// sequence that must execute without returning to the interpreter. ID is derived from the exact
+// ExclusiveRegion is a complete, contiguous exclusive-monitor CFG beginning
+// at a load-exclusive instruction. It may contain retry branches, multiple
+// store-exclusive paths, or CLREX, and must execute without returning to the interpreter. ID is derived from the exact
 // instruction words so bytecode and generated runtime thunks can be joined
 // without process-local numbering.
 type ExclusiveRegion struct {

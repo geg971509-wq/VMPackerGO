@@ -58,6 +58,7 @@ func generateExclusiveThunks(regions []vm.ExclusiveRegion) (header, assembly []b
 		for _, raw := range patchedByID[region.ID] {
 			fmt.Fprintf(&s, "  .inst 0x%08x\n", raw)
 		}
+		s.WriteString("  clrex\n")
 		s.WriteString("  mrs x17, nzcv\n  lsr x17, x17, #28\n  str w17, [x16, #VM_CTX_FL]\n")
 		for host, guest := range registersByID[region.ID] {
 			fmt.Fprintf(&s, "  str x%d, [x16, #%d]\n", host, guest*8)
