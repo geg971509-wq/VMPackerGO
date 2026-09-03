@@ -143,7 +143,7 @@ func validateExceptionInvokeImage(image *Image, invokes []ExceptionInvokeImage) 
 			symbols[symbol.Name] = symbol
 		}
 	}
-	validateStorage := func(name string, wantType byte, wantSize uint64, executable bool) error {
+	validateStorage := func(name string, wantType elf.SymType, wantSize uint64, executable bool) error {
 		symbol := symbols[name]
 		if symbol == nil {
 			return fmt.Errorf("runtime is missing generated exception symbol %q", name)
