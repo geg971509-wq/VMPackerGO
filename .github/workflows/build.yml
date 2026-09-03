@@ -4,16 +4,42 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.omc/**'
+      - '.omx/**'
+      - '.codex/**'
+      - 'archive/**'
+      - 'AGENTS.md'
   pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+    paths-ignore:
+      - '.omc/**'
+      - '.omx/**'
+      - '.codex/**'
+      - 'archive/**'
+      - 'AGENTS.md'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Go checks (macOS)
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Contract checks
@@ -78,11 +104,11 @@ jobs:
             printf 'NDK_HOME=%s\n' "$ndk"
           } >> "$GITHUB_ENV"
           printf 'Using Android NDK %s at %s\n' "$expected" "$ndk"
-      - name: Go list
-        run: go list ./...
-      - name: Go test
-        run: go test -count=1 ./...
-      - name: Go race test
+      - name: Go vet
+        run: go vet ./...
+      # The race-enabled command runs the full test suite. Running plain
+      # `go test ./...` immediately before it duplicated the same packages.
+      - name: Go tests (race detector)
         run: go test -race -count=1 ./...
       - name: Derive exact-r29 FP/SIMD corpus
         run: |
@@ -96,7 +122,5 @@ jobs:
           VMPACKER_COMPILER_CORPUS="$corpus" go test -count=1 -run TestExactR29CompilerCorpusCoverage ./internal/arch/arm64
       - name: Build and validate exact-r29 runtime
         run: go test -count=1 -run TestBuildInstalledExactR29Object ./internal/runtime
-      - name: Go vet
-        run: go vet ./...
       - name: Build macOS ARM64 CLI
         run: ./build.sh
