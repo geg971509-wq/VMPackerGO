@@ -36,18 +36,6 @@ type compilerCoverageReport struct {
 
 const compilerCorpusHeader = "optimization\tprofile\tfunction\taddress\traw\tmnemonic\toperands"
 
-var exactR29CASPBoundaryRaws = map[uint32]bool{
-	0x48207d02: true, // O0 CASP
-	0x48607d02: true, // O0 CASPA
-	0x4820fd02: true, // O0 CASPL
-	0x4860fd02: true, // O0 CASPAL
-	0x48267c04: true, // O2/Oz CASP
-	0x48647c04: true, // O2/Oz CASPA
-	0x482afc02: true, // O2/Oz CASPL
-	0x4868fc0a: true, // O2/Oz CASPAL
-	0x486afc02: true, // O2/Oz CASPAL
-}
-
 var exactR29OutlinedTailRaws = map[uint32]bool{
 	0x14000050: true,
 	0x1400003b: true,
@@ -139,13 +127,6 @@ func compilerRecordLabel(record compilerCorpusRecord) string {
 }
 
 func exactR29IntentionalBoundary(record compilerCorpusRecord, issue string) (string, bool) {
-
-	if record.Profile == "lse" && record.Function == "vmp_atomic128" && exactR29CASPBoundaryRaws[record.Raw] &&
-		(record.Mnemonic == "casp" || record.Mnemonic == "caspa" || record.Mnemonic == "caspl" || record.Mnemonic == "caspal") &&
-		strings.Contains(issue, "rejected by the product whitelist") {
-		return "casp128", true
-	}
-
 	if record.Optimization == "Oz" && strings.HasPrefix(record.Function, "vmp_atomic") &&
 		exactR29OutlinedTailRaws[record.Raw] && record.Mnemonic == "b" &&
 		strings.Contains(record.Operands, "OUTLINED_FUNCTION_") && strings.Contains(issue, "outside function range") {
@@ -354,14 +335,6 @@ func TestCompilerCorpusVerifierReportsRejectedInstruction(t *testing.T) {
 }
 
 func TestCompilerIntentionalBoundaryRequiresExactEvidence(t *testing.T) {
-	casp := compilerCorpusRecord{Optimization: "O2", Profile: "lse", Function: "vmp_atomic128", Raw: 0x48267c04, Mnemonic: "casp"}
-	if kind, ok := exactR29IntentionalBoundary(casp, "translator: offset 0x0: UNKNOWN - rejected by the product whitelist"); !ok || kind != "casp128" {
-		t.Fatalf("exact CASP boundary kind=%q ok=%v", kind, ok)
-	}
-	casp.Raw ^= 1 << 16
-	if _, ok := exactR29IntentionalBoundary(casp, "translator: offset 0x0: UNKNOWN - rejected by the product whitelist"); ok {
-		t.Fatal("unobserved CASP raw was accepted as an intentional boundary")
-	}
 	outlined := compilerCorpusRecord{Optimization: "Oz", Profile: "base", Function: "vmp_atomic16", Raw: 0x14000050, Mnemonic: "b", Operands: "0x480 <OUTLINED_FUNCTION_0>"}
 	if kind, ok := exactR29IntentionalBoundary(outlined, "translator: offset 0x50: B - branch target is outside function range"); !ok || kind != "machine-outliner" {
 		t.Fatalf("exact outliner boundary kind=%q ok=%v", kind, ok)
@@ -421,10 +394,8 @@ func TestExactR29CompilerCorpusCoverage(t *testing.T) {
 	}
 
 	report := classifyCompilerCorpus(records)
-	for _, kind := range []string{"casp128", "machine-outliner"} {
-		if report.IntentionalKinds[kind] == 0 {
-			t.Errorf("exact-r29 compiler corpus no longer exercises intentional boundary %q; audit and remove/update the expectation", kind)
-		}
+	if report.IntentionalKinds["machine-outliner"] == 0 {
+		t.Errorf("exact-r29 compiler corpus no longer exercises intentional boundary %q; audit and remove/update the expectation", "machine-outliner")
 	}
 	if len(report.Unexpected) != 0 {
 		t.Fatalf("exact-r29 compiler coverage has %d unexpected gap(s) (%d intentional fail-closed record(s)):\n%s",
