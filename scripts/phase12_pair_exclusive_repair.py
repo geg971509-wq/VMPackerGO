@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# Verification-only repair for the generated operand-validation loop.
 path = Path("internal/arch/arm64/tr_exclusive.go")
 text = path.read_text()
 old = '''\tfor name, reg := range []struct {
