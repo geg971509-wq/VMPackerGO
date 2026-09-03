@@ -437,6 +437,30 @@ var ldstPatterns = []InstrPattern{
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
 		Post:   postAcqRel,
 	},
+	// LDXP: 1:sz:001000:0:1:0:11111:0:Rt2:Rn:Rt
+	{
+		Name: "LDXP", Mask: 0xBFFF8000, Value: 0x887F0000, Op: LDXP,
+		Fields: []FieldDef{{Name: "sf", Hi: 30, Lo: 30}, {Name: "Rt2", Hi: 14, Lo: 10}, fRn, fRd},
+		Post:   postExclusivePair,
+	},
+	// LDAXP: 1:sz:001000:0:1:0:11111:1:Rt2:Rn:Rt
+	{
+		Name: "LDAXP", Mask: 0xBFFF8000, Value: 0x887F8000, Op: LDAXP,
+		Fields: []FieldDef{{Name: "sf", Hi: 30, Lo: 30}, {Name: "Rt2", Hi: 14, Lo: 10}, fRn, fRd},
+		Post:   postExclusivePair,
+	},
+	// STXP: 1:sz:001000:0:0:0:Rs:0:Rt2:Rn:Rt
+	{
+		Name: "STXP", Mask: 0xBFE08000, Value: 0x88200000, Op: STXP,
+		Fields: []FieldDef{{Name: "sf", Hi: 30, Lo: 30}, fRm16, {Name: "Rt2", Hi: 14, Lo: 10}, fRn, fRd},
+		Post:   postExclusivePair,
+	},
+	// STLXP: 1:sz:001000:0:0:0:Rs:1:Rt2:Rn:Rt
+	{
+		Name: "STLXP", Mask: 0xBFE08000, Value: 0x88208000, Op: STLXP,
+		Fields: []FieldDef{{Name: "sf", Hi: 30, Lo: 30}, fRm16, {Name: "Rt2", Hi: 14, Lo: 10}, fRn, fRd},
+		Post:   postExclusivePair,
+	},
 
 	// ================================================================
 	// LDADD (atomic add, LSE / ARMv8.1)
@@ -463,6 +487,22 @@ var ldstPatterns = []InstrPattern{
 		Fields: []FieldDef{{Name: "size", Hi: 31, Lo: 30}, fRm16, fRn, fRd},
 		Post:   postCas,
 	},
+}
+
+// postExclusivePair handles LDXP/LDAXP/STXP/STLXP. Bit30 selects the
+// element width: 0 = two 32-bit GPRs, 1 = two 64-bit GPRs.
+func postExclusivePair(f map[string]int64, inst *vm.Instruction) {
+	inst.SF = f["sf"] != 0
+	if inst.SF {
+		inst.Shift = 8
+	} else {
+		inst.Shift = 4
+	}
+	xzrReplace(&inst.Rd)
+	xzrReplace(&inst.Rt2)
+	if inst.Rm >= 0 {
+		xzrReplace(&inst.Rm)
+	}
 }
 
 // postAcqRel Acquire/Release load/store 后处理

@@ -148,8 +148,12 @@ const (
 	STLR
 	LDXR
 	LDAXR
+	LDXP
+	LDAXP
 	STXR
 	STLXR
+	STXP
+	STLXP
 	LDPSW
 	LDADD
 	CAS
@@ -205,7 +209,7 @@ func NewDecoder() *Decoder {
 
 // Decode 解码一条 ARM64 指令
 func (d *Decoder) Decode(raw uint32, offset int) vm.Instruction {
-	inst := vm.Instruction{Raw: raw, Op: int(UNKNOWN), Offset: offset, Rd: -1, Rn: -1, Rm: -1}
+	inst := vm.Instruction{Raw: raw, Op: int(UNKNOWN), Offset: offset, Rd: -1, Rn: -1, Rm: -1, Rt2: -1}
 
 	// NOP 快速路径
 	if raw == 0xD503201F {
@@ -345,7 +349,8 @@ func OpName(op Op) string {
 		WFE: "WFE", WFI: "WFI", YIELD_ARM: "YIELD", CLREX: "CLREX",
 		HLT: "HLT", BRK: "BRK",
 		MSR_WRITE: "MSR", PRFM: "PRFM",
-		LDAR: "LDAR", STLR: "STLR", LDXR: "LDXR", LDAXR: "LDAXR", STXR: "STXR", STLXR: "STLXR",
+		LDAR: "LDAR", STLR: "STLR", LDXR: "LDXR", LDAXR: "LDAXR", LDXP: "LDXP", LDAXP: "LDAXP",
+		STXR: "STXR", STLXR: "STLXR", STXP: "STXP", STLXP: "STLXP",
 		LDPSW: "LDPSW", LDADD: "LDADD", CAS: "CAS",
 		SWP: "SWP", LDCLR: "LDCLR", LDEOR: "LDEOR", LDSET: "LDSET",
 		LDSMAX: "LDSMAX", LDSMIN: "LDSMIN", LDUMAX: "LDUMAX", LDUMIN: "LDUMIN",

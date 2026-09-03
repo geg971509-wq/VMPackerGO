@@ -12,13 +12,13 @@ const (
 	maxExclusiveThunkRegisters     = 16
 )
 
-// trExclusiveRegion lowers one complete LDXR/LDAXR...STXR/STLXR sequence
-// to a single bytecode operation. The generated runtime executes the exact
+// trExclusiveRegion lowers one complete scalar/pair load-exclusive...
+// store-exclusive sequence to a single bytecode operation. The generated runtime executes the exact
 // instruction words in one leaf thunk, so no interpreter memory access can
 // break the host exclusive monitor between the load and store.
 func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int) (int, error) {
 	if start < 0 || start >= len(instructions) || !isExclusiveLoadOp(Op(instructions[start].Op)) {
-		return 0, fmt.Errorf("exclusive region must start with LDXR or LDAXR")
+		return 0, fmt.Errorf("exclusive region must start with a supported load-exclusive instruction")
 	}
 
 	first := instructions[start]
@@ -51,7 +51,7 @@ func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int)
 		}
 	}
 	if end < 0 {
-		return 0, fmt.Errorf("exclusive load has no contiguous STXR or STLXR within %d instructions", maxExclusiveRegionInstructions)
+		return 0, fmt.Errorf("exclusive load has no contiguous supported store-exclusive within %d instructions", maxExclusiveRegionInstructions)
 	}
 
 	last := instructions[end]
@@ -59,13 +59,8 @@ func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int)
 	if err := validateDecodedExclusiveInstruction(t.decoder, last, lastOp); err != nil {
 		return 0, err
 	}
-	if last.Rn != first.Rn || last.Shift != first.Shift {
-		return 0, fmt.Errorf("exclusive store address/width does not match exclusive load")
-	}
-	for name, reg := range map[string]int{"store value": last.Rd, "status": last.Rm} {
-		if err := validateExclusiveRegister(reg); err != nil {
-			return 0, fmt.Errorf("exclusive %s: %w", name, err)
-		}
+	if err := validateExclusiveBoundary(first, last); err != nil {
+		return 0, err
 	}
 
 	words := make([]uint32, end-start+1)
@@ -91,7 +86,8 @@ func (t *Translator) trExclusiveRegion(instructions []vm.Instruction, start int)
 func validateDecodedExclusiveInstruction(decoder *Decoder, inst vm.Instruction, want Op) error {
 	decoded := decoder.Decode(inst.Raw, inst.Offset)
 	if Op(decoded.Op) != want || decoded.Rd != inst.Rd || decoded.Rn != inst.Rn ||
-		decoded.Rm != inst.Rm || decoded.Shift != inst.Shift {
+		decoded.Rm != inst.Rm || decoded.Shift != inst.Shift ||
+		(exclusiveRegisterArity(want) == 2 && decoded.Rt2 != inst.Rt2) {
 		return fmt.Errorf("%s fields do not match raw encoding 0x%08x", OpName(want), inst.Raw)
 	}
 	return nil
@@ -104,9 +100,10 @@ func validateExclusiveBodyInstruction(decoder *Decoder, inst vm.Instruction, add
 	}
 	var registers []int
 	switch Op(inst.Op) {
-	case ADD_IMM, SUB_IMM:
+	case ADD_IMM, SUB_IMM, SUBS_IMM:
 		registers = []int{inst.Rd, inst.Rn}
-	case ADD_REG, SUB_REG, AND_REG, ORR_REG, EOR_REG, MUL:
+	case ADD_REG, SUB_REG, SUBS_REG, AND_REG, ORR_REG, EOR_REG, MUL,
+		CSEL, CSINC, CSINV, CSNEG:
 		registers = []int{inst.Rd, inst.Rn, inst.Rm}
 	default:
 		return fmt.Errorf("%s is not in the branch-free exclusive-body whitelist", OpName(Op(inst.Op)))
@@ -122,12 +119,86 @@ func validateExclusiveBodyInstruction(decoder *Decoder, inst vm.Instruction, add
 	return nil
 }
 
-func isExclusiveLoadOp(op Op) bool {
+func isExclusiveSingleLoadOp(op Op) bool {
 	return op == LDXR || op == LDAXR
 }
 
-func isExclusiveStoreOp(op Op) bool {
+func isExclusivePairLoadOp(op Op) bool {
+	return op == LDXP || op == LDAXP
+}
+
+func isExclusiveLoadOp(op Op) bool {
+	return isExclusiveSingleLoadOp(op) || isExclusivePairLoadOp(op)
+}
+
+func isExclusiveSingleStoreOp(op Op) bool {
 	return op == STXR || op == STLXR
+}
+
+func isExclusivePairStoreOp(op Op) bool {
+	return op == STXP || op == STLXP
+}
+
+func isExclusiveStoreOp(op Op) bool {
+	return isExclusiveSingleStoreOp(op) || isExclusivePairStoreOp(op)
+}
+
+func exclusiveRegisterArity(op Op) int {
+	switch {
+	case isExclusiveSingleLoadOp(op), isExclusiveSingleStoreOp(op):
+		return 1
+	case isExclusivePairLoadOp(op), isExclusivePairStoreOp(op):
+		return 2
+	default:
+		return 0
+	}
+}
+
+func validateExclusiveBoundary(first, last vm.Instruction) error {
+	loadArity := exclusiveRegisterArity(Op(first.Op))
+	storeArity := exclusiveRegisterArity(Op(last.Op))
+	if loadArity == 0 || storeArity == 0 {
+		return fmt.Errorf("exclusive region has an unsupported boundary instruction")
+	}
+	if loadArity != storeArity {
+		return fmt.Errorf("exclusive load/store register-count mismatch")
+	}
+	if first.Rn != last.Rn || first.Shift != last.Shift {
+		return fmt.Errorf("exclusive store address/width does not match exclusive load")
+	}
+	for _, operand := range []struct {
+		name string
+		reg  int
+	}{
+		{"address", first.Rn}, {"load result", first.Rd},
+		{"store value", last.Rd}, {"status", last.Rm},
+	} {
+		if err := validateExclusiveRegister(operand.reg); err != nil {
+			return fmt.Errorf("exclusive %s: %w", operand.name, err)
+		}
+	}
+	if loadArity == 2 {
+		if err := validateExclusiveRegister(first.Rt2); err != nil {
+			return fmt.Errorf("exclusive second load result: %w", err)
+		}
+		if err := validateExclusiveRegister(last.Rt2); err != nil {
+			return fmt.Errorf("exclusive second store value: %w", err)
+		}
+		if first.Rd == first.Rt2 {
+			return fmt.Errorf("pair-exclusive load destinations overlap")
+		}
+	}
+	// ARM defines status/data and status/base overlap for Store-Exclusive as
+	// CONSTRAINED UNPREDICTABLE. Reject it rather than inheriting a PE choice.
+	if last.Rm != vm.REG_XZR {
+		if last.Rm == last.Rd || (storeArity == 2 && last.Rm == last.Rt2) {
+			return fmt.Errorf("exclusive store status overlaps store data")
+		}
+		if last.Rm == last.Rn {
+			return fmt.Errorf("exclusive store status overlaps address register")
+		}
+	}
+	return nil
 }
 
 func validateExclusiveRegister(reg int) error {
@@ -167,18 +238,10 @@ func validateExclusiveRegion(region vm.ExclusiveRegion) ([]vm.Instruction, error
 	first := decoded[0]
 	last := decoded[len(decoded)-1]
 	if !isExclusiveLoadOp(Op(first.Op)) || !isExclusiveStoreOp(Op(last.Op)) {
-		return nil, fmt.Errorf("exclusive region must be bounded by LDXR/LDAXR and STXR/STLXR")
+		return nil, fmt.Errorf("exclusive region must be bounded by supported load/store-exclusive instructions")
 	}
-	if first.Rn != last.Rn || first.Shift != last.Shift {
-		return nil, fmt.Errorf("exclusive region address/width mismatch")
-	}
-	for name, reg := range map[string]int{
-		"address": first.Rn, "load result": first.Rd,
-		"store value": last.Rd, "status": last.Rm,
-	} {
-		if err := validateExclusiveRegister(reg); err != nil {
-			return nil, fmt.Errorf("exclusive %s: %w", name, err)
-		}
+	if err := validateExclusiveBoundary(first, last); err != nil {
+		return nil, err
 	}
 	for i := 1; i < len(decoded)-1; i++ {
 		if err := validateExclusiveBodyInstruction(decoder, decoded[i], first.Rn); err != nil {
@@ -197,11 +260,16 @@ func exclusiveRegisterFields(inst vm.Instruction) []exclusiveRegisterField {
 	switch Op(inst.Op) {
 	case LDXR, LDAXR:
 		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
+	case LDXP, LDAXP:
+		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rt2, shift: 10}, {register: inst.Rd, shift: 0}}
 	case STXR, STLXR:
 		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
-	case ADD_IMM, SUB_IMM:
+	case STXP, STLXP:
+		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rt2, shift: 10}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
+	case ADD_IMM, SUB_IMM, SUBS_IMM:
 		return []exclusiveRegisterField{{register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
-	case ADD_REG, SUB_REG, AND_REG, ORR_REG, EOR_REG, MUL:
+	case ADD_REG, SUB_REG, SUBS_REG, AND_REG, ORR_REG, EOR_REG, MUL,
+		CSEL, CSINC, CSINV, CSNEG:
 		return []exclusiveRegisterField{{register: inst.Rm, shift: 16}, {register: inst.Rn, shift: 5}, {register: inst.Rd, shift: 0}}
 	default:
 		return nil
