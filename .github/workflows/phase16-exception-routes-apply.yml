@@ -37,7 +37,11 @@ jobs:
       - name: Commit implementation and remove bootstrap
         run: |
           set -euo pipefail
-          git rm scripts/phase16_exception_routes_patch.py .github/workflows/phase16-exception-routes-apply.yml
+          git rm \
+            scripts/phase16_exception_routes_patch.py \
+            .github/workflows/phase16-exception-routes-apply.yml \
+            .omx/plans/vmp-phase16-exception-final-routes.audit \
+            README_NONEXISTENT
           git add internal/elf .omx/plans/vmp-phase16-exception-final-routes.md
           git config user.name "vmpacker-phase16-bot"
           git config user.email "actions@users.noreply.github.com"
