@@ -163,6 +163,10 @@ const (
 	BTI_JC
 	BTI
 	FPSIMD_NATIVE
+	SWP
+	LDCLR
+	LDEOR
+	LDSET
 	UNSUPPORTED
 )
 
@@ -216,7 +220,10 @@ func (d *Decoder) Decode(raw uint32, offset int) vm.Instruction {
 	case op0>>1 == 0b101:
 		matched = matchAndDecode(raw, branchPatterns, &inst)
 	case op0&0b0101 == 0b0100:
-		matched = matchAndDecode(raw, ldstPatterns, &inst)
+		matched = matchAndDecode(raw, lseAtomicPatterns, &inst)
+		if !matched {
+			matched = matchAndDecode(raw, ldstPatterns, &inst)
+		}
 	case op0&0b0111 == 0b0101, op0 == 0b1101:
 		matched = matchAndDecode(raw, dpRegPatterns, &inst)
 	}
@@ -334,6 +341,7 @@ func OpName(op Op) string {
 		MSR_WRITE: "MSR", PRFM: "PRFM",
 		LDAR: "LDAR", STLR: "STLR", LDAXR: "LDAXR", STLXR: "STLXR",
 		LDPSW: "LDPSW", LDADD: "LDADD", CAS: "CAS",
+		SWP: "SWP", LDCLR: "LDCLR", LDEOR: "LDEOR", LDSET: "LDSET",
 		PACIASP: "PACIASP", AUTIASP: "AUTIASP", PACIAZ: "PACIAZ", AUTIAZ: "AUTIAZ", PACIBSP: "PACIBSP", AUTIBSP: "AUTIBSP", XPACLRI: "XPACLRI",
 		BTI_C: "BTI c", BTI_J: "BTI j", BTI_JC: "BTI jc", BTI: "BTI",
 		FPSIMD_NATIVE: "FP/SIMD(native)",

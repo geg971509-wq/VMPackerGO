@@ -65,7 +65,7 @@ func buildInstructionRules() map[Op]instructionRule {
 	// boundary because every supported exclusive monitor is contained inside a
 	// single generated LDAXR...STLXR thunk.
 	allow([]Op{PRFM, YIELD_ARM, CLREX}, nil)
-	allow([]Op{LDAR, STLR, LDADD, CAS}, validateAtomicNative)
+	allow([]Op{LDAR, STLR, LDADD, CAS, SWP, LDCLR, LDEOR, LDSET}, validateAtomicNative)
 	allow([]Op{FPSIMD_NATIVE}, func(inst vm.Instruction) error { return ValidateFPSIMDInstruction(inst.Raw) })
 
 	classify(dispositionNativeThunk, WFE, WFI, LDAXR, STLXR)
@@ -86,7 +86,7 @@ func validateAtomicNative(inst vm.Instruction) error {
 	if !validDataReg(inst.Rd) {
 		return fmt.Errorf("atomic data register %d is invalid", inst.Rd)
 	}
-	if (Op(inst.Op) == LDADD || Op(inst.Op) == CAS) && !validDataReg(inst.Rm) {
+	if atomicUsesRm(Op(inst.Op)) && !validDataReg(inst.Rm) {
 		return fmt.Errorf("atomic operand register %d is invalid", inst.Rm)
 	}
 	return nil
