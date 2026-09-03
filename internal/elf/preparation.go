@@ -56,6 +56,14 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 		return nil, fmt.Errorf("read symbols for translation preparation: %w", err)
 	}
 
+	packedTailTargets := make(map[uint64]struct{}, len(analysis.Selections))
+	for _, selection := range analysis.Selections {
+		if _, duplicate := packedTailTargets[selection.Address]; duplicate {
+			return nil, fmt.Errorf("selected functions share entry address 0x%x", selection.Address)
+		}
+		packedTailTargets[selection.Address] = struct{}{}
+	}
+
 	preparation := &TranslationPreparation{Functions: make([]PreparedFunction, 0, len(analysis.Selections)), opcodeMapDigest: opcodeMapDigest}
 	svc := make(map[uint16]struct{})
 	exclusive := make(map[uint32]vm.ExclusiveRegion)
@@ -81,8 +89,8 @@ func PrepareTranslations(req Request, analysis Analysis) (*TranslationPreparatio
 			return nil, fmt.Errorf("function %q: create translator: %w", selection.Name, err)
 		}
 		translator.SetDebug(req.Debug)
-		if err := configureOutlinedTailInlines(req.Input, meta, symbols, selection, instructions, translator); err != nil {
-			return nil, fmt.Errorf("function %q outlined-tail preparation: %w", selection.Name, err)
+		if err := configureExternalTailTransfers(req.Input, meta, symbols, selection, instructions, translator, packedTailTargets); err != nil {
+			return nil, fmt.Errorf("function %q external-tail preparation: %w", selection.Name, err)
 		}
 		translation, err := translator.Translate(instructions)
 		if err != nil {
