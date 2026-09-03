@@ -13,7 +13,7 @@ The implementation must preserve these invariants:
 3. guest GPRs remain remapped into the bounded X0-X15 thunk bank and no reserved host register is exposed;
 4. VM NZCV is restored before native execution and written back after native execution;
 5. no broad branch or atomic whitelist is introduced merely to make exact-r29 CI pass;
-6. current branch-free exclusive regions remain byte-for-byte behavior compatible.
+6. existing branch-free regions must retain their shortest raw region identity and product semantics.
 
 ## 2. Consensus audit
 
@@ -124,7 +124,9 @@ The exact NDK r29 baseline audit confirmed the architecture and removed the need
 - Ordinary fetch-add/exchange exclusive loops remain represented by their existing shortest load/body/store region; the following retry CBNZ remains ordinary VM control flow, preserving existing region identity and avoiding unnecessary native expansion.
 - Oz machine-outliner tail branches occur after the exclusive sub-CFG has already closed and therefore remain a separate Phase 18 intentional fail-closed class.
 
-Focused ARM64/runtime tests, full Go tests, and vet pass after implementation when exact-r29-only runtime tests are correctly left to the macOS release gate. The first temporary Ubuntu run failed only because its preinstalled NDK 27 environment triggered `TestBuildInstalledExactR29Object`; no product commit was made from that run. The corrected focused runner clears NDK environment variables, and the authoritative PR gate will rerun the exact-r29 compiler corpus and exact-r29 runtime build on macOS.
+Focused ARM64/runtime tests, full Go tests, and vet pass after implementation when exact-r29-only runtime tests are correctly left to the macOS release gate. The first temporary Ubuntu run failed only because its preinstalled NDK 27 environment triggered `TestBuildInstalledExactR29Object`; no product commit was made from that run. The corrected focused runner clears NDK environment variables, and the authoritative PR gate reruns the exact-r29 compiler corpus and exact-r29 runtime build on macOS.
+
+PR Verification #46 passed on the pre-comment-cleanup product head, including exact-r29 compiler coverage with the `branchful-exclusive` expectation removed, exact-r29 runtime build, race, vet, and macOS ARM64 CLI. The final maintenance cleanup only corrects the stale `trExclusiveRegion` contract comment; the temporary cleanup workflow/script self-delete. A fresh full Verification is required on the final human-triggered head before merge.
 
 ## 6. Exit criteria
 
