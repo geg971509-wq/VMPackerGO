@@ -2,11 +2,13 @@
 import argparse
 import hashlib
 import importlib.util
+import io
 import json
 import platform
 import re
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +40,12 @@ def sha256(path: Path):
             digest.update(chunk)
     return digest.hexdigest()
 
+def sha256_stream(stream):
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
 def git(root: Path, *args):
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
@@ -54,6 +62,34 @@ def safe_sibling(base: Path, name, label):
     require(not path.is_symlink(), f"{label}.file must be a regular file, not a symbolic link")
     require(path.is_file(), f"{label} file {name!r} is missing")
     return path
+
+def archive_member_key(member):
+    return (member.name, member.type, member.mode, member.size, member.linkname)
+
+def validate_source_archive(source: Path, root: Path, tag: str):
+    prefix = f"VMPackerGO-{tag[1:]}/"
+    expected_bytes = subprocess.check_output(
+        ["git", "-C", str(root), "archive", "--format=tar", f"--prefix={prefix}", tag]
+    )
+    try:
+        with tarfile.open(fileobj=io.BytesIO(expected_bytes), mode="r:") as expected_tar, \
+             tarfile.open(source, mode="r:gz") as actual_tar:
+            expected_members = expected_tar.getmembers()
+            actual_members = actual_tar.getmembers()
+            require(len(actual_members) == len(expected_members),
+                    "source archive entry count does not match the release tag")
+            for index, (expected, actual) in enumerate(zip(expected_members, actual_members)):
+                require(archive_member_key(actual) == archive_member_key(expected),
+                        f"source archive entry {index} does not match the release tag")
+                if expected.isfile():
+                    expected_stream = expected_tar.extractfile(expected)
+                    actual_stream = actual_tar.extractfile(actual)
+                    require(expected_stream is not None and actual_stream is not None,
+                            f"source archive entry {actual.name!r} cannot be read")
+                    require(sha256_stream(actual_stream) == sha256_stream(expected_stream),
+                            f"source archive file {actual.name!r} does not match the release tag")
+    except (tarfile.TarError, EOFError, OSError) as exc:
+        raise ReleaseEvidenceError(f"source archive is invalid: {exc}") from exc
 
 def validate_document(document, evidence_path: Path, root: Path, *, live_checks=True):
     require(isinstance(document, dict), "release evidence root must be an object")
@@ -113,6 +149,7 @@ def validate_document(document, evidence_path: Path, root: Path, *, live_checks=
     source = refs["source"]
     require(artifact.name == "vmpacker-darwin-arm64", "canonical release artifact must be vmpacker-darwin-arm64")
     require(source.name == f"vmpacker-{tag}-source.tar.gz", "source archive filename does not match release tag")
+    validate_source_archive(source, root, tag)
 
     if live_checks:
         require(platform.system() == "Darwin", "live release validation must run on macOS")
