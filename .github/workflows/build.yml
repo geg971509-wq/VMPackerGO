@@ -84,6 +84,8 @@ jobs:
             printf 'NDK_HOME=%s\n' "$ndk"
           } >> "$GITHUB_ENV"
           printf 'Using Android NDK %s at %s\n' "$expected" "$ndk"
+      - name: Go format
+        run: make format-check
       - name: Go list
         run: go list ./...
       - name: Go test

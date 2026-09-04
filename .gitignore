@@ -5,7 +5,7 @@
 
 # Local tool/cache artifacts
 .omc/
-.omx/tools/
+.omx/
 .codex/
 AGENTS.md
 *.pyc

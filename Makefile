@@ -12,7 +12,7 @@ MAC_PACKER  = $(DIST_DIR)/vmpacker-darwin-arm64
 
 ANDROID_BUILD_DIR ?= $(BUILD_DIR)/android
 
-.PHONY: all packer mac-cli test test-race fuzz-smoke vet contract release-rehearsal release-contract verify demo-cases evidence-self-test \
+.PHONY: all packer mac-cli format-check test test-race fuzz-smoke vet contract release-rehearsal release-contract verify demo-cases evidence-self-test \
 	ndk-check runtime-integration android-device-check android-fixtures clean help
 
 all: packer
@@ -25,6 +25,10 @@ mac-cli: | $(DIST_DIR)
 		-ldflags "-s -w $(LDFLAGS)" -o $(MAC_PACKER) ./cmd/vmpacker
 	cp $(MAC_PACKER) $(DIST_DIR)/vmpacker
 	chmod +x $(MAC_PACKER) $(DIST_DIR)/vmpacker
+
+format-check:
+	@files="$$(gofmt -l cmd internal)"; \
+		test -z "$$files" || { printf '%s\n' "gofmt required:" "$$files" >&2; exit 1; }
 
 test:
 	$(GO) test -count=1 ./...
@@ -55,7 +59,7 @@ release-rehearsal:
 release-contract:
 	bash scripts/check-contract.sh --release
 
-verify: test test-race fuzz-smoke vet contract release-rehearsal
+verify: format-check test test-race fuzz-smoke vet contract release-rehearsal
 
 ndk-check:
 	@test -n "$(ANDROID_NDK)" || { printf '%s\n' "Set ANDROID_NDK to Android NDK $(ANDROID_NDK_REVISION)." >&2; exit 1; }
@@ -85,7 +89,8 @@ help:
 	@printf '%s\n' \
 		"make packer               Build the development CLI" \
 		"make mac-cli              Build the macOS ARM64 CLI" \
-		"make verify               Run Go, race, fuzz, vet, contract, and rehearsal gates" \
+		"make format-check         Require canonical gofmt formatting for active Go source" \
+		"make verify               Run format, Go, race, fuzz, vet, contract, and rehearsal gates" \
 		"make fuzz-smoke           Run bounded mutation fuzzing for host decoder/parsers" \
 		"make contract             Run product/evidence contract self-tests" \
 		"make release-rehearsal    Replay local release gates and prove missing external evidence fails closed" \

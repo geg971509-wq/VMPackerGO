@@ -52,6 +52,7 @@ Rules:
 - `ndk_revision` must be exactly `29.0.14206865`.
 - all three referenced files are basenames located beside the release-evidence JSON; absolute paths, parent traversal and symbolic links are rejected. Each reference must resolve to a real regular sibling file.
 - hashes are recomputed by the validator; recorded strings are not trusted.
+- the canonical source filename is `vmpacker-<tag>-source.tar.gz`. Beyond its recorded SHA-256, the validator reconstructs the expected `git archive` for the exact tag and compares archive entries, entry types, modes, sizes, link targets, and regular-file contents. A self-consistent hash for unrelated or altered source is therefore rejected.
 - the device evidence must independently pass `validate-device-evidence.py` for the same commit.
 - the artifact must be a macOS ARM64 Mach-O and its live codesign/spctl state is rechecked on macOS; JSON booleans cannot substitute for those checks.
 - notarization status must be `Accepted`; the release packager writes the submission identifier returned by Apple.

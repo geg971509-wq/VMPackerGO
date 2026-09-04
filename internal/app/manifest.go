@@ -13,6 +13,7 @@ import (
 )
 
 const maxFunctions = 4096
+const maxManifestSize int64 = 16 << 20
 
 type selectedFunction struct {
 	Source   string
@@ -41,9 +42,9 @@ type manifestABI struct {
 }
 
 func loadManifest(path string) ([]string, []elfpacker.AddrSpec, []selectedFunction, error) {
-	data, err := os.ReadFile(path)
+	data, err := readManifest(path)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read manifest: %w", err)
+		return nil, nil, nil, err
 	}
 	if err := rejectDuplicateJSONKeys(data); err != nil {
 		return nil, nil, nil, fmt.Errorf("invalid manifest: %w", err)
@@ -152,6 +153,32 @@ func loadManifest(path string) ([]string, []elfpacker.AddrSpec, []selectedFuncti
 		selected = append(selected, selection)
 	}
 	return funcs, addrSpecs, selected, nil
+}
+
+func readManifest(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open manifest: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat opened manifest: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("manifest must be a regular file")
+	}
+	if info.Size() > maxManifestSize {
+		return nil, fmt.Errorf("manifest exceeds the 16 MiB limit")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxManifestSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read manifest: %w", err)
+	}
+	if int64(len(data)) > maxManifestSize {
+		return nil, fmt.Errorf("manifest exceeds the 16 MiB limit")
+	}
+	return data, nil
 }
 
 func rejectDuplicateJSONKeys(data []byte) error {

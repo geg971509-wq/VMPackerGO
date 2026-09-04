@@ -38,9 +38,11 @@ make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 
 The root `build.sh` builds the current Git checkout as a macOS ARM64 executable, verifies the Mach-O architecture, and writes `dist/vmpacker-darwin-arm64` plus the identical direct runner `dist/vmpacker`.
 
+Manifest-v1 input must be a regular local file no larger than 16 MiB and may select at most 4096 functions. The size and file-type checks happen before JSON parsing so malformed or special-file input cannot turn manifest parsing into an unbounded read.
+
 Each pack attempt creates a per-run opcode map, translates selected functions, rebuilds and validates a relocatable AArch64 runtime from embedded source with exact Android NDK `29.0.14206865`, constructs an immutable rewrite plan, applies that plan to a fresh in-memory ELF image, and reparses the result before publication. The runtime uses explicit fail-closed fault classes, a separately mapped guarded shadow stack and dynamically bounded protected-call frames. The plan covers 0x4000-aligned W^X runtime loads, runtime relocations, encrypted bytecode/token descriptors, BTI-aware entry patches, inline `ADRP+ADD+BR` long entry veneers when a direct `B` cannot reach, program-header mutations, and supported GNU unwind-index integration. Generic native external tail branches are rejected rather than approximated as call+return.
 
-The physical-device harnesses under `scripts/` qualify devices, run the exact 85-demo differential matrix and semantic coverage fixtures, merge evidence, and validate it against the exact commit and manifest. Release tooling then validates that evidence before signing/notarizing a tagged macOS ARM64 candidate and creating source/checksum/evidence artifacts; an independent approval remains a separate mandatory gate.
+The physical-device harnesses under `scripts/` qualify devices, run the exact 85-demo differential matrix and semantic coverage fixtures, merge evidence, and validate it against the exact commit and manifest. Release tooling then validates that evidence before signing/notarizing a tagged macOS ARM64 candidate and creating source/checksum/evidence artifacts; the final release contract also reconstructs the tagged Git archive and rejects a source package that does not describe the exact tag. An independent approval remains a separate mandatory gate.
 
 ## License and use
 

@@ -309,10 +309,36 @@ func runTool(ctx context.Context, path, stage string, args ...string) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
-	if err != nil {
+	if err == nil {
+		return nil
+	}
+
+	diagnostic := strings.TrimSpace(stderr.String())
+	if diagnostic == "" {
 		return fmt.Errorf("%s failed", stage)
 	}
-	return nil
+
+	// Runtime sources and NDK tools live under private local paths. Preserve the
+	// compiler/linker reason while redacting paths that are already known from
+	// command construction, so user-facing errors remain useful and path-neutral.
+	redactions := []string{path, filepath.Dir(path), filepath.Dir(filepath.Dir(path))}
+	for _, arg := range args {
+		if filepath.IsAbs(arg) {
+			redactions = append(redactions, arg, filepath.Dir(arg))
+		}
+	}
+	for _, candidate := range redactions {
+		if candidate == "" || candidate == "." || candidate == string(filepath.Separator) {
+			continue
+		}
+		diagnostic = strings.ReplaceAll(diagnostic, candidate, "<path>")
+	}
+	diagnostic = strings.Join(strings.Fields(diagnostic), " ")
+	const maxDiagnosticBytes = 4096
+	if len(diagnostic) > maxDiagnosticBytes {
+		diagnostic = diagnostic[:maxDiagnosticBytes] + "... [truncated]"
+	}
+	return fmt.Errorf("%s failed: %s", stage, diagnostic)
 }
 
 // ioDiscard avoids allowing a tool to inherit product stdout while keeping the

@@ -85,7 +85,12 @@ def main():
         artifact = evidence_dir / "vmpacker-darwin-arm64"
         artifact.write_bytes(b"signed-artifact-fixture")
         source = evidence_dir / "vmpacker-v1.2.3-source.tar.gz"
-        source.write_bytes(b"source-fixture")
+        with source.open("wb") as stream:
+            subprocess.run(
+                ["git", "-C", str(root), "archive", "--format=tar.gz",
+                 "--prefix=VMPackerGO-1.2.3/", "v1.2.3"],
+                check=True, stdout=stream,
+            )
 
         release = {
             "schema_version": 1, "tag": "v1.2.3", "commit_sha": commit,
@@ -126,6 +131,16 @@ def main():
         symlinked = copy.deepcopy(release)
         symlinked["device_evidence"] = {"file": linked_device.name, "sha256": module.sha256(device_path)}
         expect_invalid(symlinked, evidence_path, root, "symlinked evidence file")
+
+        with source.open("wb") as stream:
+            subprocess.run(
+                ["git", "-C", str(root), "archive", "--format=tar.gz",
+                 "--prefix=WrongSource/", "v1.2.3"],
+                check=True, stdout=stream,
+            )
+        wrong_source = copy.deepcopy(release)
+        wrong_source["source"]["sha256"] = module.sha256(source)
+        expect_invalid(wrong_source, evidence_path, root, "self-consistent but wrong source archive")
 
     print("release evidence validator self-test passed")
     return 0

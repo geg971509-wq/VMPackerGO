@@ -156,10 +156,10 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 							}
 							image, buildErr := builder(ctx, vmruntime.BuildConfig{
 								NDKDir: opts.NDK, Opcodes: opcodes,
-								SVCImmediates: preparation.SVCImmediates,
-								ExclusiveRegions: preparation.ExclusiveRegions,
+								SVCImmediates:      preparation.SVCImmediates,
+								ExclusiveRegions:   preparation.ExclusiveRegions,
 								FPSIMDInstructions: preparation.FPSIMDInstructions,
-								ExceptionInvokes: exceptionInvokes,
+								ExceptionInvokes:   exceptionInvokes,
 							})
 							if buildErr != nil {
 								transformErr = buildErr
