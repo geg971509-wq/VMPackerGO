@@ -95,6 +95,6 @@ VMPACKER_RELEASE_EVIDENCE="$PWD/dist/release/release-evidence.json" \
   scripts/check-contract.sh --release
 ```
 
-The release contract recomputes hashes, validates device evidence against the exact checkout, verifies tag/commit/toolchain metadata, and on macOS rechecks the live Mach-O signing and Gatekeeper state. It also requires the repository's active shell entry points to retain executable Git modes. Missing, stale or structurally unsafe evidence fails closed with a concrete reason.
+The release contract recomputes hashes, validates device evidence against the exact checkout, verifies tag/commit/toolchain metadata, and reconstructs the expected tagged `git archive` to prove the supplied source package describes that exact tag rather than merely carrying a self-consistent hash. On macOS it also rechecks the live Mach-O signing and Gatekeeper state. It requires the repository's active shell entry points to retain executable Git modes. Missing, stale, structurally unsafe, or source-mismatched evidence fails closed with a concrete reason.
 
 Publishing is intentionally outside the validator. A release artifact must never be uploaded before the final contract passes.
