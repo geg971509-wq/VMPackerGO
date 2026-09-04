@@ -38,9 +38,11 @@ make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 
 根目录 `build.sh` 会把当前 Git checkout 构建成 macOS ARM64 可执行文件，验证 Mach-O 架构，并生成 `dist/vmpacker-darwin-arm64` 及内容相同的直接运行文件 `dist/vmpacker`。
 
+manifest v1 输入必须是本地普通文件，大小不得超过 16 MiB，并且一次最多选择 4096 个函数。文件类型和大小会在 JSON 解析前检查，避免异常文件或特殊文件把 manifest 解析变成无界读取。
+
 每次打包都会创建本次运行专用的 opcode map，翻译选中的函数，使用准确 Android NDK `29.0.14206865` 从内嵌源码重新构建并验证 AArch64 可重定位 runtime，生成不可变 rewrite plan，再把计划应用到新的内存 ELF 映像并在发布前重新解析。运行时使用显式 fail-closed fault、独立映射且带 guard 的 shadow stack，以及动态受限的 protected-call frame。rewrite plan 覆盖 0x4000 对齐且遵守 W^X 的 runtime load、runtime relocation、加密字节码/token 描述符、BTI 感知入口 patch、直接 `B` 无法到达时的内联 `ADRP+ADD+BR` long-entry veneer、program-header 变更，以及受支持的 GNU unwind index 集成。通用 native external tail branch 不做 call+return 近似，而是确定性拒绝。
 
-`scripts/` 下的物理设备工具负责设备资格检查、精确 85-demo differential matrix、专项语义 fixture、证据合并以及按准确 commit/manifest 校验证据。发行工具只在设备证据通过后处理带 tag 的 macOS ARM64 候选制品、Developer ID 签名、公证、源码/校验和/证据文件；独立审核仍是单独的强制门。
+`scripts/` 下的物理设备工具负责设备资格检查、精确 85-demo differential matrix、专项语义 fixture、证据合并以及按准确 commit/manifest 校验证据。发行工具只在设备证据通过后处理带 tag 的 macOS ARM64 候选制品、Developer ID 签名、公证、源码/校验和/证据文件；最终发行契约还会重建该 tag 对应的 Git archive，并拒绝与准确 tag 不一致的源码包。独立审核仍是单独的强制门。
 
 ## 许可证与使用
 
