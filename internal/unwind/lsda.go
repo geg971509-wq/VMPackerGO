@@ -123,6 +123,12 @@ func ParseLSDA(data []byte, address, function uint64, order binary.ByteOrder, po
 }
 
 func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, actionTableStart int, lsda *LSDA, order binary.ByteOrder, pointerSize int) error {
+	if actionTableStart < 0 || actionTableStart > len(data) {
+		return fmt.Errorf("LSDA action table start is out of range")
+	}
+	if typeTableOffset < -1 || typeTableOffset > len(data) {
+		return fmt.Errorf("LSDA type table offset is out of range")
+	}
 	maxTypeIndex := uint64(0)
 	maxFilterEnd := typeTableOffset
 	maxActionEnd := actionTableStart
@@ -133,15 +139,12 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 		if _, ok := lsda.ActionChains[site.Action]; ok {
 			continue
 		}
-        if actionTableStart < 0 || actionTableStart > len(data) {
-            return fmt.Errorf("LSDA action table start is out of range")
-        }
-        actionLimit := uint64(len(data) - actionTableStart)
-        if site.Action == 0 || site.Action > actionLimit {
-            return fmt.Errorf("LSDA action chain 0x%x is out of range", site.Action)
-        }
-        ptr := actionTableStart + int(site.Action) - 1
-        visited := map[int]bool{}
+		actionLimit := uint64(len(data) - actionTableStart)
+		if site.Action > actionLimit {
+			return fmt.Errorf("LSDA action chain 0x%x is out of range", site.Action)
+		}
+		ptr := actionTableStart + int(site.Action) - 1
+		visited := map[int]bool{}
 		for {
 			if ptr < actionTableStart || ptr >= len(data) || visited[ptr] {
 				return fmt.Errorf("LSDA action chain 0x%x is out of range or cyclic", site.Action)
@@ -170,12 +173,12 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 				if typeTableOffset < 0 {
 					return fmt.Errorf("LSDA filter action has no type table")
 				}
-                magnitude := uint64(-(filter + 1)) + 1
-                if magnitude == 0 || magnitude-1 > uint64(len(data)-typeTableOffset) {
-                    return fmt.Errorf("LSDA filter action 0x%x points outside type table", recordOffset)
-                }
-                filterPtr := typeTableOffset + int(magnitude-1)
-                for {
+				magnitude := uint64(-(filter + 1)) + 1
+				if magnitude == 0 || magnitude-1 > uint64(len(data)-typeTableOffset) {
+					return fmt.Errorf("LSDA filter action 0x%x points outside type table", recordOffset)
+				}
+				filterPtr := typeTableOffset + int(magnitude-1)
+				for {
 					index, err := readULEB(data, &filterPtr)
 					if err != nil {
 						return fmt.Errorf("decode LSDA filter action 0x%x: %w", recordOffset, err)
@@ -196,11 +199,11 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 			if next == 0 {
 				break
 			}
-            nextPtr, ok := addSignedIndex(self, next)
-            if !ok || nextPtr < actionTableStart || nextPtr >= len(data) {
-                return fmt.Errorf("LSDA action 0x%x next offset is out of range", recordOffset)
-            }
-            ptr = nextPtr
+			nextPtr, ok := addSignedIndex(self, next)
+			if !ok || nextPtr < actionTableStart || nextPtr >= len(data) {
+				return fmt.Errorf("LSDA action 0x%x next offset is out of range", recordOffset)
+			}
+			ptr = nextPtr
 		}
 	}
 
@@ -218,29 +221,29 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 	if err != nil {
 		return err
 	}
-    if typeSize <= 0 || maxActionEnd < 0 || maxActionEnd > typeTableOffset {
-        return fmt.Errorf("LSDA type table bounds are invalid")
-    }
-    availableTypeBytes := uint64(typeTableOffset - maxActionEnd)
-    if maxTypeIndex > availableTypeBytes/uint64(typeSize) {
-        return fmt.Errorf("LSDA type index %d exceeds available type table", maxTypeIndex)
-    }
-    typeBytes := maxTypeIndex * uint64(typeSize)
-    if typeBytes > uint64(typeTableOffset) {
-        return fmt.Errorf("LSDA type table size overflows")
-    }
-    typeTableStart := typeTableOffset - int(typeBytes)
-    if typeTableStart < maxActionEnd || typeTableStart < 0 {
-        return fmt.Errorf("LSDA action and type tables overlap")
-    }
-    lsda.ActionTable = append([]byte(nil), data[actionTableStart:typeTableStart]...)
-    for index := uint64(1); index <= maxTypeIndex; index++ {
-        entryOffset := index * uint64(typeSize)
-        if entryOffset > uint64(typeTableOffset) {
-            return fmt.Errorf("LSDA type index %d exceeds input", index)
-        }
-        entry := typeTableOffset - int(entryOffset)
-        entryEnd := entry + typeSize
+	if typeSize <= 0 || maxActionEnd < 0 || maxActionEnd > typeTableOffset {
+		return fmt.Errorf("LSDA type table bounds are invalid")
+	}
+	availableTypeBytes := uint64(typeTableOffset - maxActionEnd)
+	if maxTypeIndex > availableTypeBytes/uint64(typeSize) {
+		return fmt.Errorf("LSDA type index %d exceeds available type table", maxTypeIndex)
+	}
+	typeBytes := maxTypeIndex * uint64(typeSize)
+	if typeBytes > uint64(typeTableOffset) {
+		return fmt.Errorf("LSDA type table size overflows")
+	}
+	typeTableStart := typeTableOffset - int(typeBytes)
+	if typeTableStart < maxActionEnd || typeTableStart < 0 {
+		return fmt.Errorf("LSDA action and type tables overlap")
+	}
+	lsda.ActionTable = append([]byte(nil), data[actionTableStart:typeTableStart]...)
+	for index := uint64(1); index <= maxTypeIndex; index++ {
+		entryOffset := index * uint64(typeSize)
+		if entryOffset > uint64(typeTableOffset) {
+			return fmt.Errorf("LSDA type index %d exceeds input", index)
+		}
+		entry := typeTableOffset - int(entryOffset)
+		entryEnd := entry + typeSize
 		if entry < 0 || entryEnd > len(data) {
 			return fmt.Errorf("LSDA type index %d exceeds input", index)
 		}
@@ -258,32 +261,32 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 		}
 		lsda.TypeInfos[index] = TypeInfo{Index: index, Address: value, Indirect: lsda.TypeEncoding&PEIndirect != 0}
 	}
-    if maxFilterEnd > typeTableOffset {
-        if maxFilterEnd > len(data) {
-            return fmt.Errorf("LSDA type-index table exceeds input")
-        }
-        lsda.TypeIndexTable = append([]byte(nil), data[typeTableOffset:maxFilterEnd]...)
-    }
-    return nil
+	if maxFilterEnd > typeTableOffset {
+		if maxFilterEnd > len(data) {
+			return fmt.Errorf("LSDA type-index table exceeds input")
+		}
+		lsda.TypeIndexTable = append([]byte(nil), data[typeTableOffset:maxFilterEnd]...)
+	}
+	return nil
 }
 
 func addSignedIndex(base int, delta int64) (int, bool) {
-    if base < 0 {
-        return 0, false
-    }
-    if delta >= 0 {
-        amount := uint64(delta)
-        maxInt := int(^uint(0) >> 1)
-        if amount > uint64(maxInt-base) {
-            return 0, false
-        }
-        return base + int(amount), true
-    }
-    amount := uint64(-(delta + 1)) + 1
-    if amount > uint64(base) {
-        return 0, false
-    }
-    return base - int(amount), true
+	if base < 0 {
+		return 0, false
+	}
+	if delta >= 0 {
+		amount := uint64(delta)
+		maxInt := int(^uint(0) >> 1)
+		if amount > uint64(maxInt-base) {
+			return 0, false
+		}
+		return base + int(amount), true
+	}
+	amount := uint64(-(delta + 1)) + 1
+	if amount > uint64(base) {
+		return 0, false
+	}
+	return base - int(amount), true
 }
 
 func fixedEncodingSize(encoding byte, pointerSize int) (int, error) {
