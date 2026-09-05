@@ -18,7 +18,6 @@ func TestParseLSDARejectsTruncatedHeaderAfterEncodedLPStart(t *testing.T) {
 	}
 }
 
-
 func TestParseLSDAMetadataRejectsExtremeNegativeFilter(t *testing.T) {
 	data := append([]byte{}, []byte{
 		0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40,
