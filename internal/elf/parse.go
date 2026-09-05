@@ -198,6 +198,9 @@ func parseELFMetadata(input []byte, mode AndroidMode) (*elfMetadata, error) {
 			}
 			meta.hasDynamic = true
 		case elf.PT_INTERP:
+			if meta.hasInterp {
+				return nil, fmt.Errorf("multiple PT_INTERP program headers are not supported")
+			}
 			if filesz < 2 || input[end-1] != 0 {
 				return nil, fmt.Errorf("PT_INTERP %d is empty or not NUL-terminated", i)
 			}
