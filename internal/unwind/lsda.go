@@ -106,12 +106,18 @@ func ParseLSDA(data []byte, address, function uint64, order binary.ByteOrder, po
 		if err != nil {
 			return nil, err
 		}
-		lsda.CallSites = append(lsda.CallSites, CallSite{Start: lsda.LPStart + start, Length: length, LandingPad: func() uint64 {
-			if landing == 0 {
-				return 0
+		callStart, ok := addUint64(lsda.LPStart, start)
+		if !ok {
+			return nil, fmt.Errorf("LSDA call-site start overflows")
+		}
+		var landingPad uint64
+		if landing != 0 {
+			landingPad, ok = addUint64(lsda.LPStart, landing)
+			if !ok {
+				return nil, fmt.Errorf("LSDA landing pad overflows")
 			}
-			return lsda.LPStart + landing
-		}(), Action: action})
+		}
+		lsda.CallSites = append(lsda.CallSites, CallSite{Start: callStart, Length: length, LandingPad: landingPad, Action: action})
 	}
 	if offset != end {
 		return nil, fmt.Errorf("LSDA call-site table is misaligned")
@@ -128,6 +134,9 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 	}
 	if typeTableOffset < -1 || typeTableOffset > len(data) {
 		return fmt.Errorf("LSDA type table offset is out of range")
+	}
+	if typeTableOffset >= 0 && actionTableStart > typeTableOffset {
+		return fmt.Errorf("LSDA action and type tables overlap")
 	}
 	maxTypeIndex := uint64(0)
 	maxFilterEnd := typeTableOffset
@@ -211,6 +220,9 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 		if maxActionEnd > len(data) {
 			return fmt.Errorf("LSDA action table exceeds input")
 		}
+		if typeTableOffset >= 0 && maxActionEnd > typeTableOffset {
+			return fmt.Errorf("LSDA action and type tables overlap")
+		}
 		lsda.ActionTable = append([]byte(nil), data[actionTableStart:maxActionEnd]...)
 		return nil
 	}
@@ -268,6 +280,11 @@ func parseLSDAMetadata(data []byte, address, function uint64, typeTableOffset, a
 		lsda.TypeIndexTable = append([]byte(nil), data[typeTableOffset:maxFilterEnd]...)
 	}
 	return nil
+}
+
+func addUint64(base, delta uint64) (uint64, bool) {
+	result := base + delta
+	return result, result >= base
 }
 
 func addSignedIndex(base int, delta int64) (int, bool) {
