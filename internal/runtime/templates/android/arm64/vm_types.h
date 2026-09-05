@@ -189,10 +189,10 @@ static inline void vm_ctx_init(vm_ctx_t *vm, u64 *args, u8 *bytecode, u32 len,
   vm->R[30] = args[9];
   for (int i = 0; i < 10; i++)
     vm->R[19 + i] = args[10 + i];
+  u64 *callee_saved_vectors = (u64 *)&vm->V[8][0];
   for (int i = 0; i < 8; i++) {
-    u64 value = args[20 + i];
-    for (int byte = 0; byte < 8; byte++)
-      vm->V[8 + i][byte] = (u8)(value >> (byte * 8));
+    callee_saved_vectors[i * 2] = args[20 + i];
+    callee_saved_vectors[i * 2 + 1] = 0;
   }
 
   vm->stack_base = stack_base;
