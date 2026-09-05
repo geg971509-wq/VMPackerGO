@@ -22,6 +22,10 @@ probe_aapcs64:
     mov x26, #0x2000
     mov x27, #0x2100
     mov x28, #0x2200
+    mov x9, #0x3800
+    fmov d8, x9
+    mov x9, #0x3f00
+    fmov d15, x9
     mov x29, #0x2300
     ldr x16, [sp, #96]
     mov x0, x1
