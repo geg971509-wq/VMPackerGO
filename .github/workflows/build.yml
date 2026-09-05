@@ -92,6 +92,9 @@ jobs:
         run: go test -count=1 ./...
       - name: Go race test
         run: go test -race -count=1 ./...
+      - name: Validate iOS arm64 dylib fixture
+        if: runner.os == 'macOS'
+        run: bash scripts/ios-dylib-validation.sh
       - name: Host fuzz smoke
         run: python3 scripts/run-host-fuzz-smoke.py --fuzztime 3s --parallel 2
       - name: Derive exact-r29 FP/SIMD corpus

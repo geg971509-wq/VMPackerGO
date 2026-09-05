@@ -5,11 +5,11 @@ VMPacker 是一个处于开发阶段的虚拟机保护工具，用于处理独�
 ## 产品范围
 
 - 主机产品：macOS ARM64 CLI。
-- 输入：独立的 Android AArch64 ELF64 动态库（`.so`）以及 PIE/`ET_EXEC` 原生可执行文件。
+- 输入：独立的 Android AArch64 ELF64 动态库（`.so`）以及 PIE/`ET_EXEC` 原生可执行文件；另有受限的 iOS arm64 thin `MH_DYLIB` 模式（`-mode ios`）。
 - 最低 Android 运行版本：API 23。
 - 保护目标选择：使用 `-func` 选择函数名，或使用 `-addr` 选择地址/范围；两者都必须配合 `-abi`。也可使用 manifest v1 携带显式 ABI 批量选择。
-- 目标输出：转换后的 ELF，以及可选的 report v1 JSON 和显式 debug map。
-- 非活动产品范围：APK、AAB、GUI、Linux 发行版和 Windows 发行版。历史 APK 与 GUI 工作保留在 `archive/` 下，不受支持。
+- 目标输出：转换后的 ELF，或 `-mode ios` 下的 Mach-O dylib；可选 report v1 JSON，debug map 仅适用于 Android。
+- 非活动产品范围：APK、AAB、GUI、Linux/Windows 发行版、iOS arm64e/模拟器/FAT 切片和自动 App 签名。历史 APK 与 GUI 工作保留在 `archive/` 下，不受支持。
 
 VMPacker 只能提高逆向分析成本，不能让代码变得无法检查、复制、修改或绕过。
 
@@ -20,6 +20,8 @@ VMPacker 只能提高逆向分析成本，不能让代码变得无法检查、�
 项目**仍然不是 release-ready**。正式发行仍需要真实物理 Android 设备上的 API/页面大小/BTI/PAC/ASLR/CPU 特征矩阵证据，85 个 demo 的 baseline-versus-packed 对比执行，原子竞争与 C++ exception/unwind 真机证据，Developer ID 签名、Apple 公证，以及独立发行审核。这些外部事实不会由宿主测试推断，也不会由构建脚本伪造。
 
 请参阅[产品契约](docs/product-contract.md)、[当前支持矩阵](docs/support-matrix.md)、[设备证据格式](docs/device-evidence-schema-v1.md)、[发行流程](docs/release-process.md)、[修复审计](docs/remediation-audit-20260903.md)和[报告格式](docs/report-schema-v1.md)。
+
+iOS Mach-O 的边界和重新签名要求见 [docs/ios-dylib.md](docs/ios-dylib.md)。
 
 ## 开发命令
 

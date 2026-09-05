@@ -17,6 +17,7 @@ const (
 	TargetKindAndroidSO   TargetKind = "android-so"
 	TargetKindAndroidPIE  TargetKind = "android-pie"
 	TargetKindAndroidExec TargetKind = "android-exec"
+	TargetKindIOSDylib    TargetKind = "ios-dylib"
 )
 
 type AndroidMode string

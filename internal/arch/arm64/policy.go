@@ -158,6 +158,13 @@ func validateInstructionPolicy(inst vm.Instruction) error {
 	}
 }
 
+// ValidateInstruction exposes the product instruction policy to format
+// backends.  A backend must use the same whitelist as the translator instead
+// of independently deciding that an instruction is safe to copy or execute.
+func ValidateInstruction(inst vm.Instruction) error {
+	return validateInstructionPolicy(inst)
+}
+
 func registerWidth(inst vm.Instruction) int {
 	if inst.SF {
 		return 64

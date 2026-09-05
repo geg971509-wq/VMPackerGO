@@ -6,7 +6,7 @@
 
 This is the complete approved TARGET contract. The current development tree closes the host-side productization path through fail-closed runtime integrity, guarded/bounded runtime resources, exact-r29 runtime generation, the explicit ARM64 tri-state capability policy, plan-first ELF rewriting, bounded near/far transformed-entry transfer planning, structural exception/unwind bridge generation and GNU unwind-index publication where discoverable, the exact 85-demo device-case specification, physical-device/evidence harnesses, and evidence-driven macOS release packaging. Hosted Verification proves those host-side invariants against the exact Go toolchain and Android NDK r29. **Physical-device execution evidence, Apple signing/notarization evidence, and an independent release review are external release facts and are not claimed as passing in the development tree.** Requirements below describe release acceptance criteria; until the external evidence gates pass, the product remains development-stage software.
 
-The official VMPacker product is a macOS ARM64 command-line application for independent Android AArch64 ELF64 binaries. Accepted inputs are:
+The official VMPacker product is a macOS ARM64 command-line application for independent Android AArch64 ELF64 binaries. A separate, structurally validated iOS lane accepts only thin arm64 `MH_DYLIB` inputs and always requires a final external re-signing step. Accepted inputs are:
 
 - Shared objects: `ET_DYN` with `PT_DYNAMIC`.
 - Native executables: PIE (`ET_DYN` with `PT_INTERP`) or `ET_EXEC`. PIE inputs must use Android's `/system/bin/linker` or `/system/bin/linker64` interpreter.

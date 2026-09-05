@@ -15,6 +15,8 @@ This file describes **current implemented behavior**, not future acceptance crit
 | --- | --- | --- |
 | Host | host-verified | macOS ARM64 CLI only. |
 | Android input | host-verified | AArch64 ELF64 shared objects, PIE and `ET_EXEC`, API 23+. |
+| iOS input | host-verified structural / device-required | Thin arm64 `MH_DYLIB`; relocation-only entry move with strict fail-closed limits; output must be re-signed. |
+| iOS arm64e/simulator/FAT | fail-closed | No speculative PAC, simulator ABI, or multi-slice rewriting. |
 | APK/AAB/GUI/Linux/Windows product | fail-closed / out of scope | Historical material is archived only. |
 | Max input | host-verified | 1 GiB. |
 | Max protected functions | host-verified | 4096. |

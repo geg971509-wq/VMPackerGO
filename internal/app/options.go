@@ -44,7 +44,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	var opts options
 	fs := flag.NewFlagSet("vmpacker", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&opts.Mode, "mode", "auto", "Android ELF mode: auto, so, or native")
+	fs.StringVar(&opts.Mode, "mode", "auto", "input mode: auto, so, native, or ios")
 	fs.StringVar(&opts.Func, "func", "", "protect one function by name")
 	fs.StringVar(&opts.Addr, "addr", "", "protect one address or range: 0xADDR or 0xSTART-0xEND[:name]")
 	fs.StringVar(&opts.Output, "o", "", "output ELF path (default: input+.vmp)")
@@ -60,7 +60,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&opts.Verbose, "v", false, "print verbose transformation details")
 	fs.BoolVar(&opts.Version, "version", false, "print version and commit")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: vmpacker [options] <input-android-elf>")
+		fmt.Fprintln(stderr, "Usage: vmpacker [options] <input-android-elf-or-ios-dylib>")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -79,8 +79,8 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	if opts.Output == "" {
 		opts.Output = opts.Input + ".vmp"
 	}
-	if opts.Mode != "auto" && opts.Mode != "so" && opts.Mode != "native" {
-		return opts, fmt.Errorf("invalid -mode %q; expected auto, so, or native", opts.Mode)
+	if opts.Mode != "auto" && opts.Mode != "so" && opts.Mode != "native" && opts.Mode != "ios" {
+		return opts, fmt.Errorf("invalid -mode %q; expected auto, so, native, or ios", opts.Mode)
 	}
 	if opts.Seed != "" {
 		if len(opts.Seed) != 64 {
@@ -93,8 +93,18 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	if opts.Info {
 		return opts, nil
 	}
-	if err := validateNDK(opts.NDK); err != nil {
-		return opts, err
+	if opts.Mode == "ios" {
+		if opts.Seed != "" {
+			return opts, fmt.Errorf("-seed is only valid for Android VM packing")
+		}
+		if opts.DebugMap != "" {
+			return opts, fmt.Errorf("-debug-map is not available for iOS Mach-O packing")
+		}
+	}
+	if opts.Mode != "ios" {
+		if err := validateNDK(opts.NDK); err != nil {
+			return opts, err
+		}
 	}
 
 	direct := strings.TrimSpace(opts.Func) != "" || strings.TrimSpace(opts.Addr) != ""

@@ -12,7 +12,7 @@ MAC_PACKER  = $(DIST_DIR)/vmpacker-darwin-arm64
 
 ANDROID_BUILD_DIR ?= $(BUILD_DIR)/android
 
-.PHONY: all packer mac-cli format-check test test-race fuzz-smoke vet contract release-rehearsal release-contract verify demo-cases evidence-self-test \
+.PHONY: all packer mac-cli format-check test test-race fuzz-smoke vet contract release-rehearsal release-contract verify demo-cases evidence-self-test ios-dylib-validation \
 	ndk-check runtime-integration android-device-check android-fixtures clean help
 
 all: packer
@@ -59,7 +59,10 @@ release-rehearsal:
 release-contract:
 	bash scripts/check-contract.sh --release
 
-verify: format-check test test-race fuzz-smoke vet contract release-rehearsal
+verify: format-check test test-race fuzz-smoke vet contract release-rehearsal ios-dylib-validation
+
+ios-dylib-validation:
+	bash scripts/ios-dylib-validation.sh
 
 ndk-check:
 	@test -n "$(ANDROID_NDK)" || { printf '%s\n' "Set ANDROID_NDK to Android NDK $(ANDROID_NDK_REVISION)." >&2; exit 1; }
@@ -95,6 +98,7 @@ help:
 		"make contract             Run product/evidence contract self-tests" \
 		"make release-rehearsal    Replay local release gates and prove missing external evidence fails closed" \
 		"make release-contract     Validate final external release evidence" \
+		"make ios-dylib-validation Build and pack a real arm64 iPhoneOS MH_DYLIB on macOS" \
 		"make demo-cases            Validate the exact 85-demo device case specification" \
 		"make evidence-self-test    Test device/release evidence validators" \
 		"make runtime-integration  Build and validate the runtime with exact NDK r29" \
