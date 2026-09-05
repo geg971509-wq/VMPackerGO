@@ -154,9 +154,9 @@ def remote_result(remote_dir, executable, *, capture_aapcs64=False):
 
 def execute_case(case, baseline: Path, packed: Path, runner: Path | None, *, capture_aapcs64=False):
     remote_dir = f"/data/local/tmp/vmpacker-evidence-{case['id']}-{os.getpid()}"
-    adb("shell", "rm", "-rf", remote_dir)
-    adb("shell", "mkdir", "-p", remote_dir)
     try:
+        adb("shell", "rm", "-rf", remote_dir)
+        adb("shell", "mkdir", "-p", remote_dir)
         if runner is None:
             adb("push", str(baseline), f"{remote_dir}/baseline")
             adb("push", str(packed), f"{remote_dir}/packed")
@@ -181,7 +181,7 @@ def execute_case(case, baseline: Path, packed: Path, runner: Path | None, *, cap
     finally:
         try:
             adb("shell", "rm", "-rf", remote_dir)
-        except RuntimeError as exc:
+        except (OSError, RuntimeError) as exc:
             print(f"warning: could not clean remote evidence directory {remote_dir}: {exc}",
                   file=sys.stderr)
 
