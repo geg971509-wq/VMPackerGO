@@ -15,25 +15,38 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/geg971509-wq/VMPackerGO/internal/abi"
 	"github.com/geg971509-wq/VMPackerGO/internal/arch/arm64"
 )
 
 const (
-	magic64            = 0xfeedfacf
-	cpuTypeARM64       = 0x0100000c
-	cpuSubtypeARM64    = 0
-	mhDylib            = 0x6
-	lcSegment64        = 0x19
-	lcSymtab           = 0x2
-	lcCodeSignature    = 0x1d
-	lcEncryptionInfo64 = 0x2c
-	header64Size       = 32
-	segment64Size      = 72
-	section64Size      = 80
-	pageSize           = 0x4000
-	maxCommands        = 4096
+	magic64              = 0xfeedfacf
+	cpuTypeARM64         = 0x0100000c
+	cpuSubtypeARM64      = 0
+	mhDylib              = 0x6
+	lcSegment64          = 0x19
+	lcSymtab             = 0x2
+	lcCodeSignature      = 0x1d
+	lcDyldInfo           = 0x22
+	lcDyldInfoOnly       = 0x80000022
+	lcFunctionStarts     = 0x26
+	lcDataInCode         = 0x29
+	lcEncryptionInfo64   = 0x2c
+	lcVersionMinMacOSX   = 0x24
+	lcVersionMinIPhoneOS = 0x25
+	lcBuildVersion       = 0x32
+	lcDyldExportsTrie    = 0x80000033
+	lcDyldChainedFixups  = 0x80000034
+	header64Size         = 32
+	segment64Size        = 72
+	section64Size        = 80
+	pageSize             = 0x4000
+	maxCommands          = 4096
+	platformMacOS        = 1
+	platformIPhoneOS     = 2
+	platformIPhoneSim    = 7
 )
 
 type Section struct {
@@ -59,6 +72,24 @@ type Image struct {
 	Segments                      []Segment
 	Symbols                       []Symbol
 	HasCodeSignature              bool
+	// Metadata flags are retained so the writer can make an explicit
+	// fail-closed decision.  These records contain address-bearing data which
+	// needs a dyld-aware rewrite once transformed code can execute from the new
+	// segment.  Silently carrying stale metadata would produce a loadable but
+	// observably incorrect dylib.
+	HasFunctionStarts bool
+	HasDyldInfo       bool
+	HasExportsTrie    bool
+	HasChainedFixups  bool
+	HasDataInCode     bool
+	HasCompactUnwind  bool
+	HasUnwindInfo     bool
+	HasEHFrame        bool
+	HasGCCExceptTab   bool
+	HasObjCMetadata   bool
+	HasSwiftMetadata  bool
+	HasPlatform       bool
+	Platform          uint32
 }
 type SelectionRequest struct {
 	Source, Selector, Name string
@@ -133,10 +164,40 @@ func Parse(data []byte) (*Image, error) {
 				p := secOff + uint64(j)*section64Size
 				sec := Section{Name: cString(data[p : p+16]), Seg: cString(data[p+16 : p+32]), Addr: binary.LittleEndian.Uint64(data[p+32:]), Size: binary.LittleEndian.Uint64(data[p+40:]), Offset: uint64(binary.LittleEndian.Uint32(data[p+48:])), Flags: binary.LittleEndian.Uint32(data[p+64:])}
 				zerofill := sec.Flags&0xff == 1 // S_ZEROFILL
-				if !zerofill && (sec.Size > 0 && sec.Offset > uint64(len(data)) || sec.Size > uint64(len(data))-sec.Offset) {
-					return nil, fmt.Errorf("section %s,%s exceeds file", sec.Seg, sec.Name)
+				// Every section must fit inside its owning segment's virtual
+				// range.  Without this check a forged __text section can pass
+				// the file-range validation below while Analyze later computes
+				// an offset outside the segment (or overflows the address).
+				if sec.Addr < seg.VMAddr || sec.Addr-seg.VMAddr > seg.VMSize || sec.Size > seg.VMSize-(sec.Addr-seg.VMAddr) {
+					return nil, fmt.Errorf("section %s,%s exceeds segment %q virtual range", sec.Seg, sec.Name, seg.Name)
+				}
+				if !zerofill && sec.Size > 0 {
+					if sec.Offset > uint64(len(data)) || sec.Size > uint64(len(data))-sec.Offset {
+						return nil, fmt.Errorf("section %s,%s exceeds file", sec.Seg, sec.Name)
+					}
+				}
+				if !zerofill && (sec.Offset < seg.FileOff || sec.Offset-seg.FileOff > seg.FileSize || sec.Size > seg.FileSize-(sec.Offset-seg.FileOff)) {
+					return nil, fmt.Errorf("section %s,%s exceeds segment %q file range", sec.Seg, sec.Name, seg.Name)
 				}
 				seg.Sections = append(seg.Sections, sec)
+				if sec.Name == "__compact_unwind" {
+					img.HasCompactUnwind = true
+				}
+				if sec.Name == "__unwind_info" {
+					img.HasUnwindInfo = true
+				}
+				if sec.Name == "__eh_frame" {
+					img.HasEHFrame = true
+				}
+				if sec.Name == "__gcc_except_tab" {
+					img.HasGCCExceptTab = true
+				}
+				if strings.HasPrefix(sec.Name, "__objc_") {
+					img.HasObjCMetadata = true
+				}
+				if strings.HasPrefix(sec.Name, "__swift5_") {
+					img.HasSwiftMetadata = true
+				}
 				if seg.Name == "__TEXT" && sec.Name == "__text" {
 					textFound = true
 				}
@@ -146,7 +207,89 @@ func Parse(data []byte) (*Image, error) {
 			}
 			img.Segments = append(img.Segments, seg)
 		case lcCodeSignature:
+			if size < 16 {
+				return nil, fmt.Errorf("LC_CODE_SIGNATURE is truncated")
+			}
+			if err := validateLinkeditRange(data, binary.LittleEndian.Uint32(data[off+8:]), binary.LittleEndian.Uint32(data[off+12:]), "LC_CODE_SIGNATURE"); err != nil {
+				return nil, err
+			}
 			img.HasCodeSignature = true
+		case lcFunctionStarts:
+			if size < 16 {
+				return nil, fmt.Errorf("LC_FUNCTION_STARTS is truncated")
+			}
+			if err := validateLinkeditRange(data, binary.LittleEndian.Uint32(data[off+8:]), binary.LittleEndian.Uint32(data[off+12:]), "LC_FUNCTION_STARTS"); err != nil {
+				return nil, err
+			}
+			img.HasFunctionStarts = true
+		case lcDataInCode:
+			if size < 16 {
+				return nil, fmt.Errorf("LC_DATA_IN_CODE is truncated")
+			}
+			if err := validateLinkeditRange(data, binary.LittleEndian.Uint32(data[off+8:]), binary.LittleEndian.Uint32(data[off+12:]), "LC_DATA_IN_CODE"); err != nil {
+				return nil, err
+			}
+			img.HasDataInCode = true
+		case lcDyldExportsTrie, lcDyldChainedFixups:
+			if size < 16 {
+				return nil, fmt.Errorf("load command 0x%x is truncated", kind)
+			}
+			if err := validateLinkeditRange(data, binary.LittleEndian.Uint32(data[off+8:]), binary.LittleEndian.Uint32(data[off+12:]), fmt.Sprintf("load command 0x%x", kind)); err != nil {
+				return nil, err
+			}
+			if kind == lcDyldExportsTrie {
+				img.HasExportsTrie = true
+			} else {
+				img.HasChainedFixups = true
+			}
+		case lcDyldInfo, lcDyldInfoOnly:
+			if size < 48 {
+				return nil, fmt.Errorf("LC_DYLD_INFO is truncated")
+			}
+			// Every dyld-info substream is an offset/size pair into __LINKEDIT.
+			// Validate all of them even when the size is zero; this keeps malformed
+			// inputs from reaching a writer that might otherwise preserve stale
+			// fixup data.
+			for field := uint64(8); field < 48; field += 8 {
+				if err := validateLinkeditRange(data, binary.LittleEndian.Uint32(data[off+field:]), binary.LittleEndian.Uint32(data[off+field+4:]), "LC_DYLD_INFO"); err != nil {
+					return nil, err
+				}
+			}
+			img.HasDyldInfo = true
+		case lcVersionMinMacOSX:
+			return nil, fmt.Errorf("macOS deployment target is not valid for an iOS dylib")
+		case lcVersionMinIPhoneOS:
+			if size < 16 {
+				return nil, fmt.Errorf("LC_VERSION_MIN_IPHONEOS is truncated")
+			}
+			if img.HasPlatform && img.Platform != platformIPhoneOS {
+				return nil, fmt.Errorf("conflicting Mach-O platform load commands")
+			}
+			img.HasPlatform = true
+			img.Platform = platformIPhoneOS
+		case lcBuildVersion:
+			if size < 24 {
+				return nil, fmt.Errorf("LC_BUILD_VERSION is truncated")
+			}
+			platform := binary.LittleEndian.Uint32(data[off+8:])
+			ntools := binary.LittleEndian.Uint32(data[off+20:])
+			if uint64(24)+uint64(ntools)*8 > uint64(size) {
+				return nil, fmt.Errorf("LC_BUILD_VERSION tool table exceeds command")
+			}
+			if platform != platformIPhoneOS {
+				if platform == platformMacOS {
+					return nil, fmt.Errorf("macOS platform is not valid for an iOS dylib")
+				}
+				if platform == platformIPhoneSim {
+					return nil, fmt.Errorf("iOS simulator platform is not valid for a device dylib")
+				}
+				return nil, fmt.Errorf("Mach-O platform %d is not valid for an iOS dylib", platform)
+			}
+			if img.HasPlatform && img.Platform != platform {
+				return nil, fmt.Errorf("conflicting Mach-O platform load commands")
+			}
+			img.HasPlatform = true
+			img.Platform = platform
 		case lcEncryptionInfo64:
 			if size < 24 {
 				return nil, fmt.Errorf("LC_ENCRYPTION_INFO_64 is truncated")
@@ -175,6 +318,13 @@ func Parse(data []byte) (*Image, error) {
 				end := bytes.IndexByte(str[nameOff:], 0)
 				if end < 0 {
 					end = len(str) - int(nameOff)
+				}
+				// Only defined section symbols can identify a movable function.  An
+				// undefined/imported or STAB symbol may reuse the same name and
+				// must never win selector resolution.
+				typ := data[p+4] & 0x0e            // N_TYPE
+				if typ != 0x0e || data[p+5] == 0 { // N_SECT, non-NO_SECT
+					continue
 				}
 				img.Symbols = append(img.Symbols, Symbol{Name: string(str[nameOff : int(nameOff)+end]), Addr: binary.LittleEndian.Uint64(data[p+8:]), Section: data[p+5]})
 			}
@@ -206,15 +356,29 @@ func cString(b []byte) string {
 	return string(b)
 }
 
+func validateLinkeditRange(data []byte, off, size uint32, label string) error {
+	if size == 0 {
+		return nil
+	}
+	end := uint64(off) + uint64(size)
+	if end > uint64(len(data)) {
+		return fmt.Errorf("%s data range 0x%x+0x%x exceeds file", label, off, size)
+	}
+	return nil
+}
+
 func Analyze(data []byte, reqs []SelectionRequest) (Analysis, error) {
 	img, err := Parse(data)
 	if err != nil {
 		return Analysis{}, err
 	}
+	if err := validateTransformMetadata(img); err != nil {
+		return Analysis{TargetKind: "ios-dylib", Limitations: iosLimitations()}, err
+	}
 	if len(reqs) == 0 {
 		return Analysis{}, fmt.Errorf("at least one function selection is required")
 	}
-	a := Analysis{TargetKind: "ios-dylib", Limitations: []string{"thin arm64 device dylib only", "selected functions with PC-relative instructions, indirect fixups, ObjC/Swift metadata or exceptions are rejected until relocation-aware iOS VM runtime support is enabled"}}
+	a := Analysis{TargetKind: "ios-dylib", Limitations: iosLimitations()}
 	text := img.textSection()
 	if text.Size == 0 {
 		return a, fmt.Errorf("__TEXT,__text is empty")
@@ -222,12 +386,15 @@ func Analyze(data []byte, reqs []SelectionRequest) (Analysis, error) {
 	for _, r := range reqs {
 		s := Selection{Source: r.Source, Selector: r.Selector, Name: r.Name, ABI: r.ABI}
 		if r.Address != 0 {
+			if r.End == 0 {
+				return a, fmt.Errorf("function %q requires an explicit end address in iOS mode; a single instruction is not a safe function range", r.Name)
+			}
 			s.Address = r.Address
 			s.End = r.End
 		} else {
 			var found *Symbol
 			for i := range img.Symbols {
-				if img.Symbols[i].Name == r.Name {
+				if sameSymbolName(img.Symbols[i].Name, r.Name) {
 					found = &img.Symbols[i]
 					break
 				}
@@ -248,9 +415,6 @@ func Analyze(data []byte, reqs []SelectionRequest) (Analysis, error) {
 				}
 			}
 		}
-		if s.End == 0 {
-			s.End = s.Address + 4
-		}
 		for _, previous := range a.Selections {
 			if s.Address < previous.End && previous.Address < s.End {
 				return a, fmt.Errorf("selected functions %q and %q overlap", previous.Name, s.Name)
@@ -263,6 +427,9 @@ func Analyze(data []byte, reqs []SelectionRequest) (Analysis, error) {
 		if s.End-s.Address < 4 {
 			return a, fmt.Errorf("function %q is shorter than one instruction", s.Name)
 		}
+		if err := validateVMInstructionPolicy(data, s); err != nil {
+			return a, err
+		}
 		if err := validateMovable(data, s); err != nil {
 			return a, err
 		}
@@ -270,6 +437,50 @@ func Analyze(data []byte, reqs []SelectionRequest) (Analysis, error) {
 		a.Selections = append(a.Selections, s)
 	}
 	return a, nil
+}
+
+func sameSymbolName(a, b string) bool {
+	return a == b || strings.TrimPrefix(a, "_") == strings.TrimPrefix(b, "_")
+}
+
+func validateVMInstructionPolicy(data []byte, s Selection) error {
+	decoder := arm64.NewDecoder()
+	for off := s.Offset; off < s.Offset+s.End-s.Address; off += 4 {
+		raw := binary.LittleEndian.Uint32(data[off : off+4])
+		inst := decoder.Decode(raw, int(off-s.Offset))
+		if err := arm64.ValidateInstruction(inst); err != nil {
+			return fmt.Errorf("function %q contains unsupported VM instruction %s at file offset 0x%x: %w", s.Name, arm64.OpName(arm64.Op(inst.Op)), off, err)
+		}
+	}
+	return nil
+}
+
+func iosLimitations() []string {
+	return []string{
+		"thin arm64 device dylib only",
+		"selected functions with PC-relative instructions, indirect fixups, ObjC/Swift metadata, compact unwind or exceptions are rejected until relocation-aware iOS VM runtime support is enabled",
+		"existing dyld exports/rebase/bind, LC_FUNCTION_STARTS and data-in-code metadata are preserved because original entry addresses remain stable; chained fixups are rejected until the new segment is added to their segment table",
+	}
+}
+
+func validateTransformMetadata(img *Image) error {
+	var present []string
+	if img.HasCompactUnwind || img.HasUnwindInfo || img.HasEHFrame || img.HasGCCExceptTab {
+		present = append(present, "__compact_unwind/exception metadata")
+	}
+	if img.HasObjCMetadata {
+		present = append(present, "Objective-C metadata")
+	}
+	if img.HasSwiftMetadata {
+		present = append(present, "Swift metadata")
+	}
+	if img.HasChainedFixups {
+		present = append(present, "dyld chained fixups")
+	}
+	if len(present) == 0 {
+		return nil
+	}
+	return fmt.Errorf("Mach-O contains address-bearing metadata requiring a relocation-aware writer: %s", strings.Join(present, ", "))
 }
 
 func (img *Image) textSection() Section {
@@ -310,7 +521,10 @@ func Process(data []byte, reqs []SelectionRequest) (Result, error) {
 	for _, s := range a.Selections {
 		r.Functions = append(r.Functions, FunctionFact{Source: s.Source, Selector: s.Selector, Name: s.Name, Address: s.Address, End: s.End, Size: s.End - s.Address, Section: s.Section, SymbolSource: s.SymbolSource, Instructions: int((s.End - s.Address) / 4)})
 	}
-	r.Warnings = append(r.Warnings, "output is unsigned and must be re-signed by the final iOS app/package signing step")
+	r.Warnings = append(r.Warnings,
+		"iOS output is structural relocation only; no VM bytecode, encrypted token payload, or Darwin interpreter is injected",
+		"output is unsigned and must be re-signed by the final iOS app/package signing step",
+	)
 	r.AnalysisLimitations = a.Limitations
 	return r, nil
 }
@@ -320,7 +534,13 @@ func rewrite(data []byte, sels []Selection) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateTransformMetadata(img); err != nil {
+		return nil, err
+	}
 	const cmdSize = segment64Size + section64Size
+	if uint64(img.SizeOfCommands)+cmdSize > math.MaxUint32 {
+		return nil, fmt.Errorf("Mach-O load-command table size overflows 32-bit field")
+	}
 	if uint64(header64Size)+uint64(img.SizeOfCommands)+cmdSize > firstFileOffset(img) {
 		return nil, fmt.Errorf("Mach-O headerpad is insufficient for the __VMPACK segment load command")
 	}
@@ -371,14 +591,28 @@ func rewrite(data []byte, sels []Selection) ([]byte, error) {
 	return out, nil
 }
 func firstFileOffset(img *Image) uint64 {
+	// A __TEXT segment commonly has FileOff==0 because it contains the Mach-O
+	// header itself.  Its FileOff is therefore not the first byte available for
+	// an extra load command; the first file-backed section is the real
+	// headerpad boundary.  Ignoring that section can overwrite __text when a
+	// binary was linked without enough header padding.
 	v := uint64(len(img.Data))
-	for _, s := range img.Segments {
-		if s.FileOff > 0 && s.FileOff < v {
-			v = s.FileOff
+	for _, seg := range img.Segments {
+		if seg.FileSize > 0 && seg.FileOff > 0 && seg.FileOff < v {
+			v = seg.FileOff
+		}
+		for _, sec := range seg.Sections {
+			if sec.Size == 0 || sec.Offset == 0 {
+				continue
+			}
+			if sec.Offset < v {
+				v = sec.Offset
+			}
 		}
 	}
 	return v
 }
+
 func align(v, a uint64) uint64 {
 	if v%(a) == 0 {
 		return v
@@ -449,6 +683,10 @@ func patchLoadCommands(out []byte, img *Image, va, off, size uint64) error {
 	binary.LittleEndian.PutUint64(sec[32:], va)
 	binary.LittleEndian.PutUint64(sec[40:], size)
 	binary.LittleEndian.PutUint32(sec[48:], uint32(off))
+	// section_64.align is log2 alignment.  The VM text contains AArch64
+	// instructions and must advertise at least four-byte alignment to tools
+	// consuming the rewritten Mach-O.
+	binary.LittleEndian.PutUint32(sec[52:], 2)
 	binary.LittleEndian.PutUint32(sec[64:], 0x80000400)
 	return nil
 }

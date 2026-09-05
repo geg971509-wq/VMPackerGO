@@ -18,11 +18,16 @@ runtime.
    old signature blob range.
 4. **Native iOS VM runtime (next hard gate).** Build a Darwin `MH_OBJECT`
    runtime with Apple clang/ld64, platform memory APIs, thread-safe guarded
-   storage, and an iOS relocation/import plan. The Android `svc` runtime cannot
-   be reused.
-5. **dyld metadata and unwind (next hard gate).** Add exports, rebase/bind and
-   chained-fixup handling, `LC_FUNCTION_STARTS`, compact unwind and ObjC/Swift
-   metadata updates. Until then, PC-relative/branch-heavy functions fail closed.
+   storage, and an iOS relocation/import plan. The repository now has a
+   validated Darwin `MH_OBJECT` builder/parser contract, but it deliberately
+   does not generate a fake interpreter or claim VM semantics. The Android
+   `svc` runtime cannot be reused.
+5. **dyld metadata and unwind (next hard gate).** The first lane preserves
+   exports, rebase/bind, `LC_FUNCTION_STARTS` and data-in-code records while
+   original entry addresses remain stable. Chained fixups, compact unwind,
+   exception, ObjC and Swift metadata remain fail-closed until the writer
+   updates their address/segment tables. PC-relative and branch-heavy
+   functions also remain fail-closed.
 6. **Apple verification (external gate).** On macOS/Xcode, compile real dylib
    fixtures and validate with `otool`, `nm`, `codesign` and dyld. On devices,
    compare baseline and packed `dlopen`/`dlsym` behavior across page sizes,

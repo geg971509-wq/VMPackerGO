@@ -271,6 +271,6 @@ func runIOS(ctx context.Context, stdout io.Writer, opts options, rep report.Repo
 	if err := publish.All(files, opts.Force); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "Packed iOS Mach-O dylib (unsigned; re-sign required): %s\n", opts.Output)
+	fmt.Fprintf(stdout, "Rewrote iOS Mach-O dylib (relocation-only, development-only, unsigned; re-sign required): %s\n", opts.Output)
 	return nil
 }

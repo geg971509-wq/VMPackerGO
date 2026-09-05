@@ -48,8 +48,6 @@ static inline u8 vm_insn_size(u8 op) {
   case OP_MOV_REG:
   case OP_NOT:
   case OP_CMP:
-  case OP_VLD16:
-  case OP_VST16:
   case OP_SVC:
   case OP_CLZ:
   case OP_CLS:
@@ -58,6 +56,9 @@ static inline u8 vm_insn_size(u8 op) {
   case OP_REV16:
   case OP_REV32:
     return 3;
+  case OP_VLD16:
+  case OP_VST16:
+    return 4;
   case OP_ADD:
   case OP_SUB:
   case OP_MUL:
