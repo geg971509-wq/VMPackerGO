@@ -343,6 +343,40 @@ func TestAnalyzeModeClassification(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRejectsDuplicatePTINTERP(t *testing.T) {
+	fixture := buildELFFixture(fixtureOptions{dynamic: true, interp: true})
+	bo := binary.LittleEndian
+	phnum := bo.Uint16(fixture.data[56:58])
+	if phnum < 3 {
+		t.Fatalf("fixture has no PT_INTERP header: phnum=%d", phnum)
+	}
+	// Turn the existing interpreter into an invalid one, then append a valid
+	// interpreter. The parser must reject the duplicate instead of accepting
+	// whichever header happens to be last.
+	interpOff := fixture.phoff + 2*elf64ProgramSize
+	bo.PutUint64(fixture.data[interpOff+8:interpOff+16], 0x190)
+	bo.PutUint64(fixture.data[interpOff+16:interpOff+24], 0x1190)
+	bo.PutUint64(fixture.data[interpOff+32:interpOff+40], 5)
+	bo.PutUint64(fixture.data[interpOff+40:interpOff+48], 5)
+	copy(fixture.data[0x190:], []byte("/bad\x00"))
+
+	secondOff := fixture.phoff + int(phnum)*elf64ProgramSize
+	bo.PutUint16(fixture.data[56:58], phnum+1)
+	bo.PutUint32(fixture.data[secondOff:secondOff+4], uint32(elf.PT_INTERP))
+	bo.PutUint32(fixture.data[secondOff+4:secondOff+8], uint32(elf.PF_R))
+	bo.PutUint64(fixture.data[secondOff+8:secondOff+16], 0x1b0)
+	bo.PutUint64(fixture.data[secondOff+16:secondOff+24], 0x11b0)
+	bo.PutUint64(fixture.data[secondOff+32:secondOff+40], 21)
+	bo.PutUint64(fixture.data[secondOff+40:secondOff+48], 21)
+	bo.PutUint64(fixture.data[secondOff+48:secondOff+56], 1)
+	copy(fixture.data[0x1b0:], []byte("/system/bin/linker64\x00"))
+
+	if _, err := analyzeFixture(t, fixture, addressSelection(0x1200, 0x120c), "native"); err == nil ||
+		!strings.Contains(err.Error(), "multiple PT_INTERP") {
+		t.Fatalf("duplicate PT_INTERP err=%v", err)
+	}
+}
+
 func TestExtendedNumberingFailsClosedBeforeTransformation(t *testing.T) {
 	fixture := buildELFFixture(fixtureOptions{dynamic: true})
 	bo := binary.LittleEndian
