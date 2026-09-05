@@ -324,9 +324,13 @@ func MapCallSites(lsda *LSDA, mapPC func(uint64) (uint32, bool)) ([]MappedCallSi
 		if !ok {
 			return nil, fmt.Errorf("call-site PC 0x%x has no VM mapping", site.Start)
 		}
-		end, ok := mapPC(site.Start + site.Length)
+		if site.Length > ^uint64(0)-site.Start {
+			return nil, fmt.Errorf("call-site range at 0x%x overflows", site.Start)
+		}
+		endPC := site.Start + site.Length
+		end, ok := mapPC(endPC)
 		if !ok || end < start {
-			return nil, fmt.Errorf("call-site end 0x%x has no ordered VM mapping", site.Start+site.Length)
+			return nil, fmt.Errorf("call-site end 0x%x has no ordered VM mapping", endPC)
 		}
 		var landing uint32
 		if site.LandingPad != 0 {
