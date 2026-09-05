@@ -248,10 +248,10 @@ func (t *Translator) trStackMovK(inst vm.Instruction) error {
 
 	// Rd = (Rd & ~mask) | (imm << hw)
 	t.pushRegOrZero(inst.Rd, rd) // push Rd (or zero for XZR)
-	t.sPushImm(^mask)     // push ~mask
-	t.emitOp(vm.OpSAnd)   // Rd & ~mask
-	t.sPushImm(imm << hw) // push (imm << hw)
-	t.emitOp(vm.OpSOr)    // (Rd & ~mask) | (imm << hw)
+	t.sPushImm(^mask)            // push ~mask
+	t.emitOp(vm.OpSAnd)          // Rd & ~mask
+	t.sPushImm(imm << hw)        // push (imm << hw)
+	t.emitOp(vm.OpSOr)           // (Rd & ~mask) | (imm << hw)
 
 	if !inst.SF {
 		t.emitOp(vm.OpSTrunc32)
