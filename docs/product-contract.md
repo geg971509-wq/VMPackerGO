@@ -9,8 +9,9 @@ This is the complete approved TARGET contract. The current development tree clos
 The official VMPacker product is a macOS ARM64 command-line application for independent Android AArch64 ELF64 binaries. Accepted inputs are:
 
 - Shared objects: `ET_DYN` with `PT_DYNAMIC`.
-- Native executables: PIE (`ET_DYN` with `PT_INTERP`) or `ET_EXEC`.
+- Native executables: PIE (`ET_DYN` with `PT_INTERP`) or `ET_EXEC`. PIE inputs must use Android's `/system/bin/linker` or `/system/bin/linker64` interpreter.
 - Android API 23 or newer.
+- Shared objects do not carry a universally reliable Android provenance marker, so they are accepted by structural AArch64/Android ELF checks; a generic Linux AArch64 shared object cannot be distinguished solely from ELF metadata and remains the caller's responsibility.
 
 APK, AAB, GUI, Linux release, and Windows release workflows are outside the active product. Historical APK and GUI sources under `archive/` are unsupported snapshots.
 

@@ -119,7 +119,7 @@ def aapcs64_observation(data):
         registers = {f"x{index}" for index in range(19, 30)} | {"sp"}
         if set(fields) != {"return", "memory", *registers}:
             raise RuntimeError("AAPCS64 observation has an unexpected field set")
-        if any(len(fields[key]) != 16 for key in ("return", *registers)) or len(fields["memory"]) != 32:
+        if any(len(fields[key]) != 16 for key in ("return", *registers)) or len(fields["memory"]) != 48:
             raise RuntimeError("AAPCS64 observation has an invalid value width")
         bytes.fromhex("".join(fields[key] for key in ("return", *registers, "memory")))
     except (UnicodeError, ValueError) as exc:
@@ -153,31 +153,38 @@ def remote_result(remote_dir, executable, *, capture_aapcs64=False):
     return result
 
 def execute_case(case, baseline: Path, packed: Path, runner: Path | None, *, capture_aapcs64=False):
-    remote_dir = f"/data/local/tmp/vmpacker-evidence-{case['id']}"
+    remote_dir = f"/data/local/tmp/vmpacker-evidence-{case['id']}-{os.getpid()}"
     adb("shell", "rm", "-rf", remote_dir)
     adb("shell", "mkdir", "-p", remote_dir)
-    if runner is None:
-        adb("push", str(baseline), f"{remote_dir}/baseline")
-        adb("push", str(packed), f"{remote_dir}/packed")
-        adb("shell", "chmod", "700", f"{remote_dir}/baseline", f"{remote_dir}/packed")
-        baseline_cmd = "./baseline"
-        packed_cmd = "./packed"
-    else:
-        adb("push", str(runner), f"{remote_dir}/runner")
-        adb("push", str(baseline), f"{remote_dir}/baseline.so")
-        adb("push", str(packed), f"{remote_dir}/packed.so")
-        adb("shell", "chmod", "700", f"{remote_dir}/runner")
-        baseline_cmd = "./runner ./baseline.so"
-        packed_cmd = "./runner ./packed.so"
-    attempts = []
-    for _ in range(3):
-        baseline_result = remote_result(remote_dir, baseline_cmd, capture_aapcs64=capture_aapcs64)
-        packed_result = remote_result(remote_dir, packed_cmd, capture_aapcs64=capture_aapcs64)
-        if baseline_result != packed_result:
-            fail(f"{case['id']}: baseline and packed execution differ")
-        attempts.append({"baseline": baseline_result, "packed": packed_result})
-    adb("shell", "rm", "-rf", remote_dir)
-    return attempts
+    try:
+        if runner is None:
+            adb("push", str(baseline), f"{remote_dir}/baseline")
+            adb("push", str(packed), f"{remote_dir}/packed")
+            adb("shell", "chmod", "700", f"{remote_dir}/baseline", f"{remote_dir}/packed")
+            baseline_cmd = "./baseline"
+            packed_cmd = "./packed"
+        else:
+            adb("push", str(runner), f"{remote_dir}/runner")
+            adb("push", str(baseline), f"{remote_dir}/baseline.so")
+            adb("push", str(packed), f"{remote_dir}/packed.so")
+            adb("shell", "chmod", "700", f"{remote_dir}/runner")
+            baseline_cmd = "./runner ./baseline.so"
+            packed_cmd = "./runner ./packed.so"
+        attempts = []
+        for _ in range(3):
+            baseline_result = remote_result(remote_dir, baseline_cmd, capture_aapcs64=capture_aapcs64)
+            packed_result = remote_result(remote_dir, packed_cmd, capture_aapcs64=capture_aapcs64)
+            if baseline_result != packed_result:
+                fail(f"{case['id']}: baseline and packed execution differ")
+            attempts.append({"baseline": baseline_result, "packed": packed_result})
+        return attempts
+    finally:
+        try:
+            adb("shell", "rm", "-rf", remote_dir)
+        except RuntimeError as exc:
+            print(f"warning: could not clean remote evidence directory {remote_dir}: {exc}",
+                  file=sys.stderr)
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="run VMPackerGO 85-demo differential matrix on one physical device")

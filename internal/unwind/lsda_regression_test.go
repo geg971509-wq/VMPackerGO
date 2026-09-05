@@ -17,3 +17,35 @@ func TestParseLSDARejectsTruncatedHeaderAfterEncodedLPStart(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestParseLSDAMetadataRejectsExtremeNegativeFilter(t *testing.T) {
+	data := append([]byte{}, []byte{
+		0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x7f,
+		0x00,
+	}...)
+	lsda := &LSDA{
+		CallSites:    []CallSite{{Action: 1}},
+		ActionChains: map[uint64][]ActionRecord{},
+		TypeInfos:    map[uint64]TypeInfo{},
+		TypeEncoding: PEAbsptr,
+	}
+	if err := parseLSDAMetadata(data, 0, 0, 2, 0, lsda, binary.LittleEndian, 8); err == nil {
+		t.Fatal("extreme negative LSDA filter was accepted")
+	}
+}
+
+func TestParseLSDAMetadataRejectsExtremeTypeIndex(t *testing.T) {
+	data := []byte{
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
+		0x00,
+	}
+	lsda := &LSDA{
+		CallSites:    []CallSite{{Action: 1}},
+		ActionChains: map[uint64][]ActionRecord{},
+		TypeInfos:    map[uint64]TypeInfo{},
+		TypeEncoding: PEAbsptr,
+	}
+	if err := parseLSDAMetadata(data, 0, 0, len(data), 0, lsda, binary.LittleEndian, 8); err == nil {
+		t.Fatal("extreme LSDA type index was accepted")
+	}
+}

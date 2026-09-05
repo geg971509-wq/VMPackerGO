@@ -223,7 +223,7 @@ func TestTokenEntryPreservesCallerContinuationAcrossPackedTail(t *testing.T) {
 		"paciasp",
 		"stp x9, x10, [sp, #80]",
 		"bl vm_entry_token_inner",
-		"ldp x29, x30, [sp], #96",
+		"ldp x29, x30, [sp], #256",
 		"autiasp",
 		"ret",
 	} {
@@ -234,7 +234,7 @@ func TestTokenEntryPreservesCallerContinuationAcrossPackedTail(t *testing.T) {
 	if strings.Index(entry, "mov x10, x30") > strings.Index(entry, "paciasp") {
 		t.Fatal("token entry captures caller LR only after signing its own return address")
 	}
-	if strings.Index(entry, "ldp x29, x30, [sp], #96") > strings.Index(entry, "autiasp") {
+	if strings.Index(entry, "ldp x29, x30, [sp], #256") > strings.Index(entry, "autiasp") {
 		t.Fatal("token entry authenticates before restoring its signed return address")
 	}
 }

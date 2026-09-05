@@ -64,6 +64,7 @@ type elfMetadata struct {
 	hasDynamic  bool
 	hasExecLoad bool
 	hasInterp   bool
+	interpreter string
 	hasNote     bool
 	loads       []loadMapping
 	sections    []sectionMetadata
@@ -201,6 +202,7 @@ func parseELFMetadata(input []byte, mode AndroidMode) (*elfMetadata, error) {
 				return nil, fmt.Errorf("PT_INTERP %d is empty or not NUL-terminated", i)
 			}
 			meta.hasInterp = true
+			meta.interpreter = string(input[int(fileOff) : int(end)-1])
 		case elf.PT_NOTE:
 			meta.hasNote = true
 		}
@@ -287,7 +289,7 @@ func parseELFMetadata(input []byte, mode AndroidMode) (*elfMetadata, error) {
 			meta.sections[i].name = f.Sections[i].Name
 		}
 	}
-	kind, warnings, err := classifyAnalyzedTarget(fileType, mode, meta.hasDynamic, meta.hasExecLoad, meta.hasInterp)
+	kind, warnings, err := classifyAnalyzedTarget(fileType, mode, meta.hasDynamic, meta.hasExecLoad, meta.hasInterp, meta.interpreter)
 	if err != nil {
 		f.Close()
 		return nil, err
@@ -297,9 +299,12 @@ func parseELFMetadata(input []byte, mode AndroidMode) (*elfMetadata, error) {
 	return meta, nil
 }
 
-func classifyAnalyzedTarget(fileType elf.Type, mode AndroidMode, hasDynamic, hasExecLoad, hasInterp bool) (TargetKind, []string, error) {
+func classifyAnalyzedTarget(fileType elf.Type, mode AndroidMode, hasDynamic, hasExecLoad, hasInterp bool, interpreter string) (TargetKind, []string, error) {
 	if !hasExecLoad {
 		return "", nil, fmt.Errorf("Android target requires an executable PT_LOAD segment")
+	}
+	if hasInterp && !isAndroidInterpreter(interpreter) {
+		return "", nil, fmt.Errorf("PT_INTERP %q is not an Android linker", interpreter)
 	}
 	var kind TargetKind
 	var warnings []string
@@ -336,6 +341,10 @@ func classifyAnalyzedTarget(fileType elf.Type, mode AndroidMode, hasDynamic, has
 		return "", nil, fmt.Errorf("unsupported mode %q (supported: auto, so, native)", mode)
 	}
 	return kind, warnings, nil
+}
+
+func isAndroidInterpreter(path string) bool {
+	return path == "/system/bin/linker" || path == "/system/bin/linker64"
 }
 
 func validateTableRange(name string, off, entsize, count, fileSize uint64) error {
