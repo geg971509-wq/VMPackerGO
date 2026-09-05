@@ -12,6 +12,10 @@ import (
 
 func (t *Translator) trADRP(instructions []vm.Instruction, idx int) (int, error) {
 	inst := instructions[idx]
+	if inst.Rd == vm.REG_XZR {
+		t.emitOp(vm.OpNop)
+		return 0, nil
+	}
 	rd, err := t.mapReg(inst.Rd)
 	if err != nil {
 		return 0, err
@@ -41,6 +45,10 @@ func (t *Translator) trADRP(instructions []vm.Instruction, idx int) (int, error)
 }
 
 func (t *Translator) trADR(inst vm.Instruction) (int, error) {
+	if inst.Rd == vm.REG_XZR {
+		t.emitOp(vm.OpNop)
+		return 0, nil
+	}
 	rd, err := t.mapReg(inst.Rd)
 	if err != nil {
 		return 0, err

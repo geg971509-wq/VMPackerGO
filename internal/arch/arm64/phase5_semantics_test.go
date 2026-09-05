@@ -93,6 +93,67 @@ func TestCBZDoesNotModifyNZCVAndCarriesWidth(t *testing.T) {
 	}
 }
 
+func TestXZROperandsNeverUseVMX16(t *testing.T) {
+	tests := []vm.Instruction{
+		{Op: int(MOVZ), Rd: vm.REG_XZR, Imm: 1, SF: true},
+		{Op: int(SBFM), Rd: vm.REG_XZR, Rn: vm.REG_XZR, Imm: 0, Shift: 31},
+		{Op: int(UBFM), Rd: vm.REG_XZR, Rn: vm.REG_XZR, Imm: 0, Shift: 31},
+		{Op: int(BFM), Rd: vm.REG_XZR, Rn: vm.REG_XZR, Imm: 0, Shift: 7},
+		{Op: int(EXTR), Rd: vm.REG_XZR, Rn: vm.REG_XZR, Rm: vm.REG_XZR, SF: true},
+		{Op: int(LDR_IMM), Rd: vm.REG_XZR, Rn: 1, SF: true},
+		{Op: int(LDP), Rd: vm.REG_XZR, Rm: vm.REG_XZR, Rn: 1, SF: true},
+		{Op: int(SMADDL), Rd: vm.REG_XZR, Rn: vm.REG_XZR, Rm: vm.REG_XZR},
+	}
+	for _, inst := range tests {
+		result := translateForPhase5(t, []vm.Instruction{inst})
+		if len(result.Unsupported) != 0 {
+			t.Fatalf("%s unsupported=%v", OpName(Op(inst.Op)), result.Unsupported)
+		}
+		ops, operands := translatedOps(t, result)
+		for i, op := range ops {
+			if op == vm.OpSVstore && len(operands[i]) == 1 && operands[i][0] == 16 {
+				t.Fatalf("%s writes the XZR placeholder through architectural X16", OpName(Op(inst.Op)))
+			}
+		}
+	}
+}
+
+func TestXZRConditionalBranchesAreConstant(t *testing.T) {
+	for _, tc := range []struct {
+		op     Op
+		wantOp vm.Opcode
+	}{
+		{CBZ, vm.OpJmp}, {CBNZ, vm.OpNop},
+		{TBZ, vm.OpJmp}, {TBNZ, vm.OpNop},
+	} {
+		result := translateForPhase5(t, []vm.Instruction{{Op: int(tc.op), Rd: vm.REG_XZR, Imm: 4, Shift: 0}})
+		if len(result.Unsupported) != 0 {
+			t.Fatalf("%s unsupported=%v", OpName(tc.op), result.Unsupported)
+		}
+		ops, _ := translatedOps(t, result)
+		if len(ops) < 2 || ops[0] != tc.wantOp {
+			t.Fatalf("%s ops=%v", OpName(tc.op), ops)
+		}
+	}
+}
+
+func TestRETRejectsXZRAndPreservesSelectedLinkRegister(t *testing.T) {
+	if err := validateInstructionPolicy(vm.Instruction{Op: int(RET), Rn: vm.REG_XZR}); err == nil {
+		t.Fatal("RET XZR was accepted")
+	}
+	if err := validateInstructionPolicy(vm.Instruction{Op: int(RET), Rn: 30}); err != nil {
+		t.Fatalf("RET X30 rejected: %v", err)
+	}
+	result := translateForPhase5(t, []vm.Instruction{{Op: int(RET), Rn: 5}})
+	if len(result.Unsupported) != 0 {
+		t.Fatalf("RET X5 unsupported=%v", result.Unsupported)
+	}
+	ops, operands := translatedOps(t, result)
+	if len(ops) < 1 || ops[0] != vm.OpRet || len(operands[0]) != 1 || operands[0][0] != 5 {
+		t.Fatalf("RET X5 translation ops=%v operands=%v", ops, operands)
+	}
+}
+
 func TestSystemSemanticsFailClosed(t *testing.T) {
 	tests := []vm.Instruction{
 		{Op: int(MRS), Rd: 0, Imm: 0x1234, SF: true},

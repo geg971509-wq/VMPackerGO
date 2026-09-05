@@ -23,7 +23,8 @@ import (
 // 模块文件:
 //   tr_alu.go       — 算术/逻辑/移动指令
 //   tr_bitfield.go  — 位域操作 (UBFM/SBFM/EXTR)
-//   tr_loadstore.go — 加载/存储 (LDR/STR/STP/LDP)
+//   tr_stack.go     — 栈模式算术、加载/存储和条件操作
+//   tr_atomic.go    — 原子操作桥接
 //   tr_branch.go    — 分支/条件选择 (B/BL/CBZ/CSEL)
 //   tr_special.go   — 特殊指令 (ADRP/ADR)
 // ============================================================
@@ -462,7 +463,7 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	case BR:
 		return 0, t.trBR(inst)
 	case RET:
-		t.emitOp(vm.OpRet, 0)
+		t.emitOp(vm.OpRet, byte(inst.Rn))
 		return 0, nil
 
 	// ========== 条件选择 ==========

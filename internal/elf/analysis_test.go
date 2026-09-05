@@ -941,6 +941,26 @@ func TestAnalyzeExplicitRanges(t *testing.T) {
 	}
 }
 
+func TestExplicitRangeRejectsConditionalTargetsAtOrBeyondEnd(t *testing.T) {
+	const entry = 0x1200
+	cases := map[string]uint32{
+		"b.cond": encodeConditional(entry, entry+12),
+		"cbz":    encodeCompareBranch(0x34000000, entry, entry+12),
+		"cbnz":   encodeCompareBranch(0x35000000, entry, entry+12),
+		"tbz":    encodeTestBranch(0x36000000, entry, entry+12),
+		"tbnz":   encodeTestBranch(0x37000000, entry, entry+12),
+	}
+	for name, branch := range cases {
+		t.Run(name, func(t *testing.T) {
+			fixture := buildELFFixture(fixtureOptions{dynamic: true, code: []uint32{branch, 0xD503201F, 0xD65F03C0}})
+			_, err := analyzeFixture(t, fixture, addressSelection(entry, entry+12), "auto")
+			if err == nil || !strings.Contains(err.Error(), "conditional branch") || !strings.Contains(err.Error(), "outside explicit range") {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
 func encodeBranch(op uint32, from, to uint64) uint32 {
 	delta := int64(to) - int64(from)
 	return op | uint32((delta>>2)&0x03ffffff)
@@ -949,6 +969,16 @@ func encodeBranch(op uint32, from, to uint64) uint32 {
 func encodeConditional(from, to uint64) uint32 {
 	delta := int64(to) - int64(from)
 	return 0x54000000 | uint32((delta>>2)&0x7ffff)<<5
+}
+
+func encodeCompareBranch(op uint32, from, to uint64) uint32 {
+	delta := int64(to) - int64(from)
+	return op | uint32((delta>>2)&0x7ffff)<<5
+}
+
+func encodeTestBranch(op uint32, from, to uint64) uint32 {
+	delta := int64(to) - int64(from)
+	return op | uint32((delta>>2)&0x3fff)<<5
 }
 
 func TestCFGInference(t *testing.T) {

@@ -95,6 +95,7 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm16"]
 			inst.Shift = int(f["hw"] * 16)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -103,6 +104,7 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm16"]
 			inst.Shift = int(f["hw"] * 16)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -111,6 +113,7 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm16"]
 			inst.Shift = int(f["hw"] * 16)
+			xzrReplace(&inst.Rd)
 		},
 	},
 
@@ -122,6 +125,8 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["immr"]
 			inst.Shift = int(f["imms"])
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -130,6 +135,8 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["immr"]
 			inst.Shift = int(f["imms"])
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -139,6 +146,8 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["immr"]        // immr
 			inst.Shift = int(f["imms"]) // imms
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 
@@ -149,6 +158,8 @@ var dpImmPatterns = []InstrPattern{
 		Fields: []FieldDef{fSF, fRm16, {Name: "imms", Hi: 15, Lo: 10}, fRn, fRd},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imms"]
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 
@@ -161,6 +172,7 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			imm := (f["immhi"] << 2) | f["immlo"]
 			inst.Imm = SignExtend(uint32(imm), 21)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -169,6 +181,7 @@ var dpImmPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			imm := (f["immhi"] << 2) | f["immlo"]
 			inst.Imm = SignExtend(uint32(imm), 21) << 12
+			xzrReplace(&inst.Rd)
 		},
 	},
 }
@@ -186,6 +199,7 @@ func postBitmaskImm(f map[string]int64, inst *vm.Instruction) {
 	}
 	inst.Imm = int64(imm)
 	xzrReplace(&inst.Rn) // Rn=31 → XZR (逻辑立即数组中 Rn 始终是 XZR 而非 SP)
+	xzrReplace(&inst.Rd)
 }
 
 // postBitmaskImmANDS ANDS(imm) 专用：Rn=31→XZR, Rd=31→XZR (TST alias)
