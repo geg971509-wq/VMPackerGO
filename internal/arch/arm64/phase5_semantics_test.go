@@ -120,12 +120,11 @@ func TestXZROperandsNeverUseVMX16(t *testing.T) {
 
 func TestXZRConditionalBranchesAreConstant(t *testing.T) {
 	for _, tc := range []struct {
-		op       Op
-		wantOp   vm.Opcode
-		wantJump bool
+		op     Op
+		wantOp vm.Opcode
 	}{
-		{CBZ, vm.OpJmp, true}, {CBNZ, vm.OpNop, false},
-		{TBZ, vm.OpJmp, true}, {TBNZ, vm.OpNop, false},
+		{CBZ, vm.OpJmp}, {CBNZ, vm.OpNop},
+		{TBZ, vm.OpJmp}, {TBNZ, vm.OpNop},
 	} {
 		result := translateForPhase5(t, []vm.Instruction{{Op: int(tc.op), Rd: vm.REG_XZR, Imm: 4, Shift: 0}})
 		if len(result.Unsupported) != 0 {
