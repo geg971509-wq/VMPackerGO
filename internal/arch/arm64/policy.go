@@ -50,8 +50,9 @@ func buildInstructionRules() map[Op]instructionRule {
 		validateImmediateAddressing)
 	allow([]Op{LDR_REG, LDRB_REG, LDRH_REG, LDRSB_REG, LDRSH_REG, LDRSW_REG,
 		STR_REG, STRB_REG, STRH_REG}, validateRegisterOffset)
-	allow([]Op{B, B_COND, CBZ, CBNZ, TBZ, TBNZ, BL, RET, CSEL, CSINC, CSINV,
+	allow([]Op{B, B_COND, CBZ, CBNZ, TBZ, TBNZ, BL, CSEL, CSINC, CSINV,
 		CSNEG, CCMP_REG, CCMP_IMM, CCMN_REG, CCMN_IMM}, validateConditional)
+	allow([]Op{RET}, validateReturn)
 	allow([]Op{BLR, BR}, validateNativeBranch)
 	allow([]Op{LD1_16B, ST1_16B}, validateSIMDStructureTransfer)
 	allow([]Op{ADR, ADRP, LDR_LIT}, nil)
@@ -115,6 +116,13 @@ func validateBarrier(inst vm.Instruction) error {
 func validateNativeBranch(inst vm.Instruction) error {
 	if inst.Rn < 0 || inst.Rn > 30 {
 		return fmt.Errorf("native branch register X%d is invalid", inst.Rn)
+	}
+	return nil
+}
+
+func validateReturn(inst vm.Instruction) error {
+	if inst.Rn < 0 || inst.Rn > 30 {
+		return fmt.Errorf("return register X%d is invalid", inst.Rn)
 	}
 	return nil
 }

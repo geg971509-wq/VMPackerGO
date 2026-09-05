@@ -132,11 +132,7 @@ func (t *Translator) trStackAluRegFlags(inst vm.Instruction, sOp vm.Opcode, setF
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -174,11 +170,7 @@ func (t *Translator) trStackAluImmFlags(inst vm.Instruction, sOp vm.Opcode, setF
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -194,14 +186,14 @@ func (t *Translator) trStackUnary(inst vm.Instruction, sOp vm.Opcode) error {
 		return err
 	}
 
-	t.sVload(rn)
+	t.pushRegOrZero(inst.Rn, rn)
 	t.emitOp(sOp)
 
 	if !inst.SF {
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -221,7 +213,7 @@ func (t *Translator) trStackMov(inst vm.Instruction) error {
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -238,7 +230,7 @@ func (t *Translator) trStackMovN(inst vm.Instruction) error {
 		val &= 0xFFFFFFFF
 	}
 	t.sPushImm(val)
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -255,7 +247,7 @@ func (t *Translator) trStackMovK(inst vm.Instruction) error {
 	mask := uint64(0xFFFF) << hw // 要清除的 16-bit 区域
 
 	// Rd = (Rd & ~mask) | (imm << hw)
-	t.sVload(rd)          // push Rd
+	t.pushRegOrZero(inst.Rd, rd) // push Rd (or zero for XZR)
 	t.sPushImm(^mask)     // push ~mask
 	t.emitOp(vm.OpSAnd)   // Rd & ~mask
 	t.sPushImm(imm << hw) // push (imm << hw)
@@ -265,7 +257,7 @@ func (t *Translator) trStackMovK(inst vm.Instruction) error {
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -360,11 +352,6 @@ func (t *Translator) trStackLoad(inst vm.Instruction) error {
 		// post-index: load [Rn], then Rn += imm
 		t.sVload(rn)
 		t.emitOp(sLdOp)
-		if inst.Rd != vm.REG_XZR {
-			t.sVstore(rd)
-		} else {
-			t.sDrop()
-		}
 		emitWriteback()
 		goto signext
 	} else {
@@ -401,17 +388,13 @@ func (t *Translator) trStackLoad(inst vm.Instruction) error {
 		t.emitOp(vm.OpSAsr)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 
 signext:
-	// post-index path: rd already stored, handle sign extension
+	// post-index path: the loaded value remains on the stack while writeback
+	// updates Rn, so extension and destination handling stay XZR-safe.
 	if op == LDRSW_IMM || op == LDRSB_IMM || op == LDRSH_IMM {
-		t.sVload(rd)
 		if op == LDRSW_IMM {
 			t.emitOp(vm.OpSSext32)
 		}
@@ -427,8 +410,8 @@ signext:
 			t.sPushImm32(48)
 			t.emitOp(vm.OpSAsr)
 		}
-		t.sVstore(rd)
 	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -528,17 +511,27 @@ func (t *Translator) trStackMovReg(inst vm.Instruction) error {
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
 // trStackCBZ 翻译 CBZ/CBNZ (栈模式)
 func (t *Translator) trStackCBZ(inst vm.Instruction, isZero bool) error {
 	target := inst.Offset + int(inst.Imm)
+	if target < 0 || target > t.funcSize {
+		return fmt.Errorf("CBZ/CBNZ target 0x%X is outside function range [0, 0x%X)", target, t.funcSize)
+	}
+	if inst.Rd == vm.REG_XZR {
+		if !isZero {
+			t.emitOp(vm.OpNop)
+			return nil
+		}
+		t.emitOp(vm.OpJmp)
+		fixPos := t.pos()
+		t.emitU32(0)
+		t.fixups = append(t.fixups, branchFixup{vmOffset: fixPos, arm64Target: target})
+		return nil
+	}
 
 	rd, err := t.mapReg(inst.Rd)
 	if err != nil {
@@ -605,11 +598,7 @@ func (t *Translator) trStackMADD(inst vm.Instruction, isSub bool) error {
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -689,7 +678,8 @@ func (t *Translator) trStackCSEL(inst vm.Instruction) error {
 
 // ---- 辅助工具函数 ----
 
-// mapReg3 映射 Rd/Rn/Rm 三寄存器 (XZR→16 但不再有冲突顾虑)
+// mapReg3 maps Rd/Rn/Rm. XZR remains a semantic marker; callers must use
+// pushRegOrZero/storeRegOrDrop when an operand can name it.
 func (t *Translator) mapReg3(inst vm.Instruction) (byte, byte, byte, error) {
 	rd, err := t.mapReg(inst.Rd)
 	if err != nil {
@@ -713,6 +703,16 @@ func (t *Translator) pushRegOrZero(arm64Reg int, vmReg byte) {
 	} else {
 		t.sVload(vmReg)
 	}
+}
+
+// storeRegOrDrop stores the stack result unless the architectural destination
+// is XZR, whose writes are discarded and must never touch a real VM register.
+func (t *Translator) storeRegOrDrop(arm64Reg int, vmReg byte) {
+	if arm64Reg == vm.REG_XZR {
+		t.sDrop()
+		return
+	}
+	t.sVstore(vmReg)
 }
 
 // emitShiftOnStack 在栈顶值上执行移位操作 (用于 shifted register operands)
@@ -901,13 +901,13 @@ func (t *Translator) trStackLDP(inst vm.Instruction) error {
 		// Rt1 = [Rn]
 		t.sVload(rn)
 		t.emitOp(sLdOp)
-		t.sVstore(rt1)
+		t.storeRegOrDrop(inst.Rd, rt1)
 		// Rt2 = [Rn+stride]
 		t.sVload(rn)
 		t.sPushImm(uint64(stride))
 		t.emitOp(vm.OpSAdd)
 		t.emitOp(sLdOp)
-		t.sVstore(rt2)
+		t.storeRegOrDrop(inst.Rm, rt2)
 	} else {
 		loadImm := inst.Imm
 		if inst.WB == 1 {
@@ -931,14 +931,14 @@ func (t *Translator) trStackLDP(inst vm.Instruction) error {
 
 		// load Rt1 from addr_base
 		t.emitOp(sLdOp)
-		t.sVstore(rt1)
+		t.storeRegOrDrop(inst.Rd, rt1)
 
 		// stack now has: [addr_base]
 		// load Rt2 from addr_base + stride
 		t.sPushImm(uint64(stride))
 		t.emitOp(vm.OpSAdd)
 		t.emitOp(sLdOp)
-		t.sVstore(rt2)
+		t.storeRegOrDrop(inst.Rm, rt2)
 
 		if inst.WB == 1 {
 			emitWriteback()
@@ -983,7 +983,7 @@ func (t *Translator) trStackLoadReg(inst vm.Instruction) error {
 	}
 
 	t.emitOp(sLdOp)
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1060,11 +1060,7 @@ func (t *Translator) trStackBitLogicalNot(inst vm.Instruction, sOp vm.Opcode, se
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1142,11 +1138,7 @@ func (t *Translator) trStackAddSubExt(inst vm.Instruction, sOp vm.Opcode, setFla
 		t.emitOp(vm.OpSTrunc32)
 	}
 
-	if inst.Rd == vm.REG_XZR {
-		t.sDrop()
-	} else {
-		t.sVstore(rd)
-	}
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1182,65 +1174,8 @@ func abs64(v int64) int64 {
 	return v
 }
 
-// regToStackOp 将 register-based opcode 映射到 stack-based opcode
-func regToStackOp(regOp vm.Opcode) (vm.Opcode, bool) {
-	switch regOp {
-	case vm.OpAdd:
-		return vm.OpSAdd, true
-	case vm.OpSub:
-		return vm.OpSSub, true
-	case vm.OpMul:
-		return vm.OpSMul, true
-	case vm.OpXor:
-		return vm.OpSXor, true
-	case vm.OpAnd:
-		return vm.OpSAnd, true
-	case vm.OpOr:
-		return vm.OpSOr, true
-	case vm.OpShl:
-		return vm.OpSShl, true
-	case vm.OpShr:
-		return vm.OpSShr, true
-	case vm.OpAsr:
-		return vm.OpSAsr, true
-	case vm.OpRor:
-		return vm.OpSRor, true
-	case vm.OpUmulh:
-		return vm.OpSUmulh, true
-	default:
-		return 0, false
-	}
-}
-
-// immToStackOp 将 imm-based opcode 映射到 stack-based opcode
-func immToStackOp(immOp vm.Opcode) (vm.Opcode, bool) {
-	switch immOp {
-	case vm.OpAddImm:
-		return vm.OpSAdd, true
-	case vm.OpSubImm:
-		return vm.OpSSub, true
-	case vm.OpMulImm:
-		return vm.OpSMul, true
-	case vm.OpXorImm:
-		return vm.OpSXor, true
-	case vm.OpAndImm:
-		return vm.OpSAnd, true
-	case vm.OpOrImm:
-		return vm.OpSOr, true
-	case vm.OpShlImm:
-		return vm.OpSShl, true
-	case vm.OpShrImm:
-		return vm.OpSShr, true
-	case vm.OpAsrImm:
-		return vm.OpSAsr, true
-	default:
-		return 0, false
-	}
-}
-
 // ============================================================
-// 以下是从旧 register-based 翻译器迁移到栈模式的函数
-// 完成后可删除 pickTemp/pickTemp2 及 tr_loadstore.go / tr_alu.go / tr_bitfield.go 中的旧版本
+// 栈模式加载/存储扩展路径
 // ============================================================
 
 // trStackLoadRegSigned 翻译 LDRSB/LDRSH/LDRSW (register offset) — 栈模式
@@ -1291,7 +1226,7 @@ func (t *Translator) trStackLoadRegSigned(inst vm.Instruction) error {
 		t.emitOp(vm.OpSAsr)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1328,98 +1263,6 @@ func (t *Translator) emitRegisterOffsetAddress(inst vm.Instruction, rn, rm byte)
 	return nil
 }
 
-// trStackLdadd 翻译 LDADD — 原子加 (单线程简化) — 栈模式
-// 语义: old = Mem[Rn]; Mem[Rn] = old + Rs; Rt = old
-func (t *Translator) trStackLdadd(inst vm.Instruction) error {
-	rn, err := t.mapReg(inst.Rn)
-	if err != nil {
-		return err
-	}
-	rt, err := t.mapReg(inst.Rd) // Rt: receives old value
-	if err != nil {
-		return err
-	}
-	rs, err := t.mapReg(inst.Rm) // Rs: addend
-	if err != nil {
-		return err
-	}
-
-	var sLdOp, sStOp vm.Opcode
-	if inst.Shift <= 4 {
-		sLdOp = vm.OpSLd32
-		sStOp = vm.OpSSt32
-	} else {
-		sLdOp = vm.OpSLd64
-		sStOp = vm.OpSSt64
-	}
-
-	// SSt pops addr(top), val(second) → Mem[addr] = val
-	// SLd pops addr(top) → pushes Mem[addr]
-
-	// 1) load old value
-	t.sVload(rn)    // push addr
-	t.emitOp(sLdOp) // pop addr, push old = Mem[addr]
-	// stack: [old]
-
-	// 2) store old → Rt
-	t.emitOp(vm.OpSDup) // dup old
-	t.sVstore(rt)       // Rt = old
-	// stack: [old]
-
-	// 3) compute new = old + Rs
-	t.sVload(rs)        // push Rs
-	t.emitOp(vm.OpSAdd) // new = old + Rs
-	// stack: [new]
-
-	// 4) store new → Mem[Rn]
-	t.sVload(rn)    // push addr
-	t.emitOp(sStOp) // Mem[addr] = new, pops both
-	// stack: []
-
-	return nil
-}
-
-// trStackCas 翻译 CAS — 比较并交换 (单线程简化) — 栈模式
-// 语义: old = Mem[Rn]; if old == Xs then Mem[Rn] = Xt; Xs = old
-// 单线程: 总是成功, 简化为: old=[Rn]; [Rn]=Xt; Rs=old
-func (t *Translator) trStackCas(inst vm.Instruction) error {
-	rn, err := t.mapReg(inst.Rn)
-	if err != nil {
-		return err
-	}
-	rt, err := t.mapReg(inst.Rd) // Rt: new value to store
-	if err != nil {
-		return err
-	}
-	rs, err := t.mapReg(inst.Rm) // Rs: compare value, receives old
-	if err != nil {
-		return err
-	}
-
-	var sLdOp, sStOp vm.Opcode
-	if inst.Shift <= 4 {
-		sLdOp = vm.OpSLd32
-		sStOp = vm.OpSSt32
-	} else {
-		sLdOp = vm.OpSLd64
-		sStOp = vm.OpSSt64
-	}
-
-	// Step 1: old = [Rn]
-	t.sVload(rn)
-	t.emitOp(sLdOp) // old on stack
-
-	// Step 2: store Rt → [Rn]
-	t.sVload(rt)    // push new value
-	t.sVload(rn)    // push addr
-	t.emitOp(sStOp) // Mem[addr] = new
-
-	// Step 3: Rs = old (still on stack from step 1)
-	t.sVstore(rs)
-
-	return nil
-}
-
 // trStackLdpsw 翻译 LDPSW — Load pair of signed words — 栈模式
 // 加载两个 32-bit 值并 sign-extend 到 64-bit
 func (t *Translator) trStackLdpsw(inst vm.Instruction) error {
@@ -1451,14 +1294,12 @@ func (t *Translator) trStackLdpsw(inst vm.Instruction) error {
 		}
 	}
 
-	sextW := func(reg byte) {
+	sextW := func() {
 		// sign-extend 32→64: SHL 32, ASR 32
-		t.sVload(reg)
 		t.sPushImm32(32)
 		t.emitOp(vm.OpSShl)
 		t.sPushImm32(32)
 		t.emitOp(vm.OpSAsr)
-		t.sVstore(reg)
 	}
 
 	if inst.WB == 3 { // pre-index
@@ -1466,13 +1307,15 @@ func (t *Translator) trStackLdpsw(inst vm.Instruction) error {
 		// load [Rn+0]
 		t.sVload(rn)
 		t.emitOp(vm.OpSLd32)
-		t.sVstore(rt1)
+		sextW()
+		t.storeRegOrDrop(inst.Rd, rt1)
 		// load [Rn+4]
 		t.sVload(rn)
 		t.sPushImm(uint64(stride))
 		t.emitOp(vm.OpSAdd)
 		t.emitOp(vm.OpSLd32)
-		t.sVstore(rt2)
+		sextW()
+		t.storeRegOrDrop(inst.Rm, rt2)
 	} else {
 		loadImm := inst.Imm
 		if inst.WB == 1 {
@@ -1482,26 +1325,29 @@ func (t *Translator) trStackLdpsw(inst vm.Instruction) error {
 		// 因为 VLOAD(rn) 在栈上复制了值，后续 VSTORE(rt1) 不影响栈上的地址
 		t.sVload(rn)
 		if loadImm != 0 {
-			t.sPushImm(uint64(loadImm))
-			t.emitOp(vm.OpSAdd)
+			t.sPushImm(uint64(abs64(loadImm)))
+			if loadImm > 0 {
+				t.emitOp(vm.OpSAdd)
+			} else {
+				t.emitOp(vm.OpSSub)
+			}
 		}
 		t.emitOp(vm.OpSDup) // dup addr for second load
 		t.emitOp(vm.OpSLd32)
-		t.sVstore(rt1)
+		sextW()
+		t.storeRegOrDrop(inst.Rd, rt1)
 		// [addr still on stack] + stride
 		t.sPushImm(uint64(stride))
 		t.emitOp(vm.OpSAdd)
 		t.emitOp(vm.OpSLd32)
-		t.sVstore(rt2)
+		sextW()
+		t.storeRegOrDrop(inst.Rm, rt2)
 
 		if inst.WB == 1 {
 			emitWriteback(inst.Imm)
 		}
 	}
 
-	// Sign-extend both 32→64
-	sextW(rt1)
-	sextW(rt2)
 	return nil
 }
 
@@ -1534,14 +1380,14 @@ func (t *Translator) trStackSMADDL(inst vm.Instruction, isSub bool) error {
 	t.pushRegOrZero(raIdx, ra)
 
 	// SEXT(Wn): SHL 32, ASR 32
-	t.sVload(rn)
+	t.pushRegOrZero(inst.Rn, rn)
 	t.sPushImm32(32)
 	t.emitOp(vm.OpSShl)
 	t.sPushImm32(32)
 	t.emitOp(vm.OpSAsr)
 
 	// SEXT(Wm): SHL 32, ASR 32
-	t.sVload(rm)
+	t.pushRegOrZero(inst.Rm, rm)
 	t.sPushImm32(32)
 	t.emitOp(vm.OpSShl)
 	t.sPushImm32(32)
@@ -1559,7 +1405,7 @@ func (t *Translator) trStackSMADDL(inst vm.Instruction, isSub bool) error {
 		t.emitOp(vm.OpSAdd)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1592,11 +1438,11 @@ func (t *Translator) trStackUMADDL(inst vm.Instruction, isSub bool) error {
 	t.pushRegOrZero(raIdx, ra)
 
 	// ZEXT(Wn): trunc32 on stack
-	t.sVload(rn)
+	t.pushRegOrZero(inst.Rn, rn)
 	t.emitOp(vm.OpSTrunc32)
 
 	// ZEXT(Wm): trunc32 on stack
-	t.sVload(rm)
+	t.pushRegOrZero(inst.Rm, rm)
 	t.emitOp(vm.OpSTrunc32)
 
 	// multiply
@@ -1609,7 +1455,7 @@ func (t *Translator) trStackUMADDL(inst vm.Instruction, isSub bool) error {
 		t.emitOp(vm.OpSAdd)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1647,7 +1493,7 @@ func (t *Translator) trStackBFM(inst vm.Instruction) error {
 	mask := uint64((1 << width) - 1)
 
 	// --- 栈操作: extracted = (Rn >> srcLSB) & mask ---
-	t.sVload(rn)
+	t.pushRegOrZero(inst.Rn, rn)
 	if srcLSB > 0 {
 		t.sPushImm32(srcLSB)
 		t.emitOp(vm.OpSShr)
@@ -1668,7 +1514,7 @@ func (t *Translator) trStackBFM(inst vm.Instruction) error {
 	if !inst.SF {
 		clearMask &= 0xFFFFFFFF
 	}
-	t.sVload(rd)
+	t.pushRegOrZero(inst.Rd, rd)
 	t.sPushImm(clearMask)
 	t.emitOp(vm.OpSAnd)
 
@@ -1678,7 +1524,7 @@ func (t *Translator) trStackBFM(inst vm.Instruction) error {
 	if !inst.SF {
 		t.emitOp(vm.OpSTrunc32)
 	}
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1706,19 +1552,19 @@ func (t *Translator) trStackEXTR(inst vm.Instruction) error {
 
 	if inst.Rn == inst.Rm {
 		// ROR alias: 栈模式
-		t.sVload(rn)
+		t.pushRegOrZero(inst.Rn, rn)
 		t.sPushImm32(lsb)
 		t.sPushImm32(regSize)
 		t.emitOp(vm.OpSRor)
 	} else {
 		// General EXTR: (Rm >> lsb) | (Rn << (regSize-lsb))
 		// Part 1: Rm >> lsb
-		t.sVload(rm)
+		t.pushRegOrZero(inst.Rm, rm)
 		t.sPushImm32(lsb)
 		t.emitOp(vm.OpSShr)
 
 		// Part 2: Rn << (regSize-lsb)
-		t.sVload(rn)
+		t.pushRegOrZero(inst.Rn, rn)
 		t.sPushImm32(regSize - lsb)
 		t.emitOp(vm.OpSShl)
 
@@ -1729,7 +1575,7 @@ func (t *Translator) trStackEXTR(inst vm.Instruction) error {
 	if !inst.SF {
 		t.emitOp(vm.OpSTrunc32)
 	}
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1755,29 +1601,29 @@ func (t *Translator) trStackUBFM(inst vm.Instruction) error {
 	switch {
 	case imms == regSize-1:
 		// LSR
-		t.sVload(rn)
+		t.pushRegOrZero(inst.Rn, rn)
 		t.sPushImm32(immr)
 		t.emitOp(vm.OpSShr)
 	case imms+1 == immr:
 		// LSL
-		t.sVload(rn)
+		t.pushRegOrZero(inst.Rn, rn)
 		t.sPushImm32(regSize - immr)
 		t.emitOp(vm.OpSShl)
 	case imms == 7 && immr == 0:
 		// UXTB
-		t.sVload(rn)
+		t.pushRegOrZero(inst.Rn, rn)
 		t.sPushImm(0xFF)
 		t.emitOp(vm.OpSAnd)
 	case imms == 15 && immr == 0:
 		// UXTH
-		t.sVload(rn)
+		t.pushRegOrZero(inst.Rn, rn)
 		t.sPushImm(0xFFFF)
 		t.emitOp(vm.OpSAnd)
 	default:
 		if imms >= immr {
 			// UBFX: (Rn >> immr) & mask
 			width := imms - immr + 1
-			t.sVload(rn)
+			t.pushRegOrZero(inst.Rn, rn)
 			t.sPushImm32(immr)
 			t.emitOp(vm.OpSShr)
 			mask := uint64((1 << width) - 1)
@@ -1788,7 +1634,7 @@ func (t *Translator) trStackUBFM(inst vm.Instruction) error {
 			width := imms + 1
 			shift := regSize - immr
 			mask := uint64((1 << width) - 1)
-			t.sVload(rn)
+			t.pushRegOrZero(inst.Rn, rn)
 			t.sPushImm(mask)
 			t.emitOp(vm.OpSAnd)
 			t.sPushImm32(shift)
@@ -1799,7 +1645,7 @@ func (t *Translator) trStackUBFM(inst vm.Instruction) error {
 	if !inst.SF {
 		t.emitOp(vm.OpSTrunc32)
 	}
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }
 
@@ -1841,6 +1687,6 @@ func (t *Translator) trStackLdrLiteral(inst vm.Instruction) error {
 		t.emitOp(vm.OpSAsr)
 	}
 
-	t.sVstore(rd)
+	t.storeRegOrDrop(inst.Rd, rd)
 	return nil
 }

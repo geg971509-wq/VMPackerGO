@@ -98,7 +98,7 @@ func (t *Translator) trOutlinedTailInline(raws []uint32) error {
 	}
 	// Original A64 semantics are tail B to helper followed by helper RET using
 	// the caller's existing LR. Inlined helper body + VM RET is equivalent.
-	t.emitOp(vm.OpRet, 0)
+	t.emitOp(vm.OpRet, 30)
 	return nil
 }
 
@@ -189,6 +189,17 @@ func (t *Translator) trTBZ(inst vm.Instruction, isZero bool) error {
 
 	if target < 0 || target > t.funcSize {
 		return fmt.Errorf("TBZ/TBNZ target 0x%X is outside function range [0, 0x%X)", target, t.funcSize)
+	}
+	if inst.Rd == vm.REG_XZR {
+		if !isZero {
+			t.emitOp(vm.OpNop)
+			return nil
+		}
+		t.emitOp(vm.OpJmp)
+		fixPos := t.pos()
+		t.emitU32(0)
+		t.fixups = append(t.fixups, branchFixup{vmOffset: fixPos, arm64Target: target})
+		return nil
 	}
 
 	rd, err := t.mapReg(inst.Rd)

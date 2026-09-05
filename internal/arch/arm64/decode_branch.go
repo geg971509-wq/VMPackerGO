@@ -29,6 +29,7 @@ var branchPatterns = []InstrPattern{
 		Fields: []FieldDef{fSF, {Name: "imm19", Hi: 23, Lo: 5, Signed: true}, fRd},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm19"] * 4
+			xzrReplace(&inst.Rd) // Rt=31 is WZR/XZR, never SP
 		},
 	},
 	{
@@ -36,6 +37,7 @@ var branchPatterns = []InstrPattern{
 		Fields: []FieldDef{fSF, {Name: "imm19", Hi: 23, Lo: 5, Signed: true}, fRd},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm19"] * 4
+			xzrReplace(&inst.Rd) // Rt=31 is WZR/XZR, never SP
 		},
 	},
 
@@ -52,6 +54,7 @@ var branchPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm14"] * 4
 			inst.Shift = int((f["b5"] << 5) | f["b40"])
+			xzrReplace(&inst.Rd) // Rt=31 is XZR, never SP
 		},
 	},
 	{
@@ -65,6 +68,7 @@ var branchPatterns = []InstrPattern{
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.Imm = f["imm14"] * 4
 			inst.Shift = int((f["b5"] << 5) | f["b40"])
+			xzrReplace(&inst.Rd) // Rt=31 is XZR, never SP
 		},
 	},
 
@@ -98,6 +102,9 @@ var branchPatterns = []InstrPattern{
 	{
 		Name: "RET", Mask: 0xFFFFFC1F, Value: 0xD65F0000, Op: RET,
 		Fields: []FieldDef{fRn},
+		Post: func(_ map[string]int64, inst *vm.Instruction) {
+			xzrReplace(&inst.Rn)
+		},
 	},
 
 	// ---- Supervisor Call ----

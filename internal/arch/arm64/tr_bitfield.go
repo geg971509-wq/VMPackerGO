@@ -29,18 +29,18 @@ func (t *Translator) trSBFM(inst vm.Instruction) error {
 	}
 
 	if imms == regSize-1 {
-		// ASR: 对于32-bit，先trunc32确保高32位为0，再用64-bit ASR
+		// ASR. Keep the source on the stack so XZR is treated as zero rather
+		// than being mapped onto a real VM register.
+		t.pushRegOrZero(inst.Rn, rn)
 		if !inst.SF {
-			// 先将源值符号扩展到64位：SHL 32, ASR 32 使bit31扩展到bit63
-			t.emitOp(vm.OpShlImm, rd, rn)
-			t.emitU32(32)
-			t.emitOp(vm.OpAsrImm, rd, rd)
-			t.emitU32(32 + immr)
-			t.trunc32(rd)
-		} else {
-			t.emitOp(vm.OpAsrImm, rd, rn)
-			t.emitU32(immr)
+			t.emitOp(vm.OpSSext32)
 		}
+		t.sPushImm32(immr)
+		t.emitOp(vm.OpSAsr)
+		if !inst.SF {
+			t.emitOp(vm.OpSTrunc32)
+		}
+		t.storeRegOrDrop(inst.Rd, rd)
 		return nil
 	}
 	if immr == 0 {
@@ -53,13 +53,15 @@ func (t *Translator) trSBFM(inst vm.Instruction) error {
 			// 32-bit: 先SHL到bit63位置，再ASR回来，最后trunc32
 			shiftAmt = 64 - (imms + 1)
 		}
-		t.emitOp(vm.OpShlImm, rd, rn)
-		t.emitU32(shiftAmt)
-		t.emitOp(vm.OpAsrImm, rd, rd)
-		t.emitU32(shiftAmt)
+		t.pushRegOrZero(inst.Rn, rn)
+		t.sPushImm32(shiftAmt)
+		t.emitOp(vm.OpSShl)
+		t.sPushImm32(shiftAmt)
+		t.emitOp(vm.OpSAsr)
 		if !inst.SF {
-			t.trunc32(rd)
+			t.emitOp(vm.OpSTrunc32)
 		}
+		t.storeRegOrDrop(inst.Rd, rd)
 		return nil
 	}
 	return fmt.Errorf("complex SBFM is unsupported (immr=%d, imms=%d)", immr, imms)

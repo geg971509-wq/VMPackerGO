@@ -162,10 +162,33 @@ func resolveSelection(input []byte, meta *elfMetadata, symbols *symbolIndex, req
 	if err := validateSelectionRange(meta, &selection); err != nil {
 		return Selection{}, err
 	}
+	if err := validateConditionalTargets(input, selection); err != nil {
+		return Selection{}, err
+	}
 	if err := rejectUnsupportedDirectTransfers(input, meta, symbols, selection); err != nil {
 		return Selection{}, err
 	}
 	return selection, nil
+}
+
+// validateConditionalTargets keeps every statically encoded conditional edge
+// inside the selected function. Explicit ranges bypass CFG inference, so this
+// check is the boundary that prevents a conditional target from escaping the
+// bytes that will actually be rewritten.
+func validateConditionalTargets(input []byte, selection Selection) error {
+	decoder := arm64.NewDecoder()
+	for address, off := selection.Address, selection.Offset; address < selection.End; address, off = address+4, off+4 {
+		raw := binary.LittleEndian.Uint32(input[off : off+4])
+		instruction := decoder.Decode(raw, int(address-selection.Address))
+		switch arm64.Op(instruction.Op) {
+		case arm64.B_COND, arm64.CBZ, arm64.CBNZ, arm64.TBZ, arm64.TBNZ:
+			target, ok := branchAddress(address, instruction.Imm)
+			if !ok || target < selection.Address || target >= selection.End || (target-selection.Address)%4 != 0 {
+				return fmt.Errorf("function %q conditional branch at 0x%X targets 0x%X outside explicit range [0x%X, 0x%X)", selection.Name, address, target, selection.Address, selection.End)
+			}
+		}
+	}
+	return nil
 }
 
 func validateSelectionRange(meta *elfMetadata, selection *Selection) error {

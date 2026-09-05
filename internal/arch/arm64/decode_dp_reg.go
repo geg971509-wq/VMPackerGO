@@ -170,14 +170,17 @@ var dpRegPatterns = []InstrPattern{
 	{
 		Name: "CLZ", Mask: 0x7FFFFC00, Value: 0x5AC01000, Op: CLZ,
 		Fields: []FieldDef{fSF, fRn, fRd},
+		Post:   postUnaryXZR,
 	},
 	{
 		Name: "CLS", Mask: 0x7FFFFC00, Value: 0x5AC01400, Op: CLS,
 		Fields: []FieldDef{fSF, fRn, fRd},
+		Post:   postUnaryXZR,
 	},
 	{
 		Name: "RBIT", Mask: 0x7FFFFC00, Value: 0x5AC00000, Op: RBIT,
 		Fields: []FieldDef{fSF, fRn, fRd},
+		Post:   postUnaryXZR,
 	},
 	{
 		// REV32 (64-bit): opcode2=000010, sf=1 → 0xDAC00800
@@ -186,6 +189,8 @@ var dpRegPatterns = []InstrPattern{
 		Fields: []FieldDef{fRn, fRd},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.SF = true // REV32 is 64-bit only
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -195,6 +200,8 @@ var dpRegPatterns = []InstrPattern{
 		Fields: []FieldDef{fRn, fRd},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.SF = false
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
@@ -202,11 +209,14 @@ var dpRegPatterns = []InstrPattern{
 		Fields: []FieldDef{fRn, fRd},
 		Post: func(f map[string]int64, inst *vm.Instruction) {
 			inst.SF = true
+			xzrReplace(&inst.Rn)
+			xzrReplace(&inst.Rd)
 		},
 	},
 	{
 		Name: "REV16", Mask: 0x7FFFFC00, Value: 0x5AC00400, Op: REV16,
 		Fields: []FieldDef{fSF, fRn, fRd},
+		Post:   postUnaryXZR,
 	},
 
 	// ---- Data processing (3-source): MUL/MADD/MSUB ----
@@ -372,6 +382,12 @@ var dpRegPatterns = []InstrPattern{
 		Fields: []FieldDef{fSF, {Name: "imm5", Hi: 20, Lo: 16}, {Name: "cond", Hi: 15, Lo: 12}, fRn, {Name: "nzcv", Hi: 3, Lo: 0}},
 		Post:   postCCMPImm,
 	},
+}
+
+// postUnaryXZR data-processing (1-source): Rd/Rn=31 → XZR.
+func postUnaryXZR(_ map[string]int64, inst *vm.Instruction) {
+	xzrReplace(&inst.Rd)
+	xzrReplace(&inst.Rn)
 }
 
 // postXZR3 逻辑/算术/条件选择(reg): Rd/Rn/Rm=31 → XZR
