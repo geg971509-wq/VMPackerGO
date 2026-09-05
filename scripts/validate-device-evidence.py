@@ -9,10 +9,14 @@ from pathlib import Path
 NDK_REVISION = "29.0.14206865"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+HEX16 = re.compile(r"^[0-9a-f]{16}$")
+AAPCS64_PROFILE = "aapcs64-callee-saved"
+AAPCS64_CALLEE_SAVED = {*(f"x{index}" for index in range(19, 30)), "sp"}
+AAPCS64_RETURN_REGISTER = re.compile(r"^(?:x[0-7]|v[0-7])$")
 REQUIRED_TAGS = {
     "shared_object", "pie", "et_exec", "dynamic_load", "aslr", "bti", "pac",
     "atomics_contention", "exception_throw", "exception_catch",
-    "exception_destructor", "exception_rethrow", "malformed_reject",
+    "exception_destructor", "exception_rethrow", "aapcs64_callee_saved", "malformed_reject",
 }
 FORBIDDEN_KEYS = {
     "serial", "device_serial", "ndk_path", "home", "home_path", "seed",
@@ -35,9 +39,31 @@ def _walk_forbidden(value, path="$"):
         for index, child in enumerate(value):
             _walk_forbidden(child, f"{path}[{index}]")
 
-def _validate_result(value, where):
+def _validate_aapcs64(value, where):
+    _require(isinstance(value, dict) and set(value) == {"profile", "return_values", "callee_saved"},
+             f"{where} has unexpected or missing AAPCS64 fields")
+    _require(value["profile"] == AAPCS64_PROFILE, f"{where}.profile must be {AAPCS64_PROFILE}")
+    returns = value["return_values"]
+    _require(isinstance(returns, dict) and returns,
+             f"{where}.return_values must be a non-empty register map")
+    for register, result in returns.items():
+        _require(isinstance(register, str) and AAPCS64_RETURN_REGISTER.fullmatch(register),
+                 f"{where}.return_values has an invalid register")
+        _require(isinstance(result, str) and HEX16.fullmatch(result),
+                 f"{where}.return_values.{register} must be 16 lowercase hex characters")
+    callee_saved = value["callee_saved"]
+    _require(isinstance(callee_saved, dict) and set(callee_saved) == AAPCS64_CALLEE_SAVED,
+             f"{where}.callee_saved must contain x19-x29 and sp only")
+    for register, result in callee_saved.items():
+        _require(isinstance(result, str) and HEX16.fullmatch(result),
+                 f"{where}.callee_saved.{register} must be 16 lowercase hex characters")
+
+def _validate_result(value, where, *, require_aapcs64):
     _require(isinstance(value, dict), f"{where} must be an object")
-    _require(set(value) == {"exit_code", "signal", "stdout_sha256", "stderr_sha256", "side_effect_sha256"},
+    expected = {"exit_code", "signal", "stdout_sha256", "stderr_sha256", "side_effect_sha256"}
+    if require_aapcs64:
+        expected.add("aapcs64")
+    _require(set(value) == expected,
              f"{where} has unexpected or missing result fields")
     _require(isinstance(value["exit_code"], int) and not isinstance(value["exit_code"], bool),
              f"{where}.exit_code must be an integer")
@@ -47,16 +73,18 @@ def _validate_result(value, where):
     for key in ("stdout_sha256", "stderr_sha256", "side_effect_sha256"):
         _require(isinstance(value[key], str) and HEX64.fullmatch(value[key]) is not None,
                  f"{where}.{key} must be lowercase SHA-256 hex")
+    if require_aapcs64:
+        _validate_aapcs64(value["aapcs64"], f"{where}.aapcs64")
 
-def _validate_attempts(attempts, where, *, expect_success):
+def _validate_attempts(attempts, where, *, expect_success, require_aapcs64=False):
     _require(isinstance(attempts, list) and len(attempts) >= 3,
              f"{where}.attempts must contain at least three executions")
     for index, attempt in enumerate(attempts):
         attempt_where = f"{where}.attempts[{index}]"
         _require(isinstance(attempt, dict) and set(attempt) == {"baseline", "packed"},
                  f"{attempt_where} must contain baseline and packed only")
-        _validate_result(attempt["baseline"], f"{attempt_where}.baseline")
-        _validate_result(attempt["packed"], f"{attempt_where}.packed")
+        _validate_result(attempt["baseline"], f"{attempt_where}.baseline", require_aapcs64=require_aapcs64)
+        _validate_result(attempt["packed"], f"{attempt_where}.packed", require_aapcs64=require_aapcs64)
         _require(attempt["baseline"] == attempt["packed"],
                  f"{attempt_where} baseline/packed behavior differs")
         result = attempt["baseline"]
@@ -145,7 +173,8 @@ def validate_document(document, manifest_ids, manifest_sha256, expected_commit):
         if malformed:
             _require(tag_set == {"malformed_reject"},
                      f"{where}.malformed_reject must be an isolated rejection case")
-        _validate_attempts(run.get("attempts"), where, expect_success=not malformed)
+        _validate_attempts(run.get("attempts"), where, expect_success=not malformed,
+                           require_aapcs64="aapcs64_callee_saved" in tag_set)
         observed_tags.update(tag_set)
         if "bti" in tag_set:
             _require(device_by_id[device_id]["bti"], f"{where} claims BTI on a non-BTI device/path")

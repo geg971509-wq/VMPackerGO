@@ -167,6 +167,36 @@ func TestDecode_LDR_STR_unsigned(t *testing.T) {
 	expect(t, "STRB uoff Imm", int64(56), inst.Imm)
 }
 
+func TestDecodeRegisterOffsetNormalizesZeroDestination(t *testing.T) {
+	d := NewDecoder()
+	for _, tc := range []struct {
+		name string
+		raw  uint32
+	}{
+		{"LDRB", 0x38600800},
+		{"STRB", 0x38200800},
+		{"LDR32", 0xB8600800},
+		{"STR32", 0xB8200800},
+		{"LDR64", 0xF8600800},
+		{"STR64", 0xF8200800},
+		{"LDRH", 0x78600800},
+		{"STRH", 0x78200800},
+		{"LDRSB", 0x38A00800},
+		{"LDRSH", 0x78A00800},
+		{"LDRSW", 0xB8A00800},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inst := d.Decode(tc.raw|(1<<16)|31, 0)
+			if inst.Rd != vm.REG_XZR {
+				t.Fatalf("Rd=%d, want XZR=%d", inst.Rd, vm.REG_XZR)
+			}
+			if inst.Rm != 1 || inst.Rn != 0 {
+				t.Fatalf("register-offset operands Rm=%d Rn=%d", inst.Rm, inst.Rn)
+			}
+		})
+	}
+}
+
 func TestDecode_LDR_STR_prepost(t *testing.T) {
 	d := NewDecoder()
 

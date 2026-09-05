@@ -40,6 +40,9 @@ func TestRewritePlanBuildsRuntimeLayoutRelocationsBytecodeAndTrampoline(t *testi
 		if segment.fileOffset%rewriteLoadAlignment != 0 || segment.vaddr%rewriteLoadAlignment != 0 {
 			t.Fatalf("segment[%d] is not 0x%x aligned: off=0x%x va=0x%x", i, rewriteLoadAlignment, segment.fileOffset, segment.vaddr)
 		}
+		if segment.fileOffset != segment.vaddr {
+			t.Fatalf("segment[%d] file/virtual placement diverges: off=0x%x va=0x%x", i, segment.fileOffset, segment.vaddr)
+		}
 		if segment.fileSize != uint64(len(segment.data)) || segment.memSize != segment.fileSize || segment.fileSize == 0 {
 			t.Fatalf("segment[%d] size mismatch: file=%d mem=%d data=%d", i, segment.fileSize, segment.memSize, len(segment.data))
 		}
@@ -204,6 +207,30 @@ func TestRewritePlanAcceptsInstalledExactR29RuntimeImage(t *testing.T) {
 	for address, found := range want {
 		if !found {
 			t.Fatalf("exact-r29 GNU unwind index lacks runtime FDE initial location 0x%x", address)
+		}
+	}
+}
+
+func TestPlaceSegmentsKeepsRuntimeFileAndVirtualCursorsTogether(t *testing.T) {
+	planner := rewritePlanner{
+		req:  Request{Input: make([]byte, 0x1c000)},
+		meta: &elfMetadata{loads: []loadMapping{{off: 0, vaddr: 0, memsz: 0x20000}}},
+		plan: RewritePlan{segments: []rewriteSegment{
+			{data: make([]byte, 0x100)},
+			{data: make([]byte, 0x200)},
+			{data: make([]byte, 0x300)},
+		}},
+	}
+
+	if err := planner.placeSegments(); err != nil {
+		t.Fatal(err)
+	}
+	for i, segment := range planner.plan.segments {
+		if segment.fileOffset != segment.vaddr {
+			t.Fatalf("segment[%d] file/virtual placement diverges: off=0x%x va=0x%x", i, segment.fileOffset, segment.vaddr)
+		}
+		if segment.fileOffset < uint64(len(planner.req.Input)) {
+			t.Fatalf("segment[%d] overlaps input: off=0x%x input=%d", i, segment.fileOffset, len(planner.req.Input))
 		}
 	}
 }

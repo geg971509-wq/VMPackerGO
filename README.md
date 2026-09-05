@@ -7,7 +7,7 @@ VMPacker is a development-stage virtual-machine packer for independent Android A
 - Host product: macOS ARM64 CLI.
 - Inputs: independent Android AArch64 ELF64 shared objects (`.so`) and PIE/`ET_EXEC` native executables.
 - Minimum Android runtime: API 23.
-- Selection: one direct function/address with `-abi`, or multiple manifest-v1 entries with explicit ABIs; names merge `.symtab` and `.dynsym`, while single addresses use fail-closed CFG inference.
+- Selection: one function with `-func` or address/range with `-addr`, each with `-abi`, or multiple manifest-v1 entries with explicit ABIs; names merge `.symtab` and `.dynsym`, while single addresses use fail-closed CFG inference.
 - Target output: a transformed ELF plus optional report-v1 JSON and explicit debug map.
 - Not active product scope: APK, AAB, GUI, Linux releases, or Windows releases. Historical APK and GUI work is retained under `archive/` and is unsupported.
 

@@ -22,9 +22,20 @@ def result(exit_code=0):
     return {"exit_code": exit_code, "signal": None, "stdout_sha256": HASH,
             "stderr_sha256": HASH, "side_effect_sha256": HASH}
 
+def aapcs64():
+    return {
+        "profile": module.device_evidence.AAPCS64_PROFILE,
+        "return_values": {"x0": "000000000000008f"},
+        "callee_saved": {**{f"x{index}": f"{index:016x}" for index in range(19, 30)},
+                          "sp": "0000000000001000"},
+    }
 
-def attempts(exit_code=0):
-    return [{"baseline": result(exit_code), "packed": result(exit_code)} for _ in range(3)]
+
+def attempts(exit_code=0, *, with_aapcs64=False):
+    baseline = result(exit_code)
+    if with_aapcs64:
+        baseline["aapcs64"] = aapcs64()
+    return [{"baseline": copy.deepcopy(baseline), "packed": copy.deepcopy(baseline)} for _ in range(3)]
 
 
 def make_repo(root: Path):
@@ -53,7 +64,7 @@ def device_document(ids, manifest_sha, commit):
         runs.append({"demo_id": demo_id, "device_id": DEV16, "attempts": attempts()})
     coverage = {"case_id": "coverage", "device_id": DEV16,
                 "tags": sorted(module.device_evidence.REQUIRED_TAGS - {"malformed_reject"}),
-                "threads": 4, "iterations": 10, "attempts": attempts()}
+                "threads": 4, "iterations": 10, "attempts": attempts(with_aapcs64=True)}
     malformed = {"case_id": "malformed", "device_id": DEV16,
                  "tags": ["malformed_reject"], "attempts": attempts(1)}
     return {"schema_version": 1, "commit_sha": commit,

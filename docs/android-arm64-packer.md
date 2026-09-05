@@ -12,7 +12,7 @@ This repository is under development. The behavior below describes current inter
 - Shared objects use `ET_DYN` and `PT_DYNAMIC`.
 - Native executables may be PIE (`ET_DYN` with `PT_INTERP`) or `ET_EXEC`.
 - At least one executable `PT_LOAD`.
-- Final segment layout is deferred to the Phase 8 plan-first writer and must not reuse notes or assume program-header padding.
+- Final segment layout is computed by the plan-first writer and must not reuse notes or assume program-header padding.
 
 ## Development CLI
 
@@ -41,7 +41,7 @@ make runtime-integration ANDROID_NDK=/path/to/android-ndk-r29
 make android-fixtures ANDROID_NDK=/path/to/android-ndk-r29
 ```
 
-Fixture sources remain under `testdata/android/`. The host transformation gate now produces structurally validated artifacts; device-differential smoke tests remain gated on physical-device execution and the outstanding unwind/runtime integration work.
+Fixture sources remain under `testdata/android/`. The host transformation gate now produces structurally validated artifacts; device-differential smoke tests remain gated on physical-device execution and release evidence.
 
 ## Release gates
 

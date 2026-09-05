@@ -31,11 +31,13 @@ python3 scripts/run-device-coverage-matrix.py \
 Run the matrix on the physical devices needed to satisfy API, 4 KiB/16 KiB, BTI/PAC and CPU-feature coverage. The runners may be repeated over their own work directories; they atomically replace only their generated packed outputs rather than requiring manual cleanup. Merge the fragments:
 
 ```sh
-python3 scripts/merge-device-evidence.py --out device-evidence.json *.json
+python3 scripts/merge-device-evidence.py \
+  --out device-evidence.json \
+  demo-evidence.json coverage-evidence.json
 python3 scripts/validate-device-evidence.py device-evidence.json
 ```
 
-The validator requires all 85 approved demos on both 4 KiB and 16 KiB physical devices, at least three successful matching baseline/packed executions per demo/device, and the semantic coverage tags defined in `device-evidence-schema-v1.md`. Ordinary demo/coverage executions must exit `0` without a signal. `malformed_reject` is the isolated inverse case and must be a deterministic non-zero rejection.
+The validator requires all 85 approved demos on both 4 KiB and 16 KiB physical devices, at least three successful matching baseline/packed executions per demo/device, and the semantic coverage tags defined in `device-evidence-schema-v1.md`, including `aapcs64_callee_saved`. The coverage runner records declared return values, memory-side-effect hashes, `x19`-`x29`, and `sp`; arbitrary caller-saved register equality is not used as a gate. Ordinary demo/coverage executions must exit `0` without a signal. `malformed_reject` is the isolated inverse case and must be a deterministic non-zero rejection.
 
 ## 3. Sign and notarize the standalone CLI
 

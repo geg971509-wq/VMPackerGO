@@ -110,7 +110,28 @@ def normalized_hash(data):
     normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     return hashlib.sha256(normalized).hexdigest()
 
-def remote_result(remote_dir, executable):
+def aapcs64_observation(data):
+    lines = [line for line in data.splitlines() if line.startswith(b"AAPCS64 ")]
+    if not lines:
+        return None
+    try:
+        fields = dict(token.split("=", 1) for token in lines[-1].decode("ascii", "strict").split()[1:])
+        registers = {f"x{index}" for index in range(19, 30)} | {"sp"}
+        if set(fields) != {"return", "memory", *registers}:
+            raise RuntimeError("AAPCS64 observation has an unexpected field set")
+        if any(len(fields[key]) != 16 for key in ("return", *registers)) or len(fields["memory"]) != 32:
+            raise RuntimeError("AAPCS64 observation has an invalid value width")
+        bytes.fromhex("".join(fields[key] for key in ("return", *registers, "memory")))
+    except (UnicodeError, ValueError) as exc:
+        raise RuntimeError("AAPCS64 observation is not valid ASCII key/value data") from exc
+    return {
+        "profile": "aapcs64-callee-saved",
+        "return_values": {"x0": fields["return"]},
+        "callee_saved": {key: fields[key] for key in sorted(registers, key=lambda item: (item == "sp", item))},
+        "memory_sha256": hashlib.sha256(bytes.fromhex(fields["memory"])).hexdigest(),
+    }
+
+def remote_result(remote_dir, executable, *, capture_aapcs64=False):
     prefix = re.sub(r"[^A-Za-z0-9_.-]", "_", executable.replace("/", "_"))
     out = f"{remote_dir}/{prefix}.stdout"
     err = f"{remote_dir}/{prefix}.stderr"
@@ -122,11 +143,16 @@ def remote_result(remote_dir, executable):
     raw_code = adb("exec-out", "cat", code).decode("ascii", "strict").strip()
     exit_code = int(raw_code)
     signal = f"SIGNAL_{exit_code - 128}" if 128 <= exit_code <= 255 else None
-    return {"exit_code": exit_code, "signal": signal,
+    result = {"exit_code": exit_code, "signal": signal,
             "stdout_sha256": normalized_hash(stdout), "stderr_sha256": normalized_hash(stderr),
             "side_effect_sha256": EMPTY_SHA256}
+    observation = aapcs64_observation(stdout) if capture_aapcs64 else None
+    if observation is not None:
+        result["aapcs64"] = {key: value for key, value in observation.items() if key != "memory_sha256"}
+        result["side_effect_sha256"] = observation["memory_sha256"]
+    return result
 
-def execute_case(case, baseline: Path, packed: Path, runner: Path | None):
+def execute_case(case, baseline: Path, packed: Path, runner: Path | None, *, capture_aapcs64=False):
     remote_dir = f"/data/local/tmp/vmpacker-evidence-{case['id']}"
     adb("shell", "rm", "-rf", remote_dir)
     adb("shell", "mkdir", "-p", remote_dir)
@@ -145,8 +171,8 @@ def execute_case(case, baseline: Path, packed: Path, runner: Path | None):
         packed_cmd = "./runner ./packed.so"
     attempts = []
     for _ in range(3):
-        baseline_result = remote_result(remote_dir, baseline_cmd)
-        packed_result = remote_result(remote_dir, packed_cmd)
+        baseline_result = remote_result(remote_dir, baseline_cmd, capture_aapcs64=capture_aapcs64)
+        packed_result = remote_result(remote_dir, packed_cmd, capture_aapcs64=capture_aapcs64)
         if baseline_result != packed_result:
             fail(f"{case['id']}: baseline and packed execution differ")
         attempts.append({"baseline": baseline_result, "packed": packed_result})

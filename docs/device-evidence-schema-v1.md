@@ -18,6 +18,12 @@ The canonical validator is `scripts/validate-device-evidence.py`.
 }
 ```
 
+The release coverage tags also require `aapcs64_callee_saved`. It is an observable
+ABI gate rather than a blanket register snapshot: return registers declared by the
+fixture, the deterministic memory-side-effect hash, `x19`-`x29`, and `sp` are
+compared between baseline and packed executions. Arbitrary caller-saved registers
+`x0`-`x18` and `x30` are not equality requirements.
+
 `commit_sha` must equal the exact checkout being certified. `manifest_sha256` prevents an evidence file from silently being reused after the approved 85-demo inventory changes.
 
 ## Device record
@@ -51,6 +57,32 @@ Each baseline/packed result is:
 `signal` is `null` or a non-empty signal name. Hashes are produced after the harness's documented deterministic normalization (for example CRLF normalization); normalization must be identical for baseline and packed execution. `side_effect_sha256` hashes a deterministic side-effect bundle, even when that bundle is empty.
 
 For ordinary demo and semantic-coverage executions, equivalence alone is not sufficient: every baseline/packed attempt must be identical, exit with code `0`, and have `signal: null`. A pair of identical crashes or identical non-zero exits is not passing release evidence.
+
+An execution carrying the `aapcs64_callee_saved` coverage tag additionally contains
+this result field:
+
+```json
+{
+  "aapcs64": {
+    "profile": "aapcs64-callee-saved",
+    "return_values": {"x0": "16 lowercase hex"},
+    "callee_saved": {
+      "x19": "16 lowercase hex", "x20": "16 lowercase hex",
+      "x21": "16 lowercase hex", "x22": "16 lowercase hex",
+      "x23": "16 lowercase hex", "x24": "16 lowercase hex",
+      "x25": "16 lowercase hex", "x26": "16 lowercase hex",
+      "x27": "16 lowercase hex", "x28": "16 lowercase hex",
+      "x29": "16 lowercase hex", "sp": "16 lowercase hex"
+    }
+  }
+}
+```
+
+`return_values` records only the declared return channels for that fixture (`x0`
+through `x7` or `v0` through `v7`); it is not a requirement that all listed
+registers be present. `side_effect_sha256` is the deterministic memory-side-effect
+bundle hash. The baseline and packed `aapcs64` objects and side-effect hash must be
+identical on every successful attempt.
 
 The sole inverse case is `malformed_reject`. It records deterministic rejection: baseline/packed rejection metadata must match, every attempt must have a non-zero exit code and `signal: null`, and the run must not carry any success-coverage tag.
 
@@ -88,6 +120,7 @@ Across all passing coverage runs the evidence must contain these tags:
 - `dynamic_load`, `aslr`;
 - `bti`, `pac`;
 - `atomics_contention`;
+- `aapcs64_callee_saved`;
 - `exception_throw`, `exception_catch`, `exception_destructor`, `exception_rethrow`;
 - `malformed_reject`.
 

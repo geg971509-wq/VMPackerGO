@@ -4,7 +4,7 @@
 
 ## Status
 
-This document defines the stable Phase 2 report emitted by the development CLI. A report accurately describes the current transformation, but it is not release evidence. `release_ready` remains `false` while final unwind/runtime, broader semantic, physical-device, and release gates are incomplete.
+This document defines the stable report emitted by the development CLI. A report accurately describes the current host transformation, but it is not release evidence. `release_ready` remains `false` while physical-device, signing/notarization, and independent-review gates are incomplete.
 
 A report is one JSON object with `schema_version: 1`. Consumers must reject unsupported schema versions while tolerating additional fields.
 
@@ -28,7 +28,7 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `output_sha256` | string | on success | Lower-case SHA-256 of the exact artifact bytes. |
 | `status` | string | yes | `ok` or `failed`. |
 | `error` | string | on failure | Failure text. |
-| `release_ready` | boolean | yes | `false` during the development phases. |
+| `release_ready` | boolean | yes | `false` until all external release gates pass. |
 | `limitations` | array | yes | Current development limitations; never `null`. |
 
 Reports never contain seed values, the raw opcode map, NDK paths, home-directory paths added by the tool, temporary paths, encryption keys, signing credentials, or secret configuration. The one-way `opcode_map_digest` is explicitly allowed. Raw input/output path text is preserved even when it contains relative components.
@@ -72,6 +72,6 @@ A failed transform never publishes an artifact or debug map. When `-report` was 
   "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "status": "ok",
   "release_ready": false,
-  "limitations": ["development runtime and ELF rewriting are not release-ready"]
+  "limitations": ["physical-device and release evidence gates remain external"]
 }
 ```

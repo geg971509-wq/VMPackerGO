@@ -21,6 +21,7 @@ APK, AAB, GUI, Linux release, and Windows release workflows are outside the acti
 - Function discovery uses both `.symtab` and `.dynsym`. CFG inference is fail-closed; ambiguity requires an explicit address range.
 - A protected entry accepts at most 8 integer or pointer parameters and returns either `void` or one integer or pointer result. Floating-point, vector, aggregate, and variadic entry ABIs are rejected. This is an intentional binary-product boundary; the packer does not guess unavailable function type metadata.
 - Calls made inside protected code implement full AAPCS64, including stack arguments, `X8`/sret, `V0`-`V7`, FP/SIMD arguments, and aggregate or complex returns.
+- Physical release evidence includes an `aapcs64_callee_saved` gate that compares declared return values, deterministic memory side effects, `x19`-`x29`, and `sp` between baseline and packed calls. It does not require arbitrary caller-saved `x0`-`x18` or `x30` equality.
 
 ## Instruction and control-flow correctness
 
@@ -59,7 +60,7 @@ Report v1 is implemented by the Phase 2 application boundary. A conforming JSON 
 
 - Hosted Verification uses the exact `.go-version` toolchain, exact Android NDK r29, canonical `gofmt` enforcement, contract/evidence validator self-tests and release rehearsal, `go list`, full tests, race tests, bounded active parser/decoder fuzzing, exact-r29 FP/SIMD and whole-compiler corpora, exact-r29 runtime compilation, vet, and the macOS ARM64 CLI build.
 - Release evidence comes from physical Android devices only; host and emulator results are development checks, not release gates.
-- Physical-device automation covers API 23+, 4 KiB and 16 KiB page sizes, BTI/PAC behavior, dynamic loading, ASLR-sensitive paths, ABI/calls, atomics, exceptions/unwind, and transformed execution.
+- Physical-device automation covers API 23+, 4 KiB and 16 KiB page sizes, BTI/PAC behavior, dynamic loading, ASLR-sensitive paths, ABI/calls, the AAPCS64 callee-saved gate, atomics, exceptions/unwind, and transformed execution.
 - All 85 approved demos must pass baseline → pack → transformed differential execution on both required physical page-size classes, with repeated equivalent results under the versioned evidence schema.
 - Release artifacts are macOS ARM64 only.
 - The release version is derived from and records both the Git tag and commit.

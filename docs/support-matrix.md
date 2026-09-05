@@ -21,7 +21,7 @@ This file describes **current implemented behavior**, not future acceptance crit
 | Max final bytecode per function | host-verified | 256 KiB. |
 | Aggregate rewrite expansion | host-verified | Appended rewrite data is bounded to 1 GiB and the final file endpoint to 2 GiB. |
 | Protected entry ABI | intentional bounded support | Explicit ABI metadata is required; current release contract accepts at most eight integer/pointer parameters and `void` or one integer/pointer result. FP/vector/aggregate/variadic entry is rejected. |
-| Calls inside protected code | host-verified, device-required | AAPCS64 bridge carries X0-X8, stack arguments, V0-V7 and FP state. |
+| Calls inside protected code | host-verified, device-required | AAPCS64 bridge carries X0-X8, stack arguments, V0-V7 and FP state; release evidence includes the callee-saved register gate. |
 
 ## Runtime correctness
 
@@ -70,6 +70,7 @@ The following are **not satisfied by host tests** and remain hard release gates:
 - physical Android API/page-size/BTI/PAC/ASLR matrix;
 - exact 85-demo baseline → pack → transformed differential execution on both 4 KiB and 16 KiB physical devices;
 - multithreaded atomic contention;
+- AAPCS64 return/memory-side-effect and `x19`-`x29`/`sp` preservation evidence;
 - C++ throw/catch/destructor/rethrow through protected/native boundaries;
 - malformed/adversarial runtime/device cases where applicable;
 - Developer ID signing, hardened runtime and Apple notarization;

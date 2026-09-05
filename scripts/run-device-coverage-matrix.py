@@ -26,8 +26,9 @@ def protect(packer, ndk, source, output, mode, name, abi, work):
     common.run([str(packer), "-ndk", str(ndk), "-mode", mode, "-manifest", str(manifest),
                 "-force", "-o", str(output), str(source)])
 
-def build_and_run_native(case_id, source, packed, runner=None):
-    return common.execute_case({"id": case_id}, source, packed, runner)
+def build_and_run_native(case_id, source, packed, runner=None, *, capture_aapcs64=False):
+    return common.execute_case({"id": case_id}, source, packed, runner,
+                               capture_aapcs64=capture_aapcs64)
 
 def malformed_attempt(packer, ndk, malformed, output):
     if output.is_symlink() or output.exists():
@@ -86,6 +87,22 @@ def main(argv=None):
         runs.append({"case_id": "shared-dlopen", "device_id": device_id,
                      "tags": ["shared_object", "dynamic_load"],
                      "attempts": build_and_run_native("coverage-shared", baseline_so, packed_so, so_runner)})
+
+        abi_dir = work / "aapcs64"
+        abi_dir.mkdir(exist_ok=True)
+        baseline_abi = abi_dir / "baseline.so"
+        common.run([str(clang), "-shared", "-fPIC", "-O2", "-g",
+                    str(ROOT / "testdata/android/coverage/aapcs64_gate.c"), "-o", str(baseline_abi)])
+        abi_runner = abi_dir / "runner"
+        common.run([str(clang), "-O2", "-fPIE", "-pie",
+                    str(ROOT / "testdata/android/coverage/aapcs64_runner.c"),
+                    str(ROOT / "testdata/android/coverage/aapcs64_probe.S"), "-ldl", "-o", str(abi_runner)])
+        packed_abi = abi_dir / "packed.so"
+        protect(packer, ndk, baseline_abi, packed_abi, "so", "protected_aapcs64", "u64(u64,ptr)", abi_dir)
+        runs.append({"case_id": "aapcs64-callee-saved", "device_id": device_id,
+                     "tags": ["aapcs64_callee_saved"],
+                     "attempts": build_and_run_native("coverage-aapcs64", baseline_abi, packed_abi, abi_runner,
+                                                       capture_aapcs64=True)})
 
         # PIE + ASLR + BTI/PAC.
         pie_dir = work / "pie"

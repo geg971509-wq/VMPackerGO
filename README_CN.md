@@ -7,7 +7,7 @@ VMPacker 是一个处于开发阶段的虚拟机保护工具，用于处理独�
 - 主机产品：macOS ARM64 CLI。
 - 输入：独立的 Android AArch64 ELF64 动态库（`.so`）以及 PIE/`ET_EXEC` 原生可执行文件。
 - 最低 Android 运行版本：API 23。
-- 保护目标选择：使用 `-abi` 直接选择一个函数名或地址，也可使用 manifest v1 携带显式 ABI 批量选择。
+- 保护目标选择：使用 `-func` 选择函数名，或使用 `-addr` 选择地址/范围；两者都必须配合 `-abi`。也可使用 manifest v1 携带显式 ABI 批量选择。
 - 目标输出：转换后的 ELF，以及可选的 report v1 JSON 和显式 debug map。
 - 非活动产品范围：APK、AAB、GUI、Linux 发行版和 Windows 发行版。历史 APK 与 GUI 工作保留在 `archive/` 下，不受支持。
 

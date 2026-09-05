@@ -14,7 +14,7 @@ bash -n scripts/*.sh
 bash scripts/check-contract.sh
 ```
 
-Phase 3 adds generated ELF fixtures for malformed tables/ranges, symtab/dynsym merge, explicit ranges, CFG inference/rejection, selection limits, bytecode limits, and no-panic fuzz seeds. Phase 4 removes the fixed blob and validates an exact-r29 relocatable runtime before the explicit Phase 8 planner boundary.
+The repository includes generated ELF fixtures for malformed tables/ranges, symtab/dynsym merge, explicit ranges, CFG inference/rejection, selection limits, bytecode limits, and no-panic fuzz seeds. The exact-r29 relocatable runtime and plan-first writer are host-verified; physical-device execution remains a release gate.
 
 ## Tier 1: host pipeline validation
 
@@ -25,9 +25,14 @@ Phase 3 adds generated ELF fixtures for malformed tables/ranges, symtab/dynsym m
 
 ## Tier 2: native executable device smoke
 
-This tier resumes after the plan-first writer is implemented and Tier 1 host validation passes. Connect authorized physical `arm64-v8a` devices, compare baseline and transformed behavior, and capture linker, signal, unwind, and SELinux diagnostics.
+After Tier 1 host validation passes, connect authorized physical `arm64-v8a` devices, compare baseline and transformed behavior, and capture linker, signal, unwind, and SELinux diagnostics.
 
 Root access is optional diagnostic tooling and must not become a runtime requirement.
+
+The ABI gate uses the `aapcs64_callee_saved` coverage case. Its runner captures
+declared return values, the deterministic memory-side-effect hash, `x19`-`x29`, and
+`sp` for the same call shape before and after packing. It does not require arbitrary
+caller-saved `x0`-`x18` or `x30` to remain equal.
 
 ## Required release matrix
 
@@ -38,6 +43,8 @@ Root access is optional diagnostic tooling and must not become a runtime require
 - BTI-enabled and PAC-enabled binaries and devices.
 - Every supported translated instruction plus explicit rejection for unsupported instructions.
 - Repeatable loading and execution on physical devices.
+- AAPCS64 return, memory-side-effect, callee-saved-register, and stack-pointer
+  observations match across repeated baseline/packed executions.
 
 ## Pass criteria
 

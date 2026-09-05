@@ -482,6 +482,11 @@ func (planner *rewritePlanner) placeSegments() error {
 	if !ok {
 		return fmt.Errorf("runtime virtual placement overflows")
 	}
+	if fileCursor < vaCursor {
+		fileCursor = vaCursor
+	} else {
+		vaCursor = fileCursor
+	}
 	for i := range planner.plan.segments {
 		fileCursor, ok = alignUpChecked(fileCursor, rewriteLoadAlignment)
 		if !ok {

@@ -82,30 +82,44 @@ var ldstPatterns = []InstrPattern{
 	{
 		Name: "LDRB_REG", Mask: 0xFFE00C00, Value: 0x38600800, Op: LDRB_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
+		Post:   postRegisterOffsetXZR,
 	},
 	{
 		Name: "STRB_REG", Mask: 0xFFE00C00, Value: 0x38200800, Op: STRB_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
+		Post:   postRegisterOffsetXZR,
 	},
 	{
 		Name: "LDR_REG_32", Mask: 0xFFE00C00, Value: 0xB8600800, Op: LDR_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = false },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = false
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 	{
 		Name: "STR_REG_32", Mask: 0xFFE00C00, Value: 0xB8200800, Op: STR_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = false },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = false
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 	{
 		Name: "LDR_REG_64", Mask: 0xFFE00C00, Value: 0xF8600800, Op: LDR_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = true },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = true
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 	{
 		Name: "STR_REG_64", Mask: 0xFFE00C00, Value: 0xF8200800, Op: STR_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = true },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = true
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 
 	// ---- Register offset: LDRH/STRH ----
@@ -113,29 +127,40 @@ var ldstPatterns = []InstrPattern{
 	{
 		Name: "LDRH_REG", Mask: 0xFFE00C00, Value: 0x78600800, Op: LDRH_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
+		Post:   postRegisterOffsetXZR,
 	},
 	// STRH (reg): size=01,V=0,opc=00 → 0x78200800
 	{
 		Name: "STRH_REG", Mask: 0xFFE00C00, Value: 0x78200800, Op: STRH_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
+		Post:   postRegisterOffsetXZR,
 	},
 	// LDRSB (reg): size=00,V=0,opc=10 → 0x38A00800 (64-bit dest)
 	{
 		Name: "LDRSB_REG", Mask: 0xFFE00C00, Value: 0x38A00800, Op: LDRSB_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = true },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = true
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 	// LDRSH (reg): size=01,V=0,opc=10 → 0x78A00800
 	{
 		Name: "LDRSH_REG", Mask: 0xFFE00C00, Value: 0x78A00800, Op: LDRSH_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = true },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = true
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 	// LDRSW (reg): size=10,V=0,opc=10 → 0xB8A00800
 	{
 		Name: "LDRSW_REG", Mask: 0xFFE00C00, Value: 0xB8A00800, Op: LDRSW_REG,
 		Fields: []FieldDef{fRm16, fRn, fRd},
-		Post:   func(_ map[string]int64, inst *vm.Instruction) { inst.SF = true },
+		Post: func(fields map[string]int64, inst *vm.Instruction) {
+			inst.SF = true
+			postRegisterOffsetXZR(fields, inst)
+		},
 	},
 
 	// ================================================================
@@ -576,6 +601,11 @@ func postLdrStrPrePostXZR(f map[string]int64, inst *vm.Instruction) {
 	}
 	inst.Imm = f["imm9"]
 	inst.WB = int(wb)
+	xzrReplace(&inst.Rd)
+}
+
+// Register-offset load/store Rt=31 is XZR; Rn=31 remains the architectural SP.
+func postRegisterOffsetXZR(_ map[string]int64, inst *vm.Instruction) {
 	xzrReplace(&inst.Rd)
 }
 

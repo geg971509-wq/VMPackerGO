@@ -27,7 +27,7 @@ text_files=()
 wails_configs=()
 for path in "${paths[@]}"; do
   case "$path" in
-    archive/*|.git/*|.omc/*|.omx/*|.codex/*|build/*|dist/*|*/node_modules/*|AGENTS.md|scripts/check-contract.sh|scripts/check-contract-test.sh)
+    archive/*|testdata/*|.git/*|.omc/*|.omx/*|.codex/*|build/*|dist/*|*/node_modules/*|AGENTS.md|scripts/check-contract.sh|scripts/check-contract-test.sh)
       continue
       ;;
   esac
