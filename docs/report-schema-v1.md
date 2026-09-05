@@ -16,11 +16,11 @@ A report is one JSON object with `schema_version: 1`. Consumers must reject unsu
 | `tool` | object | yes | Git-injected `version` and `commit`; defaults are `dev` and `unknown`. |
 | `input` | string | yes | Input path text exactly as supplied by the user. |
 | `output` | string | yes | Requested output path text exactly as supplied by the user, or the documented default. |
-| `mode` | string | yes | `auto`, `so`, or `native`. |
-| `target_kind` | string | on classified runs | `android-so`, `android-pie`, or `android-exec`. |
+| `mode` | string | yes | `auto`, `so`, `native`, or `ios`. |
+| `target_kind` | string | on classified runs | `android-so`, `android-pie`, `android-exec`, or `ios-dylib`. |
 | `development_strategy` | string | on classified runs | Last completed internal boundary: `rewrite-artifact-ready` on success, or `rewrite-plan-ready` when final application/reparse fails after planning. |
 | `opcode_map_digest` | string | after map creation | Lower-case SHA-256 of the semantic-to-wire byte sequence. This is the only allowed one-way opcode-map derivative. |
-| `runtime_strategy` | string | after runtime validation | Accurate runtime build/validation strategy, currently `ndk-r29-et-rel-validated`. |
+| `runtime_strategy` | string | after runtime validation | Accurate runtime build/validation strategy, currently `ndk-r29-et-rel-validated` for Android or `ios-arm64-relocated-entry` for the limited iOS lane. |
 | `segment_strategy` | string | reserved | Reserved for a stable final segment-layout reporting contract; intentionally omitted by the current host writer. |
 | `veneer_strategy` | string | reserved | Reserved for the final far-branch veneer contract; intentionally omitted until veneer-island integration exists. |
 | `unwind_strategy` | string | reserved | Reserved for the final unwind integration contract; intentionally omitted until FDE/LSDA publication exists. |

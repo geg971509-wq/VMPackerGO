@@ -78,7 +78,7 @@ func New(version, commit, input, output, mode string, selections []Selection) Re
 		Functions:     make([]Function, 0, len(selections)),
 		Status:        "failed",
 		ReleaseReady:  false,
-		Limitations:   []string{"development runtime and ELF rewriting are not release-ready"},
+		Limitations:   []string{"development runtime and binary rewriting are not release-ready"},
 	}
 	for _, selection := range selections {
 		params := make([]string, len(selection.ABI.Params))

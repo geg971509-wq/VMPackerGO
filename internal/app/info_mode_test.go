@@ -25,3 +25,18 @@ func TestInfoModeIgnoresUnrelatedNDKEnvironment(t *testing.T) {
 		t.Fatalf("unexpected info options: %#v", opts)
 	}
 }
+
+func TestIOSModeDoesNotRequireAndroidNDK(t *testing.T) {
+	t.Setenv("ANDROID_NDK", filepath.Join(t.TempDir(), "missing-ndk"))
+	input := filepath.Join(t.TempDir(), "input.dylib")
+	if err := os.WriteFile(input, []byte("macho"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	opts, err := parseOptions([]string{"-mode", "ios", "-func", "_entry", "-abi", "void()", input}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("iOS mode unexpectedly depends on Android NDK: %v", err)
+	}
+	if opts.Mode != "ios" || opts.NDK == "" {
+		t.Fatalf("unexpected options: %#v", opts)
+	}
+}

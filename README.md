@@ -5,11 +5,11 @@ VMPacker is a development-stage virtual-machine packer for independent Android A
 ## Product scope
 
 - Host product: macOS ARM64 CLI.
-- Inputs: independent Android AArch64 ELF64 shared objects (`.so`) and PIE/`ET_EXEC` native executables.
+- Inputs: independent Android AArch64 ELF64 shared objects (`.so`) and PIE/`ET_EXEC` native executables, plus a narrow iOS arm64 thin `MH_DYLIB` backend (`-mode ios`).
 - Minimum Android runtime: API 23.
 - Selection: one function with `-func` or address/range with `-addr`, each with `-abi`, or multiple manifest-v1 entries with explicit ABIs; names merge `.symtab` and `.dynsym`, while single addresses use fail-closed CFG inference.
-- Target output: a transformed ELF plus optional report-v1 JSON and explicit debug map.
-- Not active product scope: APK, AAB, GUI, Linux releases, or Windows releases. Historical APK and GUI work is retained under `archive/` and is unsupported.
+- Target output: a transformed ELF or (in `-mode ios`) Mach-O dylib, plus optional report-v1 JSON and an Android-only debug map.
+- Not active product scope: APK, AAB, GUI, Linux releases, Windows releases, arm64e/simulator/FAT iOS slices, or automatic app-bundle signing. Historical APK and GUI work is retained under `archive/` and is unsupported.
 
 VMPacker only increases the cost of reverse analysis. It does not make code impossible to inspect, copy, modify, or bypass.
 
@@ -20,6 +20,8 @@ The host-side productization path is implemented and covered by the repository V
 The project is **still not release-ready**. Release acceptance requires real physical Android evidence across API/page-size/BTI/PAC/ASLR and CPU-feature matrices, baseline-versus-packed execution for all 85 demos, atomic-contention and C++ exception/unwind evidence, Developer ID signing, Apple notarization, and an independent release review. Those external facts are never inferred from host tests or fabricated by the build.
 
 See the [product contract](docs/product-contract.md), [current support matrix](docs/support-matrix.md), [device evidence schema](docs/device-evidence-schema-v1.md), [release process](docs/release-process.md), [remediation audit](docs/remediation-audit-20260903.md), and [report schema](docs/report-schema-v1.md).
+
+The iOS Mach-O boundary and signing requirements are documented in [docs/ios-dylib.md](docs/ios-dylib.md).
 
 ## Development commands
 

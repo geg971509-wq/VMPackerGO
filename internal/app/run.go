@@ -9,6 +9,7 @@ import (
 	"io"
 
 	elfpacker "github.com/geg971509-wq/VMPackerGO/internal/elf"
+	"github.com/geg971509-wq/VMPackerGO/internal/macho"
 	"github.com/geg971509-wq/VMPackerGO/internal/publish"
 	"github.com/geg971509-wq/VMPackerGO/internal/report"
 	vmruntime "github.com/geg971509-wq/VMPackerGO/internal/runtime"
@@ -81,6 +82,9 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if opts.Mode == "ios" {
+			return macho.PrintInfo(input, opts.Input, stdout)
+		}
 		return elfpacker.PrintELFInfo(input, opts.Input, opts.Mode, stdout)
 	}
 	opts.InputMode = mode
@@ -92,6 +96,9 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 		}
 	}
 	rep := report.New(cfg.Version, cfg.Commit, opts.Input, opts.Output, opts.Mode, selections)
+	if opts.Mode == "ios" {
+		return runIOS(ctx, stdout, opts, rep, input)
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -213,5 +220,57 @@ func RunWithConfig(ctx context.Context, args []string, stdout, stderr io.Writer,
 		return err
 	}
 	fmt.Fprintf(stdout, "Packed Android ELF: %s\n", opts.Output)
+	return nil
+}
+
+func runIOS(ctx context.Context, stdout io.Writer, opts options, rep report.Report, input []byte) error {
+	requests := make([]macho.SelectionRequest, 0, len(opts.Selected))
+	addrIndex, funcIndex := 0, 0
+	for _, selected := range opts.Selected {
+		r := macho.SelectionRequest{Source: selected.Source, Selector: selected.Selector, Name: selected.Name, ABI: selected.ABI}
+		if selected.Address != "" || selected.Range != "" {
+			spec := opts.AddrSpecs[addrIndex]
+			addrIndex++
+			r.Address, r.End = spec.Addr, spec.End
+		} else {
+			r.Name = opts.Funcs[funcIndex]
+			funcIndex++
+		}
+		requests = append(requests, r)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	result, transformErr := macho.Process(input, requests)
+	if transformErr != nil {
+		rep.Fail(transformErr, elfpacker.Result{TargetKind: elfpacker.TargetKindIOSDylib, AnalysisLimitations: result.AnalysisLimitations, Warnings: result.Warnings})
+		if opts.Report != "" {
+			data, err := rep.Marshal()
+			if err != nil {
+				return errors.Join(transformErr, err)
+			}
+			if err := publish.All([]publish.File{{Path: opts.Report, Data: data, Mode: 0600}}, opts.Force); err != nil {
+				return errors.Join(transformErr, err)
+			}
+		}
+		return transformErr
+	}
+	elfResult := elfpacker.Result{Artifact: result.Artifact, TargetKind: elfpacker.TargetKindIOSDylib, DevelopmentStrategy: result.DevelopmentStrategy, RuntimeStrategy: result.RuntimeStrategy, AnalysisLimitations: result.AnalysisLimitations, Warnings: result.Warnings}
+	for _, f := range result.Functions {
+		elfResult.Functions = append(elfResult.Functions, elfpacker.FunctionFact{Source: f.Source, Selector: f.Selector, Name: f.Name, Address: f.Address, End: f.End, Size: f.Size, Section: f.Section, SymbolSource: f.SymbolSource, Instructions: f.Instructions, Translated: f.Translated, Bytecode: f.Bytecode})
+	}
+	rep.Success(elfResult)
+	data, err := rep.Marshal()
+	if err != nil {
+		return err
+	}
+	files := []publish.File{{Path: opts.Output, Data: result.Artifact, Mode: artifactMode(opts.InputMode), Artifact: true}}
+	if opts.Report != "" {
+		files = append(files, publish.File{Path: opts.Report, Data: data, Mode: 0600})
+	}
+	if err := publish.All(files, opts.Force); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "Packed iOS Mach-O dylib (unsigned; re-sign required): %s\n", opts.Output)
 	return nil
 }
