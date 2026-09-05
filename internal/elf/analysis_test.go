@@ -356,8 +356,8 @@ func TestAnalyzeRejectsDuplicatePTINTERP(t *testing.T) {
 	interpOff := fixture.phoff + 2*elf64ProgramSize
 	bo.PutUint64(fixture.data[interpOff+8:interpOff+16], 0x190)
 	bo.PutUint64(fixture.data[interpOff+16:interpOff+24], 0x1190)
-	bo.PutUint64(fixture.data[interpOff+32:interpOff+40], 6)
-	bo.PutUint64(fixture.data[interpOff+40:interpOff+48], 6)
+	bo.PutUint64(fixture.data[interpOff+32:interpOff+40], 5)
+	bo.PutUint64(fixture.data[interpOff+40:interpOff+48], 5)
 	copy(fixture.data[0x190:], []byte("/bad\x00"))
 
 	secondOff := fixture.phoff + int(phnum)*elf64ProgramSize
