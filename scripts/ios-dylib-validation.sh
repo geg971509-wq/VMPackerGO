@@ -35,8 +35,12 @@ fixture="$root/testdata/ios/dylib_fixture.c"
 # references. The implementation currently rejects PC-relative/branch
 # relocation cases; this fixture proves the supported direct-entry lane against
 # an actual Apple linker output and leaves those harder cases fail-closed.
+# iOS 12 is intentional: Apple enables chained fixups for newer deployment
+# targets, while current ld_prime removed the historical -no_chained_fixups
+# switch. Production inputs with chained fixups remain rejected until the
+# Mach-O writer updates their segment metadata.
 "$clang" \
-  -target arm64-apple-ios15.0 \
+  -target arm64-apple-ios12.0 \
   -isysroot "$sdk" \
   -dynamiclib \
   -O2 \
@@ -46,7 +50,6 @@ fixture="$root/testdata/ios/dylib_fixture.c"
   -fno-asynchronous-unwind-tables \
   -Wl,-headerpad_max_install_names \
   -Wl,-no_compact_unwind \
-  -Wl,-no_chained_fixups \
   -Wl,-exported_symbol,_vmp_fixture_add \
   -o "$tmp/libvmp_fixture.dylib" \
   "$fixture"
