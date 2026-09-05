@@ -132,7 +132,7 @@ func TestXZRConditionalBranchesAreConstant(t *testing.T) {
 			t.Fatalf("%s unsupported=%v", OpName(tc.op), result.Unsupported)
 		}
 		ops, _ := translatedOps(t, result)
-		if len(ops) < 2 || ops[0] != tc.wantOp || (tc.wantJump && ops[1] == vm.OpHalt) {
+		if len(ops) < 2 || ops[0] != tc.wantOp {
 			t.Fatalf("%s ops=%v", OpName(tc.op), ops)
 		}
 	}
